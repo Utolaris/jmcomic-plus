@@ -161,6 +161,33 @@ class ReaderPipelineTest {
     }
 
     @Test
+    fun delayedCancellationKeepsARejoinedBackgroundConsumerAlive() {
+        runBlocking {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val registry = ReaderInFlightRegistry<String, Int>(scope, cancellationGraceMillis = 120L)
+            val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val first = launch {
+                registry.request("page", ReaderRequestPriority.BACKGROUND) {
+                    started.complete(Unit)
+                    release.await()
+                    9
+                }
+            }
+            started.await()
+            first.cancel()
+            delay(20L)
+            val second = async {
+                registry.request("page", ReaderRequestPriority.BACKGROUND) { error("duplicate loader") }
+            }
+            delay(160L)
+            release.complete(Unit)
+            assertEquals(9, second.await())
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
+    @Test
     fun cancelledPrefetchCanRetryLater() {
         runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

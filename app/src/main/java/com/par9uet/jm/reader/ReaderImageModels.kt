@@ -99,7 +99,8 @@ internal fun readerCacheKey(
     profile: ReaderDecodeProfile? = null,
 ): String {
     val profileToken = profile?.cacheToken ?: "source"
-    val value = "reader-v2|$kind|$profileToken|${page.stableIdentity()}"
+    val namespace = if (kind == "decoded") "reader-v3" else "reader-v2"
+    val value = "$namespace|$kind|$profileToken|${page.stableIdentity()}"
     return sha256(value)
 }
 

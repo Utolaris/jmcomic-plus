@@ -51,6 +51,14 @@ private data class DecodedCacheWrite(
     val generation: Long,
 )
 
+private data class ReaderSourceFile(
+    val file: File,
+    val generation: Long,
+    val persistent: Boolean,
+    val persistAfterValidation: Boolean,
+    val cacheFile: File,
+)
+
 class ReaderImagePipeline(
     context: Context,
     private val localSettingManager: LocalSettingManager,
@@ -77,7 +85,6 @@ class ReaderImagePipeline(
         } else {
             null
         }
-    private val requests = ReaderInFlightRegistry<ReaderInFlightKey, ReaderDecodedPage>(scope)
     private val bitmapCache = ReaderLruCache<BitmapCacheKey, Bitmap>(
         maxSize = bitmapCacheBudgetBytes(memoryClassMb),
         sizeOf = { bitmap -> bitmap.allocationByteCount.toLong().coerceAtLeast(1L) },
@@ -90,6 +97,17 @@ class ReaderImagePipeline(
     private val cacheGeneration = AtomicLong(0L)
     private val diskCacheDir = File(appContext.cacheDir, "reader_pages").apply { mkdirs() }
     private val activeSourceFiles = ConcurrentHashMap<File, AtomicInteger>()
+    private val requests = ReaderInFlightRegistry<ReaderInFlightKey, ReaderDecodedPage>(scope)
+    private val sourceRequests = ReaderInFlightRegistry<ReaderPageKey, ReaderSourceFile>(
+        scope = scope,
+        onEntryReleased = { source ->
+            releaseSourceFile(
+                file = source.file,
+                generation = source.generation,
+                temporary = !source.persistent,
+            )
+        },
+    )
     private val decodedCacheWrites = Channel<DecodedCacheWrite>(
         capacity = 1,
         onBufferOverflow = BufferOverflow.DROP_LATEST,
@@ -159,10 +177,16 @@ class ReaderImagePipeline(
         request(page, ReaderRequestPriority.PREFETCH, currentProfile())
     }
 
-    fun cancelPrefetch(pageKey: ReaderPageKey): Boolean =
-        requests.cancelPrefetchMatching { it.page == pageKey } > 0
+    fun cancelPrefetch(pageKey: ReaderPageKey): Boolean {
+        val decodedCancelled = requests.cancelPrefetchMatching { it.page == pageKey } > 0
+        val sourceCancelled = sourceRequests.cancelPrefetch(pageKey)
+        return decodedCancelled || sourceCancelled
+    }
 
-    fun cancelAllPrefetch() = requests.cancelAllPrefetch()
+    fun cancelAllPrefetch() {
+        requests.cancelAllPrefetch()
+        sourceRequests.cancelAllPrefetch()
+    }
 
     fun clearMemory() {
         bitmapCache.evictAll()
@@ -209,12 +233,13 @@ class ReaderImagePipeline(
 
         val inFlightKey = ReaderInFlightKey(page.key, profile.cacheToken)
         return requests.request(inFlightKey, priority) { handle ->
-            performLoad(page, profile, cacheKey, handle)
+            performLoad(page, priority, profile, cacheKey, handle)
         }
     }
 
     private suspend fun performLoad(
         page: ReaderPage,
+        priority: ReaderRequestPriority,
         profile: ReaderDecodeProfile,
         cacheKey: BitmapCacheKey,
         handle: ReaderLoadHandle,
@@ -229,11 +254,6 @@ class ReaderImagePipeline(
             diskCacheDir,
             "${readerCacheKey(page.key, "decoded", profile)}.webp",
         )
-        val sourceFile = File(
-            diskCacheDir,
-            "${readerCacheKey(page.key, "source")}.source",
-        )
-
         val localFile = page.localFile
         if (localFile?.isFile == true) {
             return@withContext decodeAndCache(
@@ -254,26 +274,41 @@ class ReaderImagePipeline(
             } ?: decodedFile.takeIf(File::exists)?.delete()
         }
 
-        val cachedSource = acquireCachedSourceFile(sourceFile)
-        val rawFile = cachedSource?.first ?: fetchAndCacheSource(page, sourceFile, handle)
+        var sourceLease = acquireSource(page, priority, retryFromDecode = false)
+        var retriedAfterDecodeFailure = false
+        var decodedPage: ReaderDecodedPage? = null
         try {
-            val decoded = withDecodePriority(handle) {
-                decodeReaderRawFile(rawFile, page, profile)
+            while (decodedPage == null) {
+                try {
+                    val decoded = withDecodePriority(handle) {
+                        decodeReaderRawFile(sourceLease.value.file, page, profile)
+                    }
+                    promoteSourceIfNeeded(sourceLease.value)
+                    decodedPage = decodeAndCache(
+                        pageKey = page.key,
+                        cacheKey = cacheKey,
+                        decoded = decoded,
+                        decodedFile = decodedFile,
+                        profile = profile,
+                    )
+                } catch (error: Throwable) {
+                    if (
+                        !retriedAfterDecodeFailure &&
+                        shouldInvalidateSourceAfterDecodeFailure(error)
+                    ) {
+                        retriedAfterDecodeFailure = true
+                        invalidateSource(page.key, sourceLease.value)
+                        sourceLease.release()
+                        sourceLease = acquireSource(page, priority, retryFromDecode = true)
+                        continue
+                    }
+                    throw error
+                }
             }
-            decodeAndCache(
-                pageKey = page.key,
-                cacheKey = cacheKey,
-                decoded = decoded,
-                decodedFile = decodedFile,
-                profile = profile,
-            )
         } finally {
-            if (cachedSource != null) {
-                releaseSourceFile(rawFile, cachedSource.second)
-            } else {
-                releaseSourceFile(rawFile, cacheGeneration.get(), temporary = true)
-            }
+            sourceLease.release()
         }
+        return@withContext checkNotNull(decodedPage)
     }
 
     private fun decodeAndCache(
@@ -290,49 +325,122 @@ class ReaderImagePipeline(
         return ReaderDecodedPage(decoded.bitmap, decoded.aspectRatio)
     }
 
-    private suspend fun fetchAndCacheSource(
+    private suspend fun acquireSource(
+        page: ReaderPage,
+        priority: ReaderRequestPriority,
+        retryFromDecode: Boolean,
+    ): ReaderInFlightLease<ReaderSourceFile> = sourceRequests.acquire(page.key, priority) { handle ->
+        loadSourceFile(
+            page = page,
+            priority = priority,
+            handle = handle,
+            retryFromDecode = retryFromDecode,
+        )
+    }
+
+    private suspend fun loadSourceFile(
+        page: ReaderPage,
+        priority: ReaderRequestPriority,
+        handle: ReaderLoadHandle,
+        retryFromDecode: Boolean,
+    ): ReaderSourceFile {
+        val sourceFile = File(
+            diskCacheDir,
+            "${readerCacheKey(page.key, "source")}.source",
+        )
+        acquireCachedSourceFile(sourceFile)?.let { (file, generation) ->
+            return ReaderSourceFile(
+                file = file,
+                generation = generation,
+                persistent = true,
+                persistAfterValidation = false,
+                cacheFile = sourceFile,
+            )
+        }
+        return fetchSourceFile(
+            page = page,
+            sourceFile = sourceFile,
+            handle = handle,
+            persistSourceCache = priority != ReaderRequestPriority.BACKGROUND,
+            preferFallback = retryFromDecode,
+        )
+    }
+
+    private suspend fun fetchSourceFile(
         page: ReaderPage,
         sourceFile: File,
         handle: ReaderLoadHandle,
-    ): File {
+        persistSourceCache: Boolean,
+        preferFallback: Boolean,
+    ): ReaderSourceFile {
         val generation = cacheGeneration.get()
         var networkError: Throwable? = null
-        try {
+
+        suspend fun fetchFallback(): ReaderSourceFile? {
+            val fallbackFetcher = page.fallbackFetcher ?: return null
+            val bytes: ByteArray? = withNetworkRequestPriority(handle) { fallbackFetcher() }
+            if (bytes == null || bytes.isEmpty() || bytes.size.toLong() > MAX_SOURCE_BYTES) {
+                return null
+            }
             val temporary = createSourceTempFile()
-            try {
-                fetchRemoteToFile(page.originSrc, temporary, handle)
-                return installSourceFile(sourceFile, temporary, generation)
+            return try {
+                FileOutputStream(temporary).use { it.write(bytes) }
+                ReaderSourceFile(
+                    file = temporary,
+                    generation = generation,
+                    persistent = false,
+                    persistAfterValidation = persistSourceCache,
+                    cacheFile = sourceFile,
+                )
             } catch (error: Throwable) {
                 releaseSourceFile(temporary, generation, temporary = true)
                 throw error
             }
+        }
+
+        suspend fun fetchRemote(): ReaderSourceFile {
+            val temporary = createSourceTempFile()
+            return try {
+                fetchRemoteToFile(page.originSrc, temporary, handle)
+                ReaderSourceFile(
+                    file = temporary,
+                    generation = generation,
+                    persistent = false,
+                    persistAfterValidation = persistSourceCache,
+                    cacheFile = sourceFile,
+                )
+            } catch (error: Throwable) {
+                releaseSourceFile(temporary, generation, temporary = true)
+                throw error
+            }
+        }
+
+        if (preferFallback) {
+            try {
+                fetchFallback()?.let { return it }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                networkError = error
+            }
+        }
+
+        try {
+            return fetchRemote()
         } catch (error: CancellationException) {
             throw error
         } catch (error: Throwable) {
             networkError = error
         }
 
-        try {
-            val fallbackFetcher = page.fallbackFetcher
-            val bytes: ByteArray? = if (fallbackFetcher == null) {
-                null
-            } else {
-                withNetworkPriority(handle) { fallbackFetcher() }
+        if (!preferFallback) {
+            try {
+                fetchFallback()?.let { return it }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Throwable) {
+                networkError = error
             }
-            if (bytes != null && bytes.isNotEmpty() && bytes.size.toLong() <= MAX_SOURCE_BYTES) {
-                val temporary = createSourceTempFile()
-                try {
-                    FileOutputStream(temporary).use { it.write(bytes) }
-                    return installSourceFile(sourceFile, temporary, generation)
-                } catch (error: Throwable) {
-                    releaseSourceFile(temporary, generation, temporary = true)
-                    throw error
-                }
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Throwable) {
-            networkError = error
         }
         throw ReaderImageException("网络错误", networkError)
     }
@@ -341,40 +449,44 @@ class ReaderImagePipeline(
         url: String,
         target: File,
         handle: ReaderLoadHandle,
-    ) = withContext(Dispatchers.IO) {
-        val request = Request.Builder()
-            .url(url)
-            .get()
-            .header("User-Agent", USER_AGENT)
-            .header("Referer", REFERER)
-            .build()
-        httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw ReaderImageException("HTTP ${response.code}")
-            val body = response.body ?: throw ReaderImageException("图片响应为空")
-            if (body.contentLength() > MAX_SOURCE_BYTES) {
-                throw ReaderImageException("图片过大")
-            }
-            val buffer = ByteArray(NETWORK_READ_CHUNK_BYTES)
-            var total = 0L
-            FileOutputStream(target).use { output ->
-                body.byteStream().use { input ->
-                    while (true) {
-                        // Never wait for a visible request while holding a network permit.
-                        handle.awaitBackgroundTurn()
-                        val read = withNetworkPriority(handle) { input.read(buffer) }
-                        if (read < 0) break
-                        if (read == 0) continue
-                        total += read
-                        if (total > MAX_SOURCE_BYTES) throw ReaderImageException("图片过大")
-                        output.write(buffer, 0, read)
+    ) = withNetworkRequestPriority(handle) {
+        withContext(Dispatchers.IO) {
+            val request = Request.Builder()
+                .url(url)
+                .get()
+                .header("User-Agent", USER_AGENT)
+                .header("Referer", REFERER)
+                .build()
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw ReaderImageException("HTTP ${response.code}")
+                val body = response.body ?: throw ReaderImageException("图片响应为空")
+                if (body.contentLength() > MAX_SOURCE_BYTES) {
+                    throw ReaderImageException("图片过大")
+                }
+                val buffer = ByteArray(NETWORK_READ_CHUNK_BYTES)
+                var total = 0L
+                FileOutputStream(target).use { output ->
+                    body.byteStream().use { input ->
+                        while (true) {
+                            if (backgroundNetworkLimiter != null) {
+                                // The background cap leaves a request slot for visible work.
+                                handle.awaitBackgroundTurn()
+                            }
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            if (read == 0) continue
+                            total += read
+                            if (total > MAX_SOURCE_BYTES) throw ReaderImageException("图片过大")
+                            output.write(buffer, 0, read)
+                        }
                     }
                 }
+                if (total == 0L) throw ReaderImageException("图片响应为空")
             }
-            if (total == 0L) throw ReaderImageException("图片响应为空")
         }
     }
 
-    private suspend fun <T> withNetworkPriority(
+    private suspend fun <T> withNetworkRequestPriority(
         handle: ReaderLoadHandle,
         block: suspend () -> T,
     ): T {
@@ -383,8 +495,6 @@ class ReaderImagePipeline(
         if (backgroundLimiter == null) {
             if (handle.priority == ReaderRequestPriority.PREFETCH) {
                 handle.awaitVisible()
-            } else {
-                handle.awaitBackgroundTurn()
             }
             return networkLimiter.withPermit(block)
         }
@@ -498,22 +608,38 @@ class ReaderImagePipeline(
             }
         }
         if (temporary || generation != cacheGeneration.get()) file.delete()
+        if (!temporary) requestDiskTrim()
     }
 
-    private suspend fun installSourceFile(
-        destination: File,
-        temporary: File,
-        generation: Long,
-    ): File {
+    private suspend fun promoteSourceIfNeeded(source: ReaderSourceFile) {
+        if (!source.persistAfterValidation || source.persistent) return
+        var promoted = false
         sourceCacheMutex.withLock {
-            if (generation != cacheGeneration.get()) return@withLock
+            if (source.generation != cacheGeneration.get()) return@withLock
             ensureDiskCacheDir()
-            if (!destination.isFile || destination.length() !in 1..MAX_SOURCE_BYTES) {
-                temporary.copyTo(destination, overwrite = true)
+            if (!source.cacheFile.isFile || source.cacheFile.length() !in 1..MAX_SOURCE_BYTES) {
+                source.file.copyTo(source.cacheFile, overwrite = true)
+            }
+            promoted = source.cacheFile.isFile &&
+                source.cacheFile.length() in 1..MAX_SOURCE_BYTES
+        }
+        if (promoted) requestDiskTrim()
+    }
+
+    private suspend fun invalidateSource(
+        pageKey: ReaderPageKey,
+        source: ReaderSourceFile,
+    ) {
+        if (source.persistent) {
+            sourceCacheMutex.withLock {
+                source.cacheFile.delete()
             }
         }
-        return temporary
+        sourceRequests.invalidate(pageKey)
     }
+
+    private fun shouldInvalidateSourceAfterDecodeFailure(error: Throwable): Boolean =
+        error !is CancellationException && error !is OutOfMemoryError
 
     private fun scheduleDecodedCacheWrite(file: File, bitmap: Bitmap, quality: Int) {
         if (file.isFile || bitmap.isRecycled) return
