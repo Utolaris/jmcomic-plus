@@ -43,11 +43,13 @@ import androidx.compose.ui.unit.dp
 import com.par9uet.jm.cache.getCommonCacheDir
 import com.par9uet.jm.cache.getCommonPicDecodeCacheDir
 import com.par9uet.jm.cache.getDownloadDir
+import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.utils.formatBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.koin.compose.getKoin
 import java.io.File
 
 private data class CacheItem(
@@ -60,7 +62,9 @@ private data class CacheItem(
 )
 
 @Composable
-fun CacheCleanupScreen() {
+fun CacheCleanupScreen(
+    readerImagePipeline: ReaderImagePipeline = getKoin().get(),
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
@@ -180,18 +184,37 @@ fun CacheCleanupScreen() {
                         cleaning = true
                         scope.launch {
                             var freedBytes = 0L
+                            val effectiveItems = if (selectedItems.any { it.id == "total" }) {
+                                selectedItems.filter { it.id == "total" }
+                            } else {
+                                selectedItems
+                            }
                             withContext(Dispatchers.IO) {
-                                selectedItems.forEach { item ->
-                                    item.dir?.let { dir ->
-                                        freedBytes += dirSize(dir)
-                                        dir.deleteRecursively()
+                                effectiveItems.forEach { item ->
+                                    val dir = item.dir
+                                    freedBytes += dir?.let(::dirSize) ?: 0L
+                                    when (item.id) {
+                                        "reader_pages" -> readerImagePipeline.clearDiskCache()
+                                        "total" -> {
+                                            readerImagePipeline.clearDiskCache()
+                                            val readerPagesDir = File(context.cacheDir, "reader_pages")
+                                            dir?.listFiles().orEmpty()
+                                                .filterNot { it == readerPagesDir }
+                                                .forEach { it.deleteRecursively() }
+                                            readerPagesDir.mkdirs()
+                                        }
+                                        else -> dir?.deleteRecursively()
                                     }
-                                    checkedMap[item.id] = false
+                                }
+                            }
+                            selectedItems.forEach { checkedMap[it.id] = false }
+                            cacheItems = withContext(Dispatchers.IO) {
+                                cacheItems.map { item ->
+                                    item.copy(sizeBytes = item.dir?.let(::dirSize) ?: 0L)
                                 }
                             }
                             cleaning = false
                             cleanResult = "已清理 ${formatBytes(freedBytes)}"
-                            loading = true
                         }
                     }
                 ) { Text("清理", color = MaterialTheme.colorScheme.error) }

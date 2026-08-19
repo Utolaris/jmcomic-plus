@@ -80,6 +80,87 @@ class ReaderPipelineTest {
     }
 
     @Test
+    fun everyVisibleConsumerReleasesTheGlobalVisibleGate() {
+        runBlocking {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val registry = ReaderInFlightRegistry<String, Int>(scope)
+            val prefetch = async {
+                registry.request("page-a", ReaderRequestPriority.PREFETCH) { handle ->
+                    handle.awaitVisible()
+                    1
+                }
+            }
+            delay(20L)
+            val firstVisible = async {
+                registry.request("page-a", ReaderRequestPriority.VISIBLE) { error("duplicate loader") }
+            }
+            val secondVisible = async {
+                registry.request("page-a", ReaderRequestPriority.VISIBLE) { error("duplicate loader") }
+            }
+            assertEquals(1, firstVisible.await())
+            assertEquals(1, secondVisible.await())
+            assertEquals(1, prefetch.await())
+
+            withTimeout(1_000L) {
+                assertEquals(2, registry.request("page-b", ReaderRequestPriority.PREFETCH) { handle ->
+                    handle.awaitBackgroundTurn()
+                    2
+                })
+            }
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
+    @Test
+    fun differentDecodeProfilesDoNotShareInFlightWork() {
+        runBlocking {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val registry = ReaderInFlightRegistry<ReaderInFlightKey, Int>(scope)
+            val calls = AtomicInteger()
+            val highKey = ReaderInFlightKey(
+                ReaderPageKey(1, 0, "page", 0, "1"),
+                ReaderDecodeProfile.HIGH.cacheToken,
+            )
+            val lowKey = highKey.copy(profileToken = ReaderDecodeProfile.LOW.cacheToken)
+            val high = async {
+                registry.request(highKey, ReaderRequestPriority.VISIBLE) {
+                    calls.incrementAndGet()
+                    10
+                }
+            }
+            val low = async {
+                registry.request(lowKey, ReaderRequestPriority.BACKGROUND) {
+                    calls.incrementAndGet()
+                    20
+                }
+            }
+            assertEquals(10, high.await())
+            assertEquals(20, low.await())
+            assertEquals(2, calls.get())
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
+    @Test
+    fun prefetchCancellationDoesNotCancelBackgroundDownloadWork() {
+        runBlocking {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+            val registry = ReaderInFlightRegistry<String, Int>(scope)
+            val started = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val download = launch {
+                registry.request("download", ReaderRequestPriority.BACKGROUND) {
+                    started.complete(Unit)
+                    awaitCancellation()
+                }
+            }
+            started.await()
+            assertFalse(registry.cancelPrefetch("download"))
+            download.cancel()
+            scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        }
+    }
+
+    @Test
     fun cancelledPrefetchCanRetryLater() {
         runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -151,6 +232,30 @@ class ReaderPipelineTest {
             readerPrefetchPlan(5, 10, 4, direction = -1, includeOpposite = true),
         )
         assertEquals(listOf(6, 7, 8, 9), readerPrefetchPlan(5, 10, 4, 1, false))
+        assertEquals(
+            listOf(13, 14, 9, 8),
+            readerPrefetchPlan(
+                currentPageIndex = 11,
+                pageCount = 20,
+                distance = 4,
+                direction = 1,
+                includeOpposite = true,
+                visibleStart = 10,
+                visibleEnd = 12,
+            ),
+        )
+        assertEquals(
+            listOf(9, 8, 13, 14),
+            readerPrefetchPlan(
+                currentPageIndex = 11,
+                pageCount = 20,
+                distance = 4,
+                direction = -1,
+                includeOpposite = true,
+                visibleStart = 10,
+                visibleEnd = 12,
+            ),
+        )
     }
 
     @Test
@@ -174,6 +279,26 @@ class ReaderPipelineTest {
     }
 
     @Test
+    fun dynamicLimiterAppliesAChangedLimitToWaitingWork() {
+        runBlocking {
+            val limiter = ReaderDynamicLimiter(1)
+            limiter.acquire()
+            val acquired = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val waiter = launch {
+                limiter.withPermit {
+                    acquired.complete(Unit)
+                }
+            }
+            delay(40L)
+            assertFalse(acquired.isCompleted)
+            limiter.updateLimit(2)
+            withTimeout(1_000L) { acquired.await() }
+            limiter.release()
+            waiter.join()
+        }
+    }
+
+    @Test
     fun scrambleRangesPreserveHeightAndRemainder() {
         val ranges = scrambledSourceRanges(height = 10, segments = 3)
         assertEquals(listOf(ReaderSourceRange(6, 10), ReaderSourceRange(3, 6), ReaderSourceRange(0, 3)), ranges)
@@ -189,5 +314,23 @@ class ReaderPipelineTest {
         assertTrue(size.first.toLong() * size.second <= 4_000_000L)
         assertEquals(0.25f, size.first.toFloat() / size.second.toFloat(), 0.01f)
         assertEquals(4, readerRegionSampleSize(4_000, 8_000, maxPixels = 1_000_000))
+        assertEquals(
+            1,
+            readerRegionSampleSize(
+                3_000,
+                10_000,
+                maxPixels = ReaderDecodeProfile.DOWNLOAD.maxPixels,
+                maxWidth = ReaderDecodeProfile.DOWNLOAD.maxWidth,
+            ),
+        )
+        assertEquals(
+            2,
+            readerRegionSampleSize(
+                3_000,
+                10_000,
+                maxPixels = ReaderDecodeProfile.HIGH.maxPixels,
+                maxWidth = ReaderDecodeProfile.HIGH.maxWidth,
+            ),
+        )
     }
 }

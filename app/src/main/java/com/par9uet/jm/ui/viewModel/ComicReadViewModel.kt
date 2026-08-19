@@ -299,7 +299,7 @@ class ComicReadViewModel(
         val direction = updateDirection(index)
         val jumpDistance = previous?.let { abs(index - it) } ?: 0
         loadVisible(index)
-        schedulePrefetch(index, direction, jumpDistance)
+        schedulePrefetch(index, direction, jumpDistance, index, index)
     }
 
     fun decodeVisibleRange(
@@ -308,12 +308,20 @@ class ComicReadViewModel(
         @Suppress("UNUSED_PARAMETER") context: Context,
     ) {
         if (size <= 0) return
-        val anchor = min(firstIndex, lastIndex).coerceIn(0, size - 1)
+        val visibleStart = min(firstIndex, lastIndex).coerceIn(0, size - 1)
+        val visibleEnd = max(firstIndex, lastIndex).coerceIn(0, size - 1)
         val previous = lastScheduledIndex
+        val anchor = when {
+            previous == null -> visibleEnd
+            visibleEnd > previous -> visibleEnd
+            visibleStart < previous -> visibleStart
+            lastDirection >= 0 -> visibleEnd
+            else -> visibleStart
+        }
         val direction = updateDirection(anchor)
         val jumpDistance = previous?.let { abs(anchor - it) } ?: 0
         loadVisible(anchor)
-        schedulePrefetch(anchor, direction, jumpDistance)
+        schedulePrefetch(anchor, direction, jumpDistance, visibleStart, visibleEnd)
     }
 
     fun prev(context: Context) {
@@ -366,7 +374,13 @@ class ComicReadViewModel(
         }
     }
 
-    private fun schedulePrefetch(index: Int, direction: Int, jumpDistance: Int) {
+    private fun schedulePrefetch(
+        index: Int,
+        direction: Int,
+        jumpDistance: Int,
+        visibleStart: Int,
+        visibleEnd: Int,
+    ) {
         val pages = comicPicState.value.data ?: return
         val setting = localSettingManager.localSettingState.value
         val distance = readerPrefetchDistance(
@@ -380,6 +394,8 @@ class ComicReadViewModel(
             distance = distance,
             direction = direction,
             includeOpposite = setting.readMode != "scroll",
+            visibleStart = visibleStart,
+            visibleEnd = visibleEnd,
         )
         val desiredKeys = plannedIndices.mapNotNull { pages.getOrNull(it)?.pageKey }.toSet()
         prefetchJobs.entries.toList().forEach { (key, job) ->

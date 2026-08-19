@@ -101,14 +101,21 @@ internal fun readerRegionSampleSize(
     height: Int,
     maxPixels: Long,
     maxSample: Int = 32,
+    maxWidth: Int = Int.MAX_VALUE,
 ): Int {
     var sample = 1
-    val budget = min(16_000_000L, maxPixels.coerceAtLeast(1L) * 2L)
-    while (
-        sampledDimension(width, sample).toLong() * sampledDimension(height, sample) > budget &&
-        sample < maxSample
-    ) {
-        sample *= 2
+    val target = readerDecodedPageSize(
+        width = width,
+        height = height,
+        maxPixels = maxPixels,
+        maxWidth = maxWidth,
+    )
+    while (sample < maxSample) {
+        val nextSample = (sample * 2).coerceAtMost(maxSample)
+        val nextWidth = sampledDimension(width, nextSample)
+        val nextHeight = sampledDimension(height, nextSample)
+        if (nextWidth < target.first || nextHeight < target.second) break
+        sample = nextSample
     }
     return sample
 }

@@ -10,16 +10,23 @@ internal fun readerPrefetchPlan(
     distance: Int,
     direction: Int,
     includeOpposite: Boolean,
+    visibleStart: Int = currentPageIndex,
+    visibleEnd: Int = currentPageIndex,
 ): List<Int> {
     if (pageCount <= 0 || distance <= 0) return emptyList()
-    val current = currentPageIndex.coerceIn(0, pageCount - 1)
+    val start = minOf(visibleStart, visibleEnd).coerceIn(0, pageCount - 1)
+    val end = maxOf(visibleStart, visibleEnd).coerceIn(0, pageCount - 1)
     val primaryDirection = if (direction < 0) -1 else 1
     val result = ArrayList<Int>(distance.coerceAtMost(pageCount - 1))
     var primaryOffset = 1
 
     fun appendPrimaryUntil(limit: Int) {
         while (result.size < limit) {
-            val index = current + primaryDirection * primaryOffset
+            val index = if (primaryDirection > 0) {
+                end + primaryOffset
+            } else {
+                start - primaryOffset
+            }
             if (index !in 0 until pageCount) break
             result += index
             primaryOffset++
@@ -35,14 +42,22 @@ internal fun readerPrefetchPlan(
     appendPrimaryUntil(primaryQuota)
     var oppositeOffset = 1
     while (result.size < distance) {
-        val index = current - primaryDirection * oppositeOffset
+        val index = if (primaryDirection > 0) {
+            start - oppositeOffset
+        } else {
+            end + oppositeOffset
+        }
         if (index !in 0 until pageCount) break
         result += index
         oppositeOffset++
     }
     appendPrimaryUntil(distance)
     while (result.size < distance) {
-        val index = current - primaryDirection * oppositeOffset
+        val index = if (primaryDirection > 0) {
+            start - oppositeOffset
+        } else {
+            end + oppositeOffset
+        }
         if (index !in 0 until pageCount) break
         result += index
         oppositeOffset++

@@ -12,18 +12,24 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.ConcurrentHashMap
 
 class ReaderImageException(message: String, cause: Throwable? = null) : Exception(message, cause)
 
@@ -38,6 +44,13 @@ private data class BitmapCacheKey(
     val profileToken: String,
 )
 
+private data class DecodedCacheWrite(
+    val file: File,
+    val bitmap: Bitmap,
+    val quality: Int,
+    val generation: Long,
+)
+
 class ReaderImagePipeline(
     context: Context,
     private val localSettingManager: LocalSettingManager,
@@ -47,27 +60,45 @@ class ReaderImagePipeline(
     private val memoryClassMb = activityManager?.memoryClass ?: 256
     private val lowRamDevice = activityManager?.isLowRamDevice ?: false
     private val imageWorkConcurrency = if (lowRamDevice || memoryClassMb < 384) 1 else 2
-    private val decodeConcurrency = if (imageWorkConcurrency == 1) {
-        1
-    } else {
-        localSettingManager.localSettingState.value.readDecodeConcurrency.coerceIn(1, 2)
-    }
+    private val maxDecodeConcurrency = if (imageWorkConcurrency == 1) 1 else 4
+    private val initialDecodeConcurrency = localSettingManager.localSettingState.value
+        .readDecodeConcurrency
+        .coerceIn(1, maxDecodeConcurrency)
+
     private val scopeJob = SupervisorJob()
     private val scope = CoroutineScope(scopeJob + Dispatchers.IO)
-    private val networkLimiter = Semaphore(imageWorkConcurrency)
+    private val networkLimiter = ReaderDynamicLimiter(imageWorkConcurrency)
     private val backgroundNetworkLimiter =
-        if (imageWorkConcurrency > 1) Semaphore(imageWorkConcurrency - 1) else null
-    private val decodeLimiter = Semaphore(decodeConcurrency)
+        if (imageWorkConcurrency > 1) ReaderDynamicLimiter(imageWorkConcurrency - 1) else null
+    private val decodeLimiter = ReaderDynamicLimiter(initialDecodeConcurrency)
     private val backgroundDecodeLimiter =
-        if (decodeConcurrency > 1) Semaphore(decodeConcurrency - 1) else null
-    private val requests = ReaderInFlightRegistry<ReaderPageKey, ReaderDecodedPage>(scope)
+        if (maxDecodeConcurrency > 1) {
+            ReaderDynamicLimiter(initialDecodeConcurrency - 1)
+        } else {
+            null
+        }
+    private val requests = ReaderInFlightRegistry<ReaderInFlightKey, ReaderDecodedPage>(scope)
     private val bitmapCache = ReaderLruCache<BitmapCacheKey, Bitmap>(
         maxSize = bitmapCacheBudgetBytes(memoryClassMb),
         sizeOf = { bitmap -> bitmap.allocationByteCount.toLong().coerceAtLeast(1L) },
     )
     private val aspectRatioCache = ReaderLruCache<ReaderPageKey, Float>(256L)
-    private val diskCacheMutex = Mutex()
+
+    /** Source and decoded writes never block one another. Cleanup takes both locks in this order. */
+    private val sourceCacheMutex = Mutex()
+    private val decodedCacheMutex = Mutex()
+    private val cacheGeneration = AtomicLong(0L)
     private val diskCacheDir = File(appContext.cacheDir, "reader_pages").apply { mkdirs() }
+    private val activeSourceFiles = ConcurrentHashMap<File, AtomicInteger>()
+    private val decodedCacheWrites = Channel<DecodedCacheWrite>(
+        capacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_LATEST,
+    )
+    private val diskTrimRequests = Channel<Unit>(
+        capacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_LATEST,
+    )
+
     private val httpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -75,6 +106,7 @@ class ReaderImagePipeline(
         .followRedirects(true)
         .applyTlsCompat()
         .build()
+
     private val memoryCallbacks = object : ComponentCallbacks2 {
         override fun onTrimMemory(level: Int) {
             when {
@@ -95,20 +127,40 @@ class ReaderImagePipeline(
 
     init {
         appContext.registerComponentCallbacks(memoryCallbacks)
+        scope.launch {
+            localSettingManager.localSettingState
+                .map { it.readDecodeConcurrency.coerceIn(1, maxDecodeConcurrency) }
+                .distinctUntilChanged()
+                .collect { concurrency ->
+                    decodeLimiter.updateLimit(concurrency)
+                    backgroundDecodeLimiter?.updateLimit((concurrency - 1).coerceAtLeast(0))
+                }
+        }
+        scope.launch {
+            for (write in decodedCacheWrites) {
+                runCatching { writeDecodedCache(write) }
+            }
+        }
+        scope.launch {
+            for (ignored in diskTrimRequests) {
+                runCatching { trimDiskCache() }
+            }
+        }
     }
 
     suspend fun loadVisiblePage(page: ReaderPage): ReaderDecodedPage =
         request(page, ReaderRequestPriority.VISIBLE, currentProfile())
 
-    /** Download worker entry point. It keeps the historical full-quality decode profile. */
+    /** Download work is background throughput, not a visible request. */
     suspend fun loadForDownload(page: ReaderPage): ReaderDecodedPage =
-        request(page, ReaderRequestPriority.VISIBLE, ReaderDecodeProfile.DOWNLOAD)
+        request(page, ReaderRequestPriority.BACKGROUND, ReaderDecodeProfile.DOWNLOAD)
 
     suspend fun prefetchPage(page: ReaderPage) {
         request(page, ReaderRequestPriority.PREFETCH, currentProfile())
     }
 
-    fun cancelPrefetch(pageKey: ReaderPageKey): Boolean = requests.cancelPrefetch(pageKey)
+    fun cancelPrefetch(pageKey: ReaderPageKey): Boolean =
+        requests.cancelPrefetchMatching { it.page == pageKey } > 0
 
     fun cancelAllPrefetch() = requests.cancelAllPrefetch()
 
@@ -117,9 +169,25 @@ class ReaderImagePipeline(
         aspectRatioCache.evictAll()
     }
 
+    /** Clear the reader directory without invalidating the live pipeline instance. */
+    suspend fun clearDiskCache() {
+        sourceCacheMutex.withLock {
+            decodedCacheMutex.withLock {
+                cacheGeneration.incrementAndGet()
+                ensureDiskCacheDir()
+                diskCacheDir.listFiles().orEmpty()
+                    .filterNot { activeSourceFiles.containsKey(it) }
+                    .forEach { it.deleteRecursively() }
+                ensureDiskCacheDir()
+            }
+        }
+    }
+
     fun close() {
         appContext.unregisterComponentCallbacks(memoryCallbacks)
         requests.cancelAllPrefetch()
+        decodedCacheWrites.close()
+        diskTrimRequests.close()
         scopeJob.cancel()
         bitmapCache.evictAll()
         aspectRatioCache.evictAll()
@@ -133,11 +201,14 @@ class ReaderImagePipeline(
         profile: ReaderDecodeProfile,
     ): ReaderDecodedPage {
         val cacheKey = BitmapCacheKey(page.key, profile.cacheToken)
-        cachedBitmap(cacheKey)?.let { bitmap ->
-            return ReaderDecodedPage(bitmap, bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1))
+        if (profile != ReaderDecodeProfile.DOWNLOAD) {
+            cachedBitmap(cacheKey)?.let { bitmap ->
+                return bitmap.toReaderDecodedPage()
+            }
         }
 
-        return requests.request(page.key, priority) { handle ->
+        val inFlightKey = ReaderInFlightKey(page.key, profile.cacheToken)
+        return requests.request(inFlightKey, priority) { handle ->
             performLoad(page, profile, cacheKey, handle)
         }
     }
@@ -148,11 +219,10 @@ class ReaderImagePipeline(
         cacheKey: BitmapCacheKey,
         handle: ReaderLoadHandle,
     ): ReaderDecodedPage = withContext(Dispatchers.IO) {
-        cachedBitmap(cacheKey)?.let { bitmap ->
-            return@withContext ReaderDecodedPage(
-                bitmap,
-                bitmap.width.toFloat() / bitmap.height.coerceAtLeast(1),
-            )
+        if (profile != ReaderDecodeProfile.DOWNLOAD) {
+            cachedBitmap(cacheKey)?.let { bitmap ->
+                return@withContext bitmap.toReaderDecodedPage()
+            }
         }
 
         val decodedFile = File(
@@ -173,50 +243,37 @@ class ReaderImagePipeline(
                     decodeReaderRawFile(localFile, page, profile)
                 },
                 decodedFile = decodedFile,
-                persistDecoded = profile.name != ReaderDecodeProfile.DOWNLOAD.name,
-                webpQuality = profile.webpQuality,
+                profile = profile,
             )
         }
 
-        decodeReaderDecodedFile(decodedFile, profile)?.let { cached ->
-            cacheBitmap(cacheKey, page.key, cached.bitmap, cached.aspectRatio)
-            return@withContext ReaderDecodedPage(cached.bitmap, cached.aspectRatio)
-        } ?: decodedFile.takeIf(File::exists)?.delete()
-
-        val validSourceFile = sourceFile.takeIf { it.isFile && it.length() in 1..MAX_SOURCE_BYTES }
-        val reusedSourceCache = validSourceFile != null
-        val rawFile = validSourceFile ?: run {
-            val bytes = fetchSourceBytes(page, handle)
-            try {
-                persistSourceCache(sourceFile, bytes)
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Throwable) {
-                // A cache write is best effort; the fetched bytes still feed the current decode.
-            }
-            sourceFile.takeIf { it.isFile } ?: run {
-                val temporary = File.createTempFile("reader-source-", ".source", diskCacheDir)
-                temporary.writeBytes(bytes)
-                temporary
-            }
+        if (profile != ReaderDecodeProfile.DOWNLOAD) {
+            decodeReaderDecodedFile(decodedFile, profile)?.let { cached ->
+                cacheBitmap(cacheKey, page.key, cached.bitmap, cached.aspectRatio)
+                return@withContext ReaderDecodedPage(cached.bitmap, cached.aspectRatio)
+            } ?: decodedFile.takeIf(File::exists)?.delete()
         }
 
-        val decoded = try {
-            withDecodePriority(handle) { decodeReaderRawFile(rawFile, page, profile) }
-        } catch (error: Throwable) {
-            if (reusedSourceCache) rawFile.delete()
-            throw error
+        val cachedSource = acquireCachedSourceFile(sourceFile)
+        val rawFile = cachedSource?.first ?: fetchAndCacheSource(page, sourceFile, handle)
+        try {
+            val decoded = withDecodePriority(handle) {
+                decodeReaderRawFile(rawFile, page, profile)
+            }
+            decodeAndCache(
+                pageKey = page.key,
+                cacheKey = cacheKey,
+                decoded = decoded,
+                decodedFile = decodedFile,
+                profile = profile,
+            )
         } finally {
-            if (rawFile.name.startsWith("reader-source-")) rawFile.delete()
+            if (cachedSource != null) {
+                releaseSourceFile(rawFile, cachedSource.second)
+            } else {
+                releaseSourceFile(rawFile, cacheGeneration.get(), temporary = true)
+            }
         }
-        decodeAndCache(
-            pageKey = page.key,
-            cacheKey = cacheKey,
-            decoded = decoded,
-            decodedFile = decodedFile,
-            persistDecoded = profile.name != ReaderDecodeProfile.DOWNLOAD.name,
-            webpQuality = profile.webpQuality,
-        )
     }
 
     private fun decodeAndCache(
@@ -224,21 +281,30 @@ class ReaderImagePipeline(
         cacheKey: BitmapCacheKey,
         decoded: DecodedReaderImage,
         decodedFile: File,
-        persistDecoded: Boolean,
-        webpQuality: Int,
+        profile: ReaderDecodeProfile,
     ): ReaderDecodedPage {
-        cacheBitmap(cacheKey, pageKey, decoded.bitmap, decoded.aspectRatio)
-        if (persistDecoded) {
-            scheduleDecodedCacheWrite(decodedFile, decoded.bitmap, webpQuality)
+        if (profile != ReaderDecodeProfile.DOWNLOAD) {
+            cacheBitmap(cacheKey, pageKey, decoded.bitmap, decoded.aspectRatio)
+            scheduleDecodedCacheWrite(decodedFile, decoded.bitmap, profile.webpQuality)
         }
         return ReaderDecodedPage(decoded.bitmap, decoded.aspectRatio)
     }
 
-    private suspend fun fetchSourceBytes(page: ReaderPage, handle: ReaderLoadHandle): ByteArray {
+    private suspend fun fetchAndCacheSource(
+        page: ReaderPage,
+        sourceFile: File,
+        handle: ReaderLoadHandle,
+    ): File {
+        val generation = cacheGeneration.get()
         var networkError: Throwable? = null
         try {
-            return withNetworkPriority(handle) {
-                fetchRemoteBytes(page.originSrc, handle)
+            val temporary = createSourceTempFile()
+            try {
+                fetchRemoteToFile(page.originSrc, temporary, handle)
+                return installSourceFile(sourceFile, temporary, generation)
+            } catch (error: Throwable) {
+                releaseSourceFile(temporary, generation, temporary = true)
+                throw error
             }
         } catch (error: CancellationException) {
             throw error
@@ -247,10 +313,21 @@ class ReaderImagePipeline(
         }
 
         try {
-            withNetworkPriority(handle) {
-                page.fallbackFetcher?.invoke()
-            }?.let { bytes ->
-                if (bytes.isNotEmpty()) return bytes
+            val fallbackFetcher = page.fallbackFetcher
+            val bytes: ByteArray? = if (fallbackFetcher == null) {
+                null
+            } else {
+                withNetworkPriority(handle) { fallbackFetcher() }
+            }
+            if (bytes != null && bytes.isNotEmpty() && bytes.size.toLong() <= MAX_SOURCE_BYTES) {
+                val temporary = createSourceTempFile()
+                try {
+                    FileOutputStream(temporary).use { it.write(bytes) }
+                    return installSourceFile(sourceFile, temporary, generation)
+                } catch (error: Throwable) {
+                    releaseSourceFile(temporary, generation, temporary = true)
+                    throw error
+                }
             }
         } catch (error: CancellationException) {
             throw error
@@ -260,26 +337,31 @@ class ReaderImagePipeline(
         throw ReaderImageException("网络错误", networkError)
     }
 
-    private suspend fun fetchRemoteBytes(url: String, handle: ReaderLoadHandle): ByteArray =
-        withContext(Dispatchers.IO) {
-            val request = Request.Builder()
-                .url(url)
-                .get()
-                .header("User-Agent", USER_AGENT)
-                .header("Referer", REFERER)
-                .build()
-            httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw ReaderImageException("HTTP ${response.code}")
-                val body = response.body ?: throw ReaderImageException("图片响应为空")
-                val output = ByteArrayOutputStream(
-                    body.contentLength().takeIf { it in 1..MAX_SOURCE_BYTES }?.toInt() ?: 32 * 1024,
-                )
-                val buffer = ByteArray(NETWORK_READ_CHUNK_BYTES)
+    private suspend fun fetchRemoteToFile(
+        url: String,
+        target: File,
+        handle: ReaderLoadHandle,
+    ) = withContext(Dispatchers.IO) {
+        val request = Request.Builder()
+            .url(url)
+            .get()
+            .header("User-Agent", USER_AGENT)
+            .header("Referer", REFERER)
+            .build()
+        httpClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) throw ReaderImageException("HTTP ${response.code}")
+            val body = response.body ?: throw ReaderImageException("图片响应为空")
+            if (body.contentLength() > MAX_SOURCE_BYTES) {
+                throw ReaderImageException("图片过大")
+            }
+            val buffer = ByteArray(NETWORK_READ_CHUNK_BYTES)
+            var total = 0L
+            FileOutputStream(target).use { output ->
                 body.byteStream().use { input ->
-                    var total = 0L
                     while (true) {
+                        // Never wait for a visible request while holding a network permit.
                         handle.awaitBackgroundTurn()
-                        val read = input.read(buffer)
+                        val read = withNetworkPriority(handle) { input.read(buffer) }
                         if (read < 0) break
                         if (read == 0) continue
                         total += read
@@ -287,40 +369,81 @@ class ReaderImagePipeline(
                         output.write(buffer, 0, read)
                     }
                 }
-                if (output.size() == 0) throw ReaderImageException("图片响应为空")
-                output.toByteArray()
             }
+            if (total == 0L) throw ReaderImageException("图片响应为空")
         }
+    }
 
     private suspend fun <T> withNetworkPriority(
         handle: ReaderLoadHandle,
         block: suspend () -> T,
     ): T {
-        if (handle.isVisible) return networkLimiter.withPermit { block() }
+        if (handle.isVisible) return networkLimiter.withPermit(block)
         val backgroundLimiter = backgroundNetworkLimiter
         if (backgroundLimiter == null) {
-            // A one-slot device never spends its only network slot on speculative work. The
-            // same in-flight request is promoted immediately when a visible consumer arrives.
-            handle.awaitVisible()
-            return networkLimiter.withPermit { block() }
+            if (handle.priority == ReaderRequestPriority.PREFETCH) {
+                handle.awaitVisible()
+            } else {
+                handle.awaitBackgroundTurn()
+            }
+            return networkLimiter.withPermit(block)
         }
-        return backgroundLimiter.withPermit {
-            networkLimiter.withPermit { block() }
+
+        while (true) {
+            if (handle.isVisible) return networkLimiter.withPermit(block)
+            if (backgroundLimiter.tryAcquire()) {
+                if (handle.isVisible) {
+                    backgroundLimiter.release()
+                    continue
+                }
+                return try {
+                    networkLimiter.withPermit(block)
+                } finally {
+                    backgroundLimiter.release()
+                }
+            }
+            delay(PRIORITY_RETRY_DELAY_MILLIS)
         }
     }
 
     private suspend fun <T> withDecodePriority(
         handle: ReaderLoadHandle,
-        block: () -> T,
+        block: suspend () -> T,
     ): T {
-        if (handle.isVisible) return decodeLimiter.withPermit { block() }
+        if (handle.isVisible) return decodeLimiter.withPermit(block)
         val backgroundLimiter = backgroundDecodeLimiter
         if (backgroundLimiter == null) {
-            handle.awaitVisible()
-            return decodeLimiter.withPermit { block() }
+            if (handle.priority == ReaderRequestPriority.PREFETCH) {
+                handle.awaitVisible()
+            } else {
+                handle.awaitBackgroundTurn()
+            }
+            return decodeLimiter.withPermit(block)
         }
-        return backgroundLimiter.withPermit {
-            decodeLimiter.withPermit { block() }
+        if (backgroundLimiter.limit <= 0 && handle.priority == ReaderRequestPriority.PREFETCH) {
+            while (!handle.isVisible && backgroundLimiter.limit <= 0) {
+                delay(PRIORITY_RETRY_DELAY_MILLIS)
+            }
+            if (handle.isVisible) return decodeLimiter.withPermit(block)
+        } else if (backgroundLimiter.limit <= 0) {
+            handle.awaitBackgroundTurn()
+            return decodeLimiter.withPermit(block)
+        }
+
+        while (true) {
+            if (handle.isVisible) return decodeLimiter.withPermit(block)
+            if (backgroundLimiter.tryAcquire()) {
+                if (handle.isVisible) {
+                    backgroundLimiter.release()
+                    continue
+                }
+                return try {
+                    decodeLimiter.withPermit(block)
+                } finally {
+                    backgroundLimiter.release()
+                }
+            }
+            delay(PRIORITY_RETRY_DELAY_MILLIS)
         }
     }
 
@@ -347,56 +470,127 @@ class ReaderImagePipeline(
         }
     }
 
-    private suspend fun persistSourceCache(file: File, bytes: ByteArray) {
-        if (bytes.isEmpty() || bytes.size.toLong() > MAX_SOURCE_BYTES) return
-        withContext(Dispatchers.IO) {
-            diskCacheMutex.withLock {
-                if (file.isFile && file.length() == bytes.size.toLong()) return@withLock
-                val temporary = File.createTempFile("${file.name}-", ".tmp", diskCacheDir)
-                try {
-                    FileOutputStream(temporary).use { output -> output.write(bytes) }
-                    if (!temporary.renameTo(file)) temporary.copyTo(file, overwrite = true)
-                } finally {
-                    temporary.delete()
-                }
-            }
-            trimDiskCache()
+    private suspend fun createSourceTempFile(): File = sourceCacheMutex.withLock {
+        ensureDiskCacheDir()
+        File.createTempFile("reader-source-", ".source", diskCacheDir).also {
+            activeSourceFiles[it] = AtomicInteger(1)
         }
+    }
+
+    private suspend fun acquireCachedSourceFile(file: File): Pair<File, Long>? =
+        sourceCacheMutex.withLock {
+            if (!file.isFile || file.length() !in 1..MAX_SOURCE_BYTES) {
+                null
+            } else {
+                activeSourceFiles.computeIfAbsent(file) { AtomicInteger() }.incrementAndGet()
+                file to cacheGeneration.get()
+            }
+        }
+
+    private fun releaseSourceFile(
+        file: File,
+        generation: Long,
+        temporary: Boolean = false,
+    ) {
+        activeSourceFiles[file]?.let { references ->
+            if (references.decrementAndGet() <= 0) {
+                activeSourceFiles.remove(file, references)
+            }
+        }
+        if (temporary || generation != cacheGeneration.get()) file.delete()
+    }
+
+    private suspend fun installSourceFile(
+        destination: File,
+        temporary: File,
+        generation: Long,
+    ): File {
+        sourceCacheMutex.withLock {
+            if (generation != cacheGeneration.get()) return@withLock
+            ensureDiskCacheDir()
+            if (!destination.isFile || destination.length() !in 1..MAX_SOURCE_BYTES) {
+                temporary.copyTo(destination, overwrite = true)
+            }
+        }
+        return temporary
     }
 
     private fun scheduleDecodedCacheWrite(file: File, bitmap: Bitmap, quality: Int) {
         if (file.isFile || bitmap.isRecycled) return
-        scope.launch {
-            diskCacheMutex.withLock {
-                if (file.isFile || bitmap.isRecycled) return@withLock
-                val temporary = File.createTempFile("${file.name}-", ".tmp", diskCacheDir)
-                try {
-                    FileOutputStream(temporary).use { output ->
-                        if (!bitmap.compressWebpCompat(quality, output)) return@withLock
-                    }
-                    if (!temporary.renameTo(file)) temporary.copyTo(file, overwrite = true)
-                } finally {
-                    temporary.delete()
-                }
+        decodedCacheWrites.trySend(
+            DecodedCacheWrite(
+                file = file,
+                bitmap = bitmap,
+                quality = quality,
+                generation = cacheGeneration.get(),
+            )
+        )
+    }
+
+    private suspend fun writeDecodedCache(write: DecodedCacheWrite) {
+        if (write.file.isFile || write.bitmap.isRecycled) return
+        decodedCacheMutex.withLock {
+            if (
+                write.generation != cacheGeneration.get() ||
+                write.file.isFile ||
+                write.bitmap.isRecycled
+            ) {
+                return@withLock
             }
-            trimDiskCache()
+            ensureDiskCacheDir()
+            val temporary = File.createTempFile("${write.file.name}-", ".tmp", diskCacheDir)
+            try {
+                FileOutputStream(temporary).use { output ->
+                    if (!write.bitmap.compressWebpCompat(write.quality, output)) return@withLock
+                }
+                if (!temporary.renameTo(write.file)) {
+                    temporary.copyTo(write.file, overwrite = true)
+                }
+            } finally {
+                temporary.delete()
+            }
         }
+        requestDiskTrim()
+    }
+
+    private fun requestDiskTrim() {
+        diskTrimRequests.trySend(Unit)
     }
 
     private suspend fun trimDiskCache() {
-        diskCacheMutex.withLock {
-            val files = diskCacheDir.listFiles { file ->
-                file.isFile && (file.extension == "source" || file.extension == "webp")
-            }.orEmpty()
-            var total = files.sumOf(File::length)
-            if (total <= MAX_DISK_CACHE_BYTES) return@withLock
-            files.sortedBy(File::lastModified).forEach { file ->
-                if (total <= TARGET_DISK_CACHE_BYTES) return@forEach
-                total -= file.length()
-                file.delete()
+        if (!sourceCacheMutex.tryLock()) return
+        try {
+            if (!decodedCacheMutex.tryLock()) return
+            try {
+                ensureDiskCacheDir()
+                val files = diskCacheDir.listFiles { file ->
+                    file.isFile &&
+                        !activeSourceFiles.containsKey(file) &&
+                        (file.extension == "source" || file.extension == "webp")
+                }.orEmpty()
+                var total = files.sumOf(File::length)
+                if (total <= MAX_DISK_CACHE_BYTES) return
+                files.sortedBy(File::lastModified).forEach { file ->
+                    if (total <= TARGET_DISK_CACHE_BYTES) return@forEach
+                    total -= file.length()
+                    file.delete()
+                }
+            } finally {
+                decodedCacheMutex.unlock()
             }
+        } finally {
+            sourceCacheMutex.unlock()
         }
     }
+
+    private fun ensureDiskCacheDir() {
+        if (diskCacheDir.isDirectory) return
+        if (diskCacheDir.exists()) diskCacheDir.deleteRecursively()
+        diskCacheDir.mkdirs()
+    }
+
+    private fun Bitmap.toReaderDecodedPage(): ReaderDecodedPage =
+        ReaderDecodedPage(this, width.toFloat() / height.coerceAtLeast(1))
 
     private companion object {
         private const val USER_AGENT =
@@ -406,6 +600,7 @@ class ReaderImagePipeline(
         private const val MAX_SOURCE_BYTES = 40L * 1024L * 1024L
         private const val MAX_DISK_CACHE_BYTES = 256L * 1024L * 1024L
         private const val TARGET_DISK_CACHE_BYTES = 224L * 1024L * 1024L
+        private const val PRIORITY_RETRY_DELAY_MILLIS = 24L
 
         private fun bitmapCacheBudgetBytes(memoryClassMb: Int): Long =
             (memoryClassMb.toLong() * 1024L * 1024L / 8L)

@@ -46,8 +46,15 @@ data class ReaderPage(
 
 enum class ReaderRequestPriority {
     PREFETCH,
+    BACKGROUND,
     VISIBLE,
 }
+
+/** A page may be decoded concurrently for the reader and for a full-quality download. */
+internal data class ReaderInFlightKey(
+    val page: ReaderPageKey,
+    val profileToken: String,
+)
 
 /** Decode profiles are part of the decoded-cache identity, so quality changes never reuse the
  * wrong representation. */

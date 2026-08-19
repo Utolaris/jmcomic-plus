@@ -47,6 +47,7 @@ internal class ReaderInFlightRegistry<K, V>(
         val priorityRef: AtomicReference<ReaderRequestPriority>,
         val visibleConsumers: AtomicInteger,
         val prefetchConsumers: AtomicInteger,
+        val backgroundConsumers: AtomicInteger,
     )
 
     private val entries = ConcurrentHashMap<K, Entry<V>>()
@@ -79,15 +80,41 @@ internal class ReaderInFlightRegistry<K, V>(
 
     fun cancelPrefetch(key: K): Boolean {
         val entry = entries[key] ?: return false
-        if (entry.visibleConsumers.get() > 0) return false
+        if (
+            entry.visibleConsumers.get() > 0 ||
+            entry.prefetchConsumers.get() <= 0 ||
+            entry.backgroundConsumers.get() > 0
+        ) return false
         entries.remove(key, entry)
         entry.deferred.cancel()
         return true
     }
 
+    fun cancelPrefetchMatching(predicate: (K) -> Boolean): Int {
+        var cancelled = 0
+        entries.entries.toList().forEach { (key, entry) ->
+            if (
+                predicate(key) &&
+                entry.visibleConsumers.get() <= 0 &&
+                entry.prefetchConsumers.get() > 0 &&
+                entry.backgroundConsumers.get() <= 0 &&
+                entries.remove(key, entry)
+            ) {
+                entry.deferred.cancel()
+                cancelled++
+            }
+        }
+        return cancelled
+    }
+
     fun cancelAllPrefetch() {
         entries.entries.toList().forEach { (key, entry) ->
-            if (entry.visibleConsumers.get() <= 0 && entries.remove(key, entry)) {
+            if (
+                entry.visibleConsumers.get() <= 0 &&
+                entry.prefetchConsumers.get() > 0 &&
+                entry.backgroundConsumers.get() <= 0 &&
+                entries.remove(key, entry)
+            ) {
                 entry.deferred.cancel()
             }
         }
@@ -100,10 +127,17 @@ internal class ReaderInFlightRegistry<K, V>(
         val priorityRef = AtomicReference(ReaderRequestPriority.PREFETCH)
         val visibleConsumers = AtomicInteger()
         val prefetchConsumers = AtomicInteger()
+        val backgroundConsumers = AtomicInteger()
         val handle = ReaderLoadHandle(priorityRef, visibleConsumers, visibleRequests)
         lateinit var entry: Entry<V>
         val deferred = scope.async(start = CoroutineStart.LAZY) { loader(handle) }
-        entry = Entry(deferred, priorityRef, visibleConsumers, prefetchConsumers)
+        entry = Entry(
+            deferred,
+            priorityRef,
+            visibleConsumers,
+            prefetchConsumers,
+            backgroundConsumers,
+        )
         deferred.invokeOnCompletion { entries.remove(key, entry) }
         return entry
     }
@@ -113,26 +147,45 @@ internal class ReaderInFlightRegistry<K, V>(
             entry.visibleConsumers.incrementAndGet()
             visibleRequests.incrementAndGet()
             entry.priorityRef.set(ReaderRequestPriority.VISIBLE)
-        } else {
-            entry.prefetchConsumers.incrementAndGet()
+            return
+        }
+
+        when (priority) {
+            ReaderRequestPriority.PREFETCH -> entry.prefetchConsumers.incrementAndGet()
+            ReaderRequestPriority.BACKGROUND -> entry.backgroundConsumers.incrementAndGet()
+            ReaderRequestPriority.VISIBLE -> error("visible handled above")
+        }
+        if (entry.visibleConsumers.get() <= 0) {
+            entry.priorityRef.set(priority)
         }
     }
 
     private fun release(key: K, entry: Entry<V>, priority: ReaderRequestPriority) {
         if (priority == ReaderRequestPriority.VISIBLE) {
-            if (entry.visibleConsumers.decrementAndGet() <= 0) {
-                visibleRequests.decrementAndGet()
-                if (entry.prefetchConsumers.get() > 0) {
-                    entry.priorityRef.set(ReaderRequestPriority.PREFETCH)
-                }
+            entry.visibleConsumers.decrementAndGet()
+            // Count every visible consumer, not only the last consumer of a page.
+            visibleRequests.decrementAndGet()
+            if (entry.visibleConsumers.get() <= 0) {
+                entry.priorityRef.set(
+                    when {
+                        entry.backgroundConsumers.get() > 0 -> ReaderRequestPriority.BACKGROUND
+                        entry.prefetchConsumers.get() > 0 -> ReaderRequestPriority.PREFETCH
+                        else -> ReaderRequestPriority.PREFETCH
+                    }
+                )
             }
         } else {
-            entry.prefetchConsumers.decrementAndGet()
+            when (priority) {
+                ReaderRequestPriority.PREFETCH -> entry.prefetchConsumers.decrementAndGet()
+                ReaderRequestPriority.BACKGROUND -> entry.backgroundConsumers.decrementAndGet()
+                ReaderRequestPriority.VISIBLE -> error("visible handled above")
+            }
         }
 
         if (
             entry.visibleConsumers.get() <= 0 &&
             entry.prefetchConsumers.get() <= 0 &&
+            entry.backgroundConsumers.get() <= 0 &&
             !entry.deferred.isCompleted
         ) {
             scope.launchCancellationCheck(key, entry, cancellationGraceMillis)
