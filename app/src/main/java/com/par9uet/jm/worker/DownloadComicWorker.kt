@@ -1,7 +1,6 @@
 package com.par9uet.jm.worker
 
 import android.content.Context
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.core.graphics.drawable.toBitmap
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -13,7 +12,6 @@ import com.par9uet.jm.cache.getComicChapterDownloadDir
 import com.par9uet.jm.cache.getComicCoverDownloadFile
 import com.par9uet.jm.cache.writeComicCacheConfig
 import com.par9uet.jm.data.models.ComicPicImageState
-import com.par9uet.jm.data.models.ImageResultState
 import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.database.model.DownloadComic
 import com.par9uet.jm.database.model.UpdateComicCover
@@ -23,6 +21,7 @@ import com.par9uet.jm.database.model.UpdateComicZipPath
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.store.DownloadToastAggregator
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.RemoteSettingManager
@@ -48,6 +47,7 @@ class DownloadComicWorker(
     private val localSettingManager: LocalSettingManager,
     private val comicRepository: ComicRepository,
     private val downloadToastAggregator: DownloadToastAggregator,
+    private val readerImagePipeline: ReaderImagePipeline,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
@@ -135,7 +135,6 @@ class DownloadComicWorker(
                     }
 
                     val dir = getComicChapterDownloadDir(appContext, downloadTask)
-                    val loader = ImageLoader(appContext)
                     var maxProgress = downloadComicDao.getById(comicId)?.progress ?: 0f
 
                     data.data.list.mapIndexed { index, url ->
@@ -158,40 +157,26 @@ class DownloadComicWorker(
                             originSrc = url,
                             __scrambleId = data.data.__scrambleId,
                             __speed = data.data.__speed,
-                            picImageLoader = loader
                         )
-                        try {
+                        val decodedBitmap = try {
                             withTimeout(DOWNLOAD_PAGE_TIMEOUT_MS) {
-                                imageState.decode(appContext)
+                                readerImagePipeline.loadForDownload(imageState.toReaderPage()).bitmap
                             }
                         } catch (e: Exception) {
                             throw IllegalStateException("第 ${index + 1} 页下载或解码超时", e)
                         }
-
-                        when (val result = imageState.imageResultState) {
-                            is ImageResultState.Success -> {
-                                FileOutputStream(file).use { out ->
-                                    result.decodeImageBitmap.asAndroidBitmap().compressWebpCompat(50, out)
-                                }
-                                DownloadSpeedTracker.addBytes(downloadTask.groupId.takeIf { it != 0 } ?: downloadTask.id, file.length())
-                                val progress = updateChapterProgressIfAdvanced(
-                                    downloadTask = downloadTask,
-                                    currentMaxProgress = maxProgress,
-                                    nextProgress = nextProgress
-                                )
-                                maxProgress = progress.chapterProgress
-                                showComicCacheNotification(downloadTask, progress.groupProgress)
-                                file.absolutePath
-                            }
-
-                            is ImageResultState.Failure -> {
-                                throw IllegalStateException("第 ${index + 1} 页下载失败：${result.reason}")
-                            }
-
-                            ImageResultState.Loading -> {
-                                throw IllegalStateException("第 ${index + 1} 页仍在加载中")
-                            }
+                        FileOutputStream(file).use { out ->
+                            decodedBitmap.compressWebpCompat(50, out)
                         }
+                        DownloadSpeedTracker.addBytes(downloadTask.groupId.takeIf { it != 0 } ?: downloadTask.id, file.length())
+                        val progress = updateChapterProgressIfAdvanced(
+                            downloadTask = downloadTask,
+                            currentMaxProgress = maxProgress,
+                            nextProgress = nextProgress
+                        )
+                        maxProgress = progress.chapterProgress
+                        showComicCacheNotification(downloadTask, progress.groupProgress)
+                        file.absolutePath
                     }
                 }
             }

@@ -5,7 +5,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import coil.ImageLoader
 import com.par9uet.jm.cache.getComicChapterDownloadDir
 import com.par9uet.jm.cache.getDownloadDir
 import com.par9uet.jm.cache.listComicImageFiles
@@ -19,6 +18,10 @@ import com.par9uet.jm.retrofit.model.CollectComicResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.reader.ReaderImagePipeline
+import com.par9uet.jm.reader.ReaderPageKey
+import com.par9uet.jm.reader.readerPrefetchDistance
+import com.par9uet.jm.reader.readerPrefetchPlan
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.ToastManager
@@ -27,18 +30,19 @@ import com.par9uet.jm.utils.log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
+import kotlin.coroutines.coroutineContext
+import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
 class ComicReadViewModel(
     private val comicRepository: ComicRepository,
-    private val picImageLoader: ImageLoader,
+    private val readerImagePipeline: ReaderImagePipeline,
     private val localSettingManager: LocalSettingManager,
     private val downloadComicDao: DownloadComicDao,
     private val toastManager: ToastManager,
@@ -61,20 +65,12 @@ class ComicReadViewModel(
 
     val size: Int get() = _comicPicState.value.data?.size ?: 0
 
-    private val prefetchSet = mutableSetOf<Int>()
-    // 内存优化模式下的并发解码信号量，按需创建
-    private var decodeSemaphore: Semaphore? = null
-    private var decodeSemaphorePermits: Int = 0
-    private fun getDecodeSemaphore(): Semaphore? {
-        val setting = localSettingManager.localSettingState.value
-        if (!setting.readMemoryOptEnabled) return null
-        val target = setting.readDecodeConcurrency.coerceAtLeast(1)
-        if (decodeSemaphore == null || decodeSemaphorePermits != target) {
-            decodeSemaphore = Semaphore(target)
-            decodeSemaphorePermits = target
-        }
-        return decodeSemaphore
-    }
+    private val prefetchJobs = mutableMapOf<ReaderPageKey, Job>()
+    private var foregroundLoadJob: Job? = null
+    private var foregroundIndex: Int? = null
+    private var lastScheduledIndex: Int? = null
+    private var lastDirection = 1
+    private var directionStreak = 0
 
     fun getComicDetail(comicId: Int) {
         viewModelScope.launch {
@@ -156,7 +152,7 @@ class ComicReadViewModel(
                     errorMsg = ""
                 )
             }
-            prefetchSet.clear()
+            resetReaderRequests()
             when (val data = comicRepository.getComicPicList(comicId, shunt)) {
                 is NetWorkResult.Error -> {
                     _comicPicState.update {
@@ -177,7 +173,6 @@ class ComicReadViewModel(
                                     item,
                                     data.data.__scrambleId,
                                     data.data.__speed,
-                                    picImageLoader,
                                     imageFetcher = {
                                         comicRepository.downloadImageBytes(comicId, index)
                                     }
@@ -205,7 +200,7 @@ class ComicReadViewModel(
                     errorMsg = ""
                 )
             }
-            prefetchSet.clear()
+            resetReaderRequests()
             val downloadComic = downloadComicDao.getById(comicId)
             val groupId = downloadComic?.groupId?.takeIf { it != 0 } ?: comicId
             readHistoryComicId.intValue = readHistoryManager.markRead(groupId, comicId)
@@ -235,7 +230,6 @@ class ComicReadViewModel(
                             originSrc = file.absolutePath,
                             __scrambleId = Int.MAX_VALUE,
                             __speed = "1",
-                            picImageLoader = picImageLoader
                         )
                     },
                     isLoading = false
@@ -299,32 +293,27 @@ class ComicReadViewModel(
         return dir
     }
 
-    fun decodeIndex(index: Int, context: Context) {
+    fun decodeIndex(index: Int, @Suppress("UNUSED_PARAMETER") context: Context) {
         if (size <= 0 || index !in 0 until size) return
-        log("decode index $index")
-        val count = localSettingManager.localSettingState.value.prefetchCount
-        val start = max(0, index - count)
-        val end = min(size - 1, index + count)
-        decode(index, context) {
-            for (i in index + 1..end) {
-                log("pre decode index $i")
-                decode(i, context)
-            }
-            for (i in index - 1 downTo start) {
-                log("pre decode index $i")
-                decode(i, context)
-            }
-        }
+        val previous = lastScheduledIndex
+        val direction = updateDirection(index)
+        val jumpDistance = previous?.let { abs(index - it) } ?: 0
+        loadVisible(index)
+        schedulePrefetch(index, direction, jumpDistance)
     }
 
-    fun decodeVisibleRange(firstIndex: Int, lastIndex: Int, context: Context) {
+    fun decodeVisibleRange(
+        firstIndex: Int,
+        lastIndex: Int,
+        @Suppress("UNUSED_PARAMETER") context: Context,
+    ) {
         if (size <= 0) return
-        val count = localSettingManager.localSettingState.value.prefetchCount
-        val start = max(0, min(firstIndex, lastIndex) - count)
-        val end = min(size - 1, max(firstIndex, lastIndex) + count)
-        for (i in start..end) {
-            decode(i, context)
-        }
+        val anchor = min(firstIndex, lastIndex).coerceIn(0, size - 1)
+        val previous = lastScheduledIndex
+        val direction = updateDirection(anchor)
+        val jumpDistance = previous?.let { abs(anchor - it) } ?: 0
+        loadVisible(anchor)
+        schedulePrefetch(anchor, direction, jumpDistance)
     }
 
     fun prev(context: Context) {
@@ -343,30 +332,94 @@ class ComicReadViewModel(
         decodeIndex(index, context)
     }
 
-    private fun decode(index: Int, context: Context, onComplete: (() -> Unit)? = null) {
-        val comicPicImageState = comicPicState.value.data?.getOrNull(index) ?: return
-        if (prefetchSet.contains(index)) {
-            onComplete?.invoke()
-            return
-        }
-        val setting = localSettingManager.localSettingState.value
-        val downscale = setting.readMemoryOptEnabled
-        val semaphore = getDecodeSemaphore()
-        viewModelScope.launch {
-            try {
-                if (semaphore != null) {
-                    semaphore.withPermit {
-                        comicPicImageState.decode(context, downscale = downscale)
-                    }
-                } else {
-                    comicPicImageState.decode(context, downscale = false)
-                }
-            } catch (e: Exception) {
-                log("decode index $index failed: ${e.message}")
+    private fun updateDirection(index: Int): Int {
+        val previous = lastScheduledIndex
+        if (previous == null) {
+            lastDirection = 1
+            directionStreak = 0
+        } else if (index != previous) {
+            val direction = if (index > previous) 1 else -1
+            if (direction == lastDirection) {
+                directionStreak++
+            } else {
+                lastDirection = direction
+                directionStreak = 1
             }
-            onComplete?.invoke()
         }
-        prefetchSet.add(index)
+        lastScheduledIndex = index
+        return lastDirection
+    }
+
+    private fun loadVisible(index: Int) {
+        val page = comicPicState.value.data?.getOrNull(index) ?: return
+        if (foregroundLoadJob?.isActive == true && foregroundIndex == index) return
+        foregroundLoadJob?.cancel()
+        foregroundIndex = index
+        foregroundLoadJob = viewModelScope.launch {
+            try {
+                readerImagePipeline.loadVisiblePage(page.toReaderPage())
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                log("load visible index $index failed: ${e.message}")
+            }
+        }
+    }
+
+    private fun schedulePrefetch(index: Int, direction: Int, jumpDistance: Int) {
+        val pages = comicPicState.value.data ?: return
+        val setting = localSettingManager.localSettingState.value
+        val distance = readerPrefetchDistance(
+            configuredDistance = setting.prefetchCount,
+            jumpDistance = jumpDistance,
+            directionStreak = directionStreak,
+        )
+        val plannedIndices = readerPrefetchPlan(
+            currentPageIndex = index,
+            pageCount = pages.size,
+            distance = distance,
+            direction = direction,
+            includeOpposite = setting.readMode != "scroll",
+        )
+        val desiredKeys = plannedIndices.mapNotNull { pages.getOrNull(it)?.pageKey }.toSet()
+        prefetchJobs.entries.toList().forEach { (key, job) ->
+            if (key !in desiredKeys) {
+                job.cancel()
+                readerImagePipeline.cancelPrefetch(key)
+                prefetchJobs.remove(key)
+            }
+        }
+        plannedIndices.forEach { plannedIndex ->
+            val page = pages.getOrNull(plannedIndex) ?: return@forEach
+            val key = page.pageKey
+            if (prefetchJobs[key]?.isActive == true) return@forEach
+            val job = viewModelScope.launch {
+                try {
+                    readerImagePipeline.prefetchPage(page.toReaderPage())
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    // Speculative failures remain silent; a later visible request retries because
+                    // the failed in-flight entry is removed by the pipeline.
+                    log("prefetch index $plannedIndex failed: ${e.message}")
+                } finally {
+                    prefetchJobs.remove(key, coroutineContext[Job])
+                }
+            }
+            prefetchJobs[key] = job
+        }
+    }
+
+    private fun resetReaderRequests() {
+        foregroundLoadJob?.cancel()
+        foregroundLoadJob = null
+        foregroundIndex = null
+        prefetchJobs.values.forEach(Job::cancel)
+        prefetchJobs.clear()
+        readerImagePipeline.cancelAllPrefetch()
+        lastScheduledIndex = null
+        lastDirection = 1
+        directionStreak = 0
     }
 
     fun triggerToolBar() {
@@ -379,5 +432,10 @@ class ComicReadViewModel(
 
     fun showToolBar() {
         isShowToolBar.value = true
+    }
+
+    override fun onCleared() {
+        resetReaderRequests()
+        super.onCleared()
     }
 }

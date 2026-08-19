@@ -115,6 +115,19 @@ fun CacheCleanupScreen() {
                 )
             )
 
+            val readerPagesDir = File(context.cacheDir, "reader_pages")
+            val readerPagesSize = dirSize(readerPagesDir)
+            items.add(
+                CacheItem(
+                    id = "reader_pages",
+                    icon = Icons.Default.Cached,
+                    title = "阅读器图片缓存",
+                    description = "阅读页的原图与解码缓存，清理后会重新加载",
+                    sizeBytes = readerPagesSize,
+                    dir = readerPagesDir
+                )
+            )
+
             val pdfDir = File(context.cacheDir, "pdf_export")
             val pdfSize = dirSize(pdfDir)
             items.add(

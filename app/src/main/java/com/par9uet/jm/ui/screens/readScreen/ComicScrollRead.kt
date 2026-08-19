@@ -25,7 +25,6 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.par9uet.jm.data.models.ImageResultState
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.ComicPicImage
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
@@ -184,18 +183,10 @@ fun ComicScrollRead(
             }) {
                 ComicPicImage(
                     comicPicImageState = it,
-                    modifier = Modifier
+                        modifier = Modifier
                         .fillMaxWidth()
                         .aspectRatio(
-                            when (val state = it.imageResultState) {
-                                is ImageResultState.Success -> {
-                                    state.decodeImageAspectRatio
-                                }
-
-                                else -> {
-                                    9f / 16
-                                }
-                            }
+                            it.aspectRatio
                         )
                 )
             }

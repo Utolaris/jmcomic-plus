@@ -3,6 +3,7 @@ package com.par9uet.jm.di
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.repository.impl.ComicRepositoryImpl
 import com.par9uet.jm.repository.impl.EmbeddedClientManager
+import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
 import com.par9uet.jm.ui.viewModel.ComicViewModel
@@ -13,6 +14,7 @@ import org.koin.dsl.module
 val comicModule = module {
     single { EmbeddedClientManager(get()) }
     single { ComicRepositoryImpl(get(), get(), get(), get(), get()) } bind ComicRepository::class
+    single { ReaderImagePipeline(get(), get()) }
 
     viewModel { ComicViewModel(get(), get()) }
     viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get()) }
