@@ -279,18 +279,10 @@ class ReaderImagePipeline(
         var decodedPage: ReaderDecodedPage? = null
         try {
             while (decodedPage == null) {
-                try {
-                    val decoded = withDecodePriority(handle) {
+                val decoded = try {
+                    withDecodePriority(handle) {
                         decodeReaderRawFile(sourceLease.value.file, page, profile)
                     }
-                    promoteSourceIfNeeded(sourceLease.value)
-                    decodedPage = decodeAndCache(
-                        pageKey = page.key,
-                        cacheKey = cacheKey,
-                        decoded = decoded,
-                        decodedFile = decodedFile,
-                        profile = profile,
-                    )
                 } catch (error: Throwable) {
                     if (
                         !retriedAfterDecodeFailure &&
@@ -304,6 +296,14 @@ class ReaderImagePipeline(
                     }
                     throw error
                 }
+                promoteSourceIfNeeded(sourceLease.value)
+                decodedPage = decodeAndCache(
+                    pageKey = page.key,
+                    cacheKey = cacheKey,
+                    decoded = decoded,
+                    decodedFile = decodedFile,
+                    profile = profile,
+                )
             }
         } finally {
             sourceLease.release()
@@ -613,17 +613,23 @@ class ReaderImagePipeline(
 
     private suspend fun promoteSourceIfNeeded(source: ReaderSourceFile) {
         if (!source.persistAfterValidation || source.persistent) return
-        var promoted = false
-        sourceCacheMutex.withLock {
-            if (source.generation != cacheGeneration.get()) return@withLock
-            ensureDiskCacheDir()
-            if (!source.cacheFile.isFile || source.cacheFile.length() !in 1..MAX_SOURCE_BYTES) {
-                source.file.copyTo(source.cacheFile, overwrite = true)
+        try {
+            var promoted = false
+            sourceCacheMutex.withLock {
+                if (source.generation != cacheGeneration.get()) return@withLock
+                ensureDiskCacheDir()
+                if (!source.cacheFile.isFile || source.cacheFile.length() !in 1..MAX_SOURCE_BYTES) {
+                    source.file.copyTo(source.cacheFile, overwrite = true)
+                }
+                promoted = source.cacheFile.isFile &&
+                    source.cacheFile.length() in 1..MAX_SOURCE_BYTES
             }
-            promoted = source.cacheFile.isFile &&
-                source.cacheFile.length() in 1..MAX_SOURCE_BYTES
+            if (promoted) requestDiskTrim()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (_: Throwable) {
+            // Source promotion is best effort; the validated temp still serves this request.
         }
-        if (promoted) requestDiskTrim()
     }
 
     private suspend fun invalidateSource(
