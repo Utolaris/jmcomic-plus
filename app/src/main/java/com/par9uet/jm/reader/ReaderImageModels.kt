@@ -3,6 +3,7 @@ package com.par9uet.jm.reader
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 /** Stable identity for one page in one chapter response. */
 data class ReaderPageKey(
@@ -17,13 +18,34 @@ data class ReaderPageKey(
         append('|')
         append(pageIndex)
         append('|')
-        append(sourceIdentity)
+        append(readerLogicalSourceIdentity(sourceIdentity))
         append('|')
         append(scrambleId)
         append('|')
         append(speed)
     }
 }
+
+/** Mirror hosts share one logical source identity, preventing CDN switching from duplicating cache. */
+internal fun readerLogicalSourceIdentity(sourceIdentity: String): String {
+    val url = sourceIdentity.toHttpUrlOrNull() ?: return sourceIdentity
+    if (
+        url.scheme != "https" ||
+        url.host !in READER_IMAGE_MIRROR_HOSTS
+    ) return sourceIdentity
+    // Query parameters on JM image URLs are cache-busters; the immutable page path is the
+    // content identity, while the original URL still retains the query for the network request.
+    return "image-mirror|${url.encodedPath}"
+}
+
+private val READER_IMAGE_MIRROR_HOSTS = setOf(
+    "cdn-msp.jmapiproxy1.cc",
+    "cdn-msp.jmapiproxy2.cc",
+    "cdn-msp2.jmapiproxy2.cc",
+    "cdn-msp3.jmapiproxy2.cc",
+    "cdn-msp.jmapinodeudzn.net",
+    "cdn-msp3.jmapinodeudzn.net",
+)
 
 /**
  * A reader page deliberately contains metadata and source callbacks only. It does not own a

@@ -21,6 +21,12 @@ private const val MAX_SOURCE_PIXELS = 80_000_000L
 private const val MAX_REGION_STRIP_HEIGHT = 2_048
 private const val MAX_REGION_STRIP_PIXELS = 4_000_000
 
+/** Performs a cheap format/bounds check before a temporary source becomes durable cache. */
+internal fun validateReaderSourceFile(file: File): Pair<Int, Int> {
+    require(file.isFile && file.length() in 1..MAX_SOURCE_BYTES) { "图片源文件无效" }
+    return readBounds(file)
+}
+
 internal fun decodeReaderRawFile(
     file: File,
     page: ReaderPage,

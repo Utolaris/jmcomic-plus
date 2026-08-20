@@ -5,7 +5,9 @@ import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import com.par9uet.jm.BuildConfig
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.utils.applyTlsCompat
 import com.par9uet.jm.utils.compressWebpCompat
 import kotlinx.coroutines.CancellationException
@@ -24,6 +26,8 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import android.os.SystemClock
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
@@ -32,6 +36,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
 
 class ReaderImageException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+private class ReaderBackgroundPreempted : Exception("后台图片请求让出网络槽位")
 
 /** Result returned to the currently composed reader item; the LRU remains the long-lived owner. */
 data class ReaderDecodedPage(
@@ -59,9 +65,15 @@ private data class ReaderSourceFile(
     val cacheFile: File,
 )
 
+private data class ReaderRemoteAttempt(
+    val url: String,
+    val file: File,
+)
+
 class ReaderImagePipeline(
     context: Context,
     private val localSettingManager: LocalSettingManager,
+    private val remoteSettingManager: RemoteSettingManager,
 ) {
     private val appContext = context.applicationContext
     private val activityManager = appContext.getSystemService(ActivityManager::class.java)
@@ -72,12 +84,27 @@ class ReaderImagePipeline(
     private val initialDecodeConcurrency = localSettingManager.localSettingState.value
         .readDecodeConcurrency
         .coerceIn(1, maxDecodeConcurrency)
+    private val networkConcurrency = if (
+        imageWorkConcurrency > 1 && memoryClassMb >= 512
+    ) {
+        3
+    } else {
+        imageWorkConcurrency
+    }
 
     private val scopeJob = SupervisorJob()
     private val scope = CoroutineScope(scopeJob + Dispatchers.IO)
-    private val networkLimiter = ReaderDynamicLimiter(imageWorkConcurrency)
+    private val networkLimiter = ReaderDynamicLimiter(networkConcurrency)
     private val backgroundNetworkLimiter =
-        if (imageWorkConcurrency > 1) ReaderDynamicLimiter(imageWorkConcurrency - 1) else null
+        if (networkConcurrency > 1) {
+            ReaderDynamicLimiter(
+                if (networkConcurrency >= 3 &&
+                    localSettingManager.localSettingState.value.prefetchCount >= 5
+                ) 2 else 1,
+            )
+        } else {
+            null
+        }
     private val decodeLimiter = ReaderDynamicLimiter(initialDecodeConcurrency)
     private val backgroundDecodeLimiter =
         if (maxDecodeConcurrency > 1) {
@@ -97,9 +124,14 @@ class ReaderImagePipeline(
     private val cacheGeneration = AtomicLong(0L)
     private val diskCacheDir = File(appContext.cacheDir, "reader_pages").apply { mkdirs() }
     private val activeSourceFiles = ConcurrentHashMap<File, AtomicInteger>()
-    private val requests = ReaderInFlightRegistry<ReaderInFlightKey, ReaderDecodedPage>(scope)
-    private val sourceRequests = ReaderInFlightRegistry<ReaderPageKey, ReaderSourceFile>(
+    private val visibleRequestTracker = ReaderVisibleRequestTracker()
+    private val requests = ReaderInFlightRegistry<ReaderInFlightKey, ReaderDecodedPage>(
         scope = scope,
+        visibleRequestTracker = visibleRequestTracker,
+    )
+    private val sourceRequests = ReaderInFlightRegistry<String, ReaderSourceFile>(
+        scope = scope,
+        visibleRequestTracker = visibleRequestTracker,
         onEntryReleased = { source ->
             releaseSourceFile(
                 file = source.file,
@@ -124,6 +156,13 @@ class ReaderImagePipeline(
         .followRedirects(true)
         .applyTlsCompat()
         .build()
+    private val imageHostManager = ReaderImageHostManager(
+        context = appContext,
+        httpClient = httpClient,
+        scope = scope,
+        configuredHostFlow = remoteSettingManager.remoteSettingState.map { it.imgHost },
+    )
+    private val metrics = ReaderMetrics(BuildConfig.DEBUG)
 
     private val memoryCallbacks = object : ComponentCallbacks2 {
         override fun onTrimMemory(level: Int) {
@@ -155,6 +194,16 @@ class ReaderImagePipeline(
                 }
         }
         scope.launch {
+            localSettingManager.localSettingState
+                .map { it.prefetchCount }
+                .distinctUntilChanged()
+                .collect { count ->
+                    backgroundNetworkLimiter?.updateLimit(
+                        if (networkConcurrency >= 3 && count >= 5) 2 else 1,
+                    )
+                }
+        }
+        scope.launch {
             for (write in decodedCacheWrites) {
                 runCatching { writeDecodedCache(write) }
             }
@@ -174,12 +223,72 @@ class ReaderImagePipeline(
         request(page, ReaderRequestPriority.BACKGROUND, ReaderDecodeProfile.DOWNLOAD)
 
     suspend fun prefetchPage(page: ReaderPage) {
-        request(page, ReaderRequestPriority.PREFETCH, currentProfile())
+        if (imageWorkConcurrency == 1) {
+            prefetchPageSource(page)
+        } else {
+            request(page, ReaderRequestPriority.PREFETCH, currentProfile())
+        }
+    }
+
+    /** Source-only warming keeps a single-slot device responsive and avoids bitmap heap growth. */
+    suspend fun prefetchPageSource(page: ReaderPage) = withContext(Dispatchers.IO) {
+        metrics.request(ReaderRequestPriority.PREFETCH)
+        val startedAt = SystemClock.elapsedRealtime()
+        try {
+            if (page.localFile?.isFile == true) return@withContext
+            sourceRequests.request(sourceInFlightKey(page.key), ReaderRequestPriority.PREFETCH) { handle ->
+                val source = loadSourceFile(
+                    page = page,
+                    priority = ReaderRequestPriority.PREFETCH,
+                    handle = handle,
+                    retryFromDecode = false,
+                )
+                if (!source.persistent) {
+                    validateReaderSourceFile(source.file)
+                    promoteSourceIfNeeded(source)
+                }
+                source
+            }
+        } finally {
+            metrics.requestFinished(
+                priority = ReaderRequestPriority.PREFETCH,
+                elapsedMillis = SystemClock.elapsedRealtime() - startedAt,
+            )
+        }
+    }
+
+    fun adaptivePrefetchDistance(
+        configuredDistance: Int,
+        jumpDistance: Int,
+        directionStreak: Int,
+        pageVelocity: Float,
+        turboMode: Boolean,
+    ): Int = readerAdaptivePrefetchPolicy(
+        configuredDistance = configuredDistance,
+        memoryClassMb = memoryClassMb,
+        lowRamDevice = lowRamDevice,
+        singleNetworkSlot = imageWorkConcurrency == 1,
+        jumpDistance = jumpDistance,
+        directionStreak = directionStreak,
+        pageVelocity = pageVelocity,
+        networkLatencyMillis = imageHostManager.preferredLatencyMillis(),
+        turboMode = turboMode,
+    ).distance
+
+    internal fun metricsSnapshot(): ReaderMetricsSnapshot = metrics.snapshot()
+
+    internal fun imageHostSnapshot(): ReaderImageHostSnapshot = imageHostManager.snapshot()
+
+    fun warmImageConnections(page: ReaderPage) {
+        imageHostManager.warmImageConnections(page.originSrc)
     }
 
     fun cancelPrefetch(pageKey: ReaderPageKey): Boolean {
-        val decodedCancelled = requests.cancelPrefetchMatching { it.page == pageKey } > 0
-        val sourceCancelled = sourceRequests.cancelPrefetch(pageKey)
+        val decodedCancelled = requests.cancelPrefetchMatching {
+            it.page.stableIdentity() == pageKey.stableIdentity()
+        } > 0
+        val sourceCancelled = sourceRequests.cancelPrefetch(sourceInFlightKey(pageKey))
+        if (decodedCancelled || sourceCancelled) metrics.prefetchCanceled()
         return decodedCancelled || sourceCancelled
     }
 
@@ -215,6 +324,7 @@ class ReaderImagePipeline(
         scopeJob.cancel()
         bitmapCache.evictAll()
         aspectRatioCache.evictAll()
+        imageHostManager.close()
         httpClient.dispatcher.cancelAll()
         httpClient.connectionPool.evictAll()
     }
@@ -224,16 +334,27 @@ class ReaderImagePipeline(
         priority: ReaderRequestPriority,
         profile: ReaderDecodeProfile,
     ): ReaderDecodedPage {
-        val cacheKey = BitmapCacheKey(page.key, profile.cacheToken)
+        val startedAt = SystemClock.elapsedRealtime()
+        metrics.request(priority)
+        val canonicalPageKey = canonicalPageKey(page.key)
+        val cacheKey = BitmapCacheKey(canonicalPageKey, profile.cacheToken)
         if (profile != ReaderDecodeProfile.DOWNLOAD) {
             cachedBitmap(cacheKey)?.let { bitmap ->
+                metrics.memoryHit()
+                if (priority == ReaderRequestPriority.PREFETCH) metrics.prefetchCacheHit()
+                metrics.requestFinished(priority, SystemClock.elapsedRealtime() - startedAt)
                 return bitmap.toReaderDecodedPage()
             }
         }
+        metrics.cacheMiss()
 
-        val inFlightKey = ReaderInFlightKey(page.key, profile.cacheToken)
-        return requests.request(inFlightKey, priority) { handle ->
-            performLoad(page, priority, profile, cacheKey, handle)
+        val inFlightKey = ReaderInFlightKey(canonicalPageKey, profile.cacheToken)
+        return try {
+            requests.request(inFlightKey, priority) { handle ->
+                performLoad(page, priority, profile, cacheKey, handle)
+            }
+        } finally {
+            metrics.requestFinished(priority, SystemClock.elapsedRealtime() - startedAt)
         }
     }
 
@@ -246,6 +367,7 @@ class ReaderImagePipeline(
     ): ReaderDecodedPage = withContext(Dispatchers.IO) {
         if (profile != ReaderDecodeProfile.DOWNLOAD) {
             cachedBitmap(cacheKey)?.let { bitmap ->
+                metrics.memoryHit()
                 return@withContext bitmap.toReaderDecodedPage()
             }
         }
@@ -259,7 +381,7 @@ class ReaderImagePipeline(
             return@withContext decodeAndCache(
                 pageKey = page.key,
                 cacheKey = cacheKey,
-                decoded = withDecodePriority(handle) {
+                decoded = withMeasuredDecode(handle) {
                     decodeReaderRawFile(localFile, page, profile)
                 },
                 decodedFile = decodedFile,
@@ -269,6 +391,7 @@ class ReaderImagePipeline(
 
         if (profile != ReaderDecodeProfile.DOWNLOAD) {
             decodeReaderDecodedFile(decodedFile, profile)?.let { cached ->
+                metrics.decodedDiskHit()
                 cacheBitmap(cacheKey, page.key, cached.bitmap, cached.aspectRatio)
                 return@withContext ReaderDecodedPage(cached.bitmap, cached.aspectRatio)
             } ?: decodedFile.takeIf(File::exists)?.delete()
@@ -280,7 +403,7 @@ class ReaderImagePipeline(
         try {
             while (decodedPage == null) {
                 val decoded = try {
-                    withDecodePriority(handle) {
+                    withMeasuredDecode(handle) {
                         decodeReaderRawFile(sourceLease.value.file, page, profile)
                     }
                 } catch (error: Throwable) {
@@ -296,7 +419,10 @@ class ReaderImagePipeline(
                     }
                     throw error
                 }
-                promoteSourceIfNeeded(sourceLease.value)
+                promoteSourceIfNeeded(
+                    source = sourceLease.value,
+                    forcePersistence = priority == ReaderRequestPriority.VISIBLE,
+                )
                 decodedPage = decodeAndCache(
                     pageKey = page.key,
                     cacheKey = cacheKey,
@@ -329,7 +455,10 @@ class ReaderImagePipeline(
         page: ReaderPage,
         priority: ReaderRequestPriority,
         retryFromDecode: Boolean,
-    ): ReaderInFlightLease<ReaderSourceFile> = sourceRequests.acquire(page.key, priority) { handle ->
+    ): ReaderInFlightLease<ReaderSourceFile> = sourceRequests.acquire(
+        sourceInFlightKey(page.key),
+        priority,
+    ) { handle ->
         loadSourceFile(
             page = page,
             priority = priority,
@@ -349,6 +478,8 @@ class ReaderImagePipeline(
             "${readerCacheKey(page.key, "source")}.source",
         )
         acquireCachedSourceFile(sourceFile)?.let { (file, generation) ->
+            metrics.sourceHit()
+            if (priority == ReaderRequestPriority.PREFETCH) metrics.prefetchCacheHit()
             return ReaderSourceFile(
                 file = file,
                 generation = generation,
@@ -385,6 +516,7 @@ class ReaderImagePipeline(
             val temporary = createSourceTempFile()
             return try {
                 FileOutputStream(temporary).use { it.write(bytes) }
+                validateReaderSourceFile(temporary)
                 ReaderSourceFile(
                     file = temporary,
                     generation = generation,
@@ -399,20 +531,49 @@ class ReaderImagePipeline(
         }
 
         suspend fun fetchRemote(): ReaderSourceFile {
-            val temporary = createSourceTempFile()
-            return try {
-                fetchRemoteToFile(page.originSrc, temporary, handle)
-                ReaderSourceFile(
-                    file = temporary,
-                    generation = generation,
-                    persistent = false,
-                    persistAfterValidation = persistSourceCache,
-                    cacheFile = sourceFile,
-                )
-            } catch (error: Throwable) {
-                releaseSourceFile(temporary, generation, temporary = true)
-                throw error
+            val urls = imageHostManager.orderedImageUrls(page.originSrc)
+            if (urls.isEmpty()) throw ReaderImageException("图片地址为空")
+            imageHostManager.warmImageConnections(page.originSrc)
+            var lastError: Throwable? = null
+            var remainingUrls = urls
+            if (handle.isVisible && urls.size >= 2) {
+                metrics.hedgeStarted()
+                try {
+                    val winner = fetchRemoteHedged(
+                        primaryUrl = urls[0],
+                        secondaryUrl = urls[1],
+                        handle = handle,
+                    )
+                    return ReaderSourceFile(
+                        file = winner.file,
+                        generation = generation,
+                        persistent = false,
+                        persistAfterValidation = persistSourceCache,
+                        cacheFile = sourceFile,
+                    )
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: ReaderBackgroundPreempted) {
+                    throw error
+                } catch (error: Throwable) {
+                    lastError = error
+                    remainingUrls = urls.drop(2)
+                }
             }
+            for (url in remainingUrls) {
+                val attempt = fetchRemoteCandidate(url, handle)
+                attempt.getOrNull()?.let { winner ->
+                    return ReaderSourceFile(
+                        file = winner.file,
+                        generation = generation,
+                        persistent = false,
+                        persistAfterValidation = persistSourceCache,
+                        cacheFile = sourceFile,
+                    )
+                }
+                lastError = attempt.exceptionOrNull() ?: lastError
+            }
+            throw lastError ?: ReaderImageException("网络错误")
         }
 
         if (preferFallback) {
@@ -428,6 +589,8 @@ class ReaderImagePipeline(
         try {
             return fetchRemote()
         } catch (error: CancellationException) {
+            throw error
+        } catch (error: ReaderBackgroundPreempted) {
             throw error
         } catch (error: Throwable) {
             networkError = error
@@ -449,15 +612,20 @@ class ReaderImagePipeline(
         url: String,
         target: File,
         handle: ReaderLoadHandle,
+        onResponseHeaders: (Long) -> Unit = {},
     ) = withNetworkRequestPriority(handle) {
         withContext(Dispatchers.IO) {
             val request = Request.Builder()
                 .url(url)
                 .get()
+                .header("Accept", "image/webp,image/*,*/*;q=0.8")
+                .header("X-Requested-With", "com.JMComic3.app")
                 .header("User-Agent", USER_AGENT)
                 .header("Referer", REFERER)
                 .build()
+            val requestStartedAt = SystemClock.elapsedRealtime()
             httpClient.newCall(request).execute().use { response ->
+                onResponseHeaders(SystemClock.elapsedRealtime() - requestStartedAt)
                 if (!response.isSuccessful) throw ReaderImageException("HTTP ${response.code}")
                 val body = response.body ?: throw ReaderImageException("图片响应为空")
                 if (body.contentLength() > MAX_SOURCE_BYTES) {
@@ -468,7 +636,13 @@ class ReaderImagePipeline(
                 FileOutputStream(target).use { output ->
                     body.byteStream().use { input ->
                         while (true) {
-                            if (backgroundNetworkLimiter != null) {
+                            if (!handle.isVisible && handle.hasVisibleRequest) {
+                                if (backgroundNetworkLimiter == null) {
+                                    // A one-slot device cannot hold the only permit while waiting
+                                    // for the foreground. Closing this response lets the visible
+                                    // request acquire it immediately.
+                                    throw ReaderBackgroundPreempted()
+                                }
                                 // The background cap leaves a request slot for visible work.
                                 handle.awaitBackgroundTurn()
                             }
@@ -486,6 +660,57 @@ class ReaderImagePipeline(
         }
     }
 
+    private suspend fun fetchRemoteCandidate(
+        url: String,
+        handle: ReaderLoadHandle,
+    ): Result<ReaderRemoteAttempt> {
+        val temporary = createSourceTempFile()
+        val startedAt = SystemClock.elapsedRealtime()
+        return try {
+            metrics.networkStarted()
+            fetchRemoteToFile(
+                url = url,
+                target = temporary,
+                handle = handle,
+                onResponseHeaders = metrics::responseHeadersReceived,
+            )
+            validateReaderSourceFile(temporary)
+            metrics.networkFinished(true, SystemClock.elapsedRealtime() - startedAt)
+            url.toHttpUrlOrNull()?.host?.let(metrics::hostSuccess)
+            imageHostManager.recordSuccess(url, SystemClock.elapsedRealtime() - startedAt)
+            Result.success(ReaderRemoteAttempt(url, temporary))
+        } catch (error: CancellationException) {
+            releaseSourceFile(temporary, cacheGeneration.get(), temporary = true)
+            throw error
+        } catch (error: ReaderBackgroundPreempted) {
+            metrics.networkFinished(false, SystemClock.elapsedRealtime() - startedAt)
+            releaseSourceFile(temporary, cacheGeneration.get(), temporary = true)
+            throw error
+        } catch (error: Throwable) {
+            metrics.networkFinished(false, SystemClock.elapsedRealtime() - startedAt)
+            url.toHttpUrlOrNull()?.host?.let(metrics::hostFailure)
+            imageHostManager.recordFailure(url)
+            releaseSourceFile(temporary, cacheGeneration.get(), temporary = true)
+            Result.failure(error)
+        }
+    }
+
+    /** Visible loads start the secondary only after the primary misses the short hedge window. */
+    private suspend fun fetchRemoteHedged(
+        primaryUrl: String,
+        secondaryUrl: String,
+        handle: ReaderLoadHandle,
+    ): ReaderRemoteAttempt = delayedHedge(
+        delayMillis = VISIBLE_HEDGE_DELAY_MILLIS,
+        primaryAttempt = { fetchRemoteCandidate(primaryUrl, handle) },
+        secondaryAttempt = { fetchRemoteCandidate(secondaryUrl, handle) },
+        onWinner = { primary -> metrics.hedgeWinner(primary) },
+        onLoserCanceled = { metrics.hedgeLoserCanceled() },
+        onDiscardedLoser = { loser ->
+            releaseSourceFile(loser.file, cacheGeneration.get(), temporary = true)
+        },
+    )
+
     private suspend fun <T> withNetworkRequestPriority(
         handle: ReaderLoadHandle,
         block: suspend () -> T,
@@ -493,8 +718,8 @@ class ReaderImagePipeline(
         if (handle.isVisible) return networkLimiter.withPermit(block)
         val backgroundLimiter = backgroundNetworkLimiter
         if (backgroundLimiter == null) {
-            if (handle.priority == ReaderRequestPriority.PREFETCH) {
-                handle.awaitVisible()
+            while (!handle.isVisible && handle.hasVisibleRequest) {
+                delay(PRIORITY_RETRY_DELAY_MILLIS)
             }
             return networkLimiter.withPermit(block)
         }
@@ -557,8 +782,26 @@ class ReaderImagePipeline(
         }
     }
 
+    private suspend fun <T> withMeasuredDecode(
+        handle: ReaderLoadHandle,
+        block: suspend () -> T,
+    ): T {
+        val startedAt = SystemClock.elapsedRealtime()
+        return try {
+            withDecodePriority(handle, block)
+        } finally {
+            metrics.decodeFinished(SystemClock.elapsedRealtime() - startedAt)
+        }
+    }
+
     private fun cachedBitmap(cacheKey: BitmapCacheKey): Bitmap? =
         bitmapCache[cacheKey]?.takeUnless { it.isRecycled }
+
+    private fun sourceInFlightKey(pageKey: ReaderPageKey): String =
+        readerCacheKey(pageKey, "source")
+
+    private fun canonicalPageKey(pageKey: ReaderPageKey): ReaderPageKey =
+        pageKey.copy(sourceIdentity = readerLogicalSourceIdentity(pageKey.sourceIdentity))
 
     private fun cacheBitmap(
         cacheKey: BitmapCacheKey,
@@ -611,8 +854,11 @@ class ReaderImagePipeline(
         if (!temporary) requestDiskTrim()
     }
 
-    private suspend fun promoteSourceIfNeeded(source: ReaderSourceFile) {
-        if (!source.persistAfterValidation || source.persistent) return
+    private suspend fun promoteSourceIfNeeded(
+        source: ReaderSourceFile,
+        forcePersistence: Boolean = false,
+    ) {
+        if ((!source.persistAfterValidation && !forcePersistence) || source.persistent) return
         try {
             var promoted = false
             sourceCacheMutex.withLock {
@@ -641,7 +887,7 @@ class ReaderImagePipeline(
                 source.cacheFile.delete()
             }
         }
-        sourceRequests.invalidate(pageKey)
+        sourceRequests.invalidate(sourceInFlightKey(pageKey))
     }
 
     private fun shouldInvalidateSourceAfterDecodeFailure(error: Throwable): Boolean =
@@ -733,6 +979,7 @@ class ReaderImagePipeline(
         private const val MAX_DISK_CACHE_BYTES = 256L * 1024L * 1024L
         private const val TARGET_DISK_CACHE_BYTES = 224L * 1024L * 1024L
         private const val PRIORITY_RETRY_DELAY_MILLIS = 24L
+        private const val VISIBLE_HEDGE_DELAY_MILLIS = 100L
 
         private fun bitmapCacheBudgetBytes(memoryClassMb: Int): Long =
             (memoryClassMb.toLong() * 1024L * 1024L / 8L)

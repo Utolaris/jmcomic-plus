@@ -11,11 +11,22 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicReference
 
+internal class ReaderVisibleRequestTracker {
+    private val count = AtomicInteger()
+
+    val hasVisibleRequest: Boolean
+        get() = count.get() > 0
+
+    fun retain() { count.incrementAndGet() }
+    fun release() { count.decrementAndGet() }
+    fun count(): Int = count.get().coerceAtLeast(0)
+}
+
 /** View of one shared load, used by network and decode gates to observe promotion. */
 internal class ReaderLoadHandle internal constructor(
     private val priorityRef: AtomicReference<ReaderRequestPriority>,
     private val visibleConsumers: AtomicInteger,
-    private val visibleRequests: AtomicInteger,
+    private val visibleRequests: ReaderVisibleRequestTracker,
 ) {
     val priority: ReaderRequestPriority
         get() = priorityRef.get()
@@ -24,7 +35,7 @@ internal class ReaderLoadHandle internal constructor(
         get() = visibleConsumers.get() > 0
 
     val hasVisibleRequest: Boolean
-        get() = visibleRequests.get() > 0
+        get() = visibleRequests.hasVisibleRequest
 
     suspend fun awaitVisible() {
         while (!isVisible) delay(24L)
@@ -55,6 +66,7 @@ internal class ReaderInFlightRegistry<K, V>(
     private val scope: CoroutineScope,
     private val cancellationGraceMillis: Long = 750L,
     private val onEntryReleased: (V) -> Unit = {},
+    private val visibleRequestTracker: ReaderVisibleRequestTracker = ReaderVisibleRequestTracker(),
 ) {
     private class Entry<V>(
         val deferred: Deferred<V>,
@@ -67,8 +79,6 @@ internal class ReaderInFlightRegistry<K, V>(
     )
 
     private val entries = ConcurrentHashMap<K, Entry<V>>()
-    private val visibleRequests = AtomicInteger()
-
     suspend fun request(
         key: K,
         priority: ReaderRequestPriority,
@@ -169,7 +179,7 @@ internal class ReaderInFlightRegistry<K, V>(
         val backgroundConsumers = AtomicInteger()
         val valueRef = AtomicReference<V?>(null)
         val cleanupStarted = AtomicBoolean(false)
-        val handle = ReaderLoadHandle(priorityRef, visibleConsumers, visibleRequests)
+        val handle = ReaderLoadHandle(priorityRef, visibleConsumers, visibleRequestTracker)
         lateinit var entry: Entry<V>
         val deferred = scope.async(start = CoroutineStart.LAZY) {
             loader(handle).also { valueRef.set(it) }
@@ -190,7 +200,7 @@ internal class ReaderInFlightRegistry<K, V>(
     private fun retain(entry: Entry<V>, priority: ReaderRequestPriority) {
         if (priority == ReaderRequestPriority.VISIBLE) {
             entry.visibleConsumers.incrementAndGet()
-            visibleRequests.incrementAndGet()
+            visibleRequestsTracker().retain()
             entry.priorityRef.set(ReaderRequestPriority.VISIBLE)
             return
         }
@@ -209,7 +219,7 @@ internal class ReaderInFlightRegistry<K, V>(
         if (priority == ReaderRequestPriority.VISIBLE) {
             entry.visibleConsumers.decrementAndGet()
             // Count every visible consumer, not only the last consumer of a page.
-            visibleRequests.decrementAndGet()
+            visibleRequestsTracker().release()
             if (entry.visibleConsumers.get() <= 0) {
                 entry.priorityRef.set(
                     when {
@@ -237,6 +247,8 @@ internal class ReaderInFlightRegistry<K, V>(
         }
         maybeFinalize(key, entry)
     }
+
+    private fun visibleRequestsTracker(): ReaderVisibleRequestTracker = visibleRequestTracker
 
     private fun maybeFinalize(key: K, entry: Entry<V>) {
         if (
