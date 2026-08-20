@@ -21,6 +21,7 @@ import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.reader.ReaderPageKey
 import com.par9uet.jm.reader.readerPrefetchPlan
+import com.par9uet.jm.reader.runReaderPrefetchSchedule
 import com.par9uet.jm.reader.shouldWarmNextChapter
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ReadHistoryManager
@@ -35,7 +36,6 @@ import kotlinx.coroutines.launch
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
-import kotlin.coroutines.coroutineContext
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -65,7 +65,10 @@ class ComicReadViewModel(
 
     val size: Int get() = _comicPicState.value.data?.size ?: 0
 
-    private val prefetchJobs = mutableMapOf<ReaderPageKey, Job>()
+    private var prefetchScheduleJob: Job? = null
+    private var prefetchScheduleKeys = emptyList<ReaderPageKey>()
+    private var prefetchScheduleSourceOnly = false
+    private var prefetchScheduleParallelism = 1
     private var foregroundLoadJob: Job? = null
     private var foregroundIndex: Int? = null
     private var lastScheduledIndex: Int? = null
@@ -168,21 +171,25 @@ class ComicReadViewModel(
                 }
 
                 is NetWorkResult.Success<ComicPicListResponse> -> {
-                    _comicPicState.update {
-                        it.copy(
-                            data = data.data.list.mapIndexed { index, item ->
-                                ComicPicImageState(
-                                    index,
-                                    comicId,
-                                    item,
-                                    data.data.__scrambleId,
-                                    data.data.__speed,
-                                    imageFetcher = {
-                                        comicRepository.downloadImageBytes(comicId, index)
-                                    }
-                                )
+                    val pages = data.data.list.mapIndexed { index, item ->
+                        ComicPicImageState(
+                            index,
+                            comicId,
+                            item,
+                            data.data.__scrambleId,
+                            data.data.__speed,
+                            imageFetcher = {
+                                comicRepository.downloadImageBytes(comicId, index)
                             }
                         )
+                    }
+                    _comicPicState.update {
+                        it.copy(
+                            data = pages,
+                        )
+                    }
+                    pages.firstOrNull()?.let { page ->
+                        readerImagePipeline.warmImageConnections(page.toReaderPage())
                     }
                     onSuccess?.invoke()
                 }
@@ -395,48 +402,66 @@ class ComicReadViewModel(
     ) {
         val pages = comicPicState.value.data ?: return
         val setting = localSettingManager.localSettingState.value
-        val distance = readerImagePipeline.adaptivePrefetchDistance(
+        val policy = readerImagePipeline.adaptivePrefetchPolicy(
             configuredDistance = setting.prefetchCount,
             jumpDistance = jumpDistance,
             directionStreak = directionStreak,
             pageVelocity = pageVelocity,
-            turboMode = false,
+            turboMode = setting.prefetchCount >= 5,
         )
         val plannedIndices = readerPrefetchPlan(
             currentPageIndex = index,
             pageCount = pages.size,
-            distance = distance,
+            distance = policy.distance,
             direction = direction,
             includeOpposite = setting.readMode != "scroll",
             visibleStart = visibleStart,
             visibleEnd = visibleEnd,
         )
-        val desiredKeys = plannedIndices.mapNotNull { pages.getOrNull(it)?.pageKey }.toSet()
-        prefetchJobs.entries.toList().forEach { (key, job) ->
-            if (key !in desiredKeys) {
-                job.cancel()
-                readerImagePipeline.cancelPrefetch(key)
-                prefetchJobs.remove(key)
-            }
+        val plannedPages = plannedIndices.mapNotNull { plannedIndex ->
+            pages.getOrNull(plannedIndex)?.let { plannedIndex to it }
         }
-        plannedIndices.forEach { plannedIndex ->
-            val page = pages.getOrNull(plannedIndex) ?: return@forEach
-            val key = page.pageKey
-            if (prefetchJobs[key]?.isActive == true) return@forEach
-            val job = viewModelScope.launch {
+        val desiredKeys = plannedPages.map { it.second.pageKey }
+        if (
+            prefetchScheduleJob?.isActive == true &&
+            desiredKeys == prefetchScheduleKeys &&
+            policy.sourceOnly == prefetchScheduleSourceOnly &&
+            policy.parallelism == prefetchScheduleParallelism
+        ) {
+            return
+        }
+
+        val staleKeys = prefetchScheduleKeys.toSet() - desiredKeys.toSet()
+        val previousJob = prefetchScheduleJob
+        previousJob?.cancel()
+        previousJob?.invokeOnCompletion {
+            staleKeys.forEach(readerImagePipeline::cancelPrefetch)
+        }
+        staleKeys.forEach(readerImagePipeline::cancelPrefetch)
+
+        prefetchScheduleKeys = desiredKeys
+        prefetchScheduleSourceOnly = policy.sourceOnly
+        prefetchScheduleParallelism = policy.parallelism
+        val job = viewModelScope.launch {
+            runReaderPrefetchSchedule(plannedPages, policy.parallelism) { (plannedIndex, page) ->
                 try {
-                    readerImagePipeline.prefetchPage(page.toReaderPage())
+                    if (policy.sourceOnly) {
+                        readerImagePipeline.prefetchPageSource(page.toReaderPage())
+                    } else {
+                        readerImagePipeline.prefetchPage(page.toReaderPage())
+                    }
                 } catch (e: kotlinx.coroutines.CancellationException) {
                     throw e
                 } catch (e: Throwable) {
                     // Speculative failures remain silent; a later visible request retries because
                     // the failed in-flight entry is removed by the pipeline.
                     log("prefetch index $plannedIndex failed: ${e.message}")
-                } finally {
-                    prefetchJobs.remove(key, coroutineContext[Job])
                 }
             }
-            prefetchJobs[key] = job
+        }
+        prefetchScheduleJob = job
+        job.invokeOnCompletion {
+            if (prefetchScheduleJob === job) prefetchScheduleJob = null
         }
     }
 
@@ -444,8 +469,12 @@ class ComicReadViewModel(
         foregroundLoadJob?.cancel()
         foregroundLoadJob = null
         foregroundIndex = null
-        prefetchJobs.values.forEach(Job::cancel)
-        prefetchJobs.clear()
+        prefetchScheduleJob?.cancel()
+        prefetchScheduleJob = null
+        prefetchScheduleKeys.forEach(readerImagePipeline::cancelPrefetch)
+        prefetchScheduleKeys = emptyList()
+        prefetchScheduleSourceOnly = false
+        prefetchScheduleParallelism = 1
         readerImagePipeline.cancelAllPrefetch()
         lastScheduledIndex = null
         lastDirection = 1
@@ -473,7 +502,7 @@ class ComicReadViewModel(
                 when (val result = comicRepository.getComicPicList(nextChapter.id, setting.shunt)) {
                     is NetWorkResult.Success<ComicPicListResponse> -> {
                         val warmCount = if (setting.prefetchCount >= 5) 2 else 1
-                        result.data.list.take(warmCount).forEachIndexed { index, url ->
+                        val warmPages = result.data.list.take(warmCount).mapIndexed { index, url ->
                             val page = ComicPicImageState(
                                 index = index,
                                 comicId = nextChapter.id,
@@ -481,6 +510,10 @@ class ComicReadViewModel(
                                 __scrambleId = result.data.__scrambleId,
                                 __speed = result.data.__speed,
                             ).toReaderPage()
+                            page
+                        }
+                        warmPages.firstOrNull()?.let(readerImagePipeline::warmImageConnections)
+                        warmPages.forEach { page ->
                             readerImagePipeline.prefetchPageSource(page)
                         }
                     }

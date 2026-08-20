@@ -1,5 +1,9 @@
 package com.par9uet.jm.reader
 
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+
 internal data class ReaderPrefetchPolicy(
     val distance: Int,
     val sourceOnly: Boolean,
@@ -55,6 +59,25 @@ internal fun readerAdaptivePrefetchPolicy(
         sourceOnly = singleNetworkSlot,
         parallelism = parallelism,
     )
+}
+
+/** Runs at most [parallelism] workers; planned pages never become one coroutine per page. */
+internal suspend fun <T> runReaderPrefetchSchedule(
+    items: List<T>,
+    parallelism: Int,
+    load: suspend (T) -> Unit,
+) = coroutineScope {
+    if (items.isEmpty()) return@coroutineScope
+    val nextIndex = AtomicInteger()
+    repeat(parallelism.coerceIn(1, items.size)) {
+        launch {
+            while (true) {
+                val index = nextIndex.getAndIncrement()
+                if (index >= items.size) break
+                load(items[index])
+            }
+        }
+    }
 }
 
 private const val MAX_PREFETCH_DISTANCE = 12

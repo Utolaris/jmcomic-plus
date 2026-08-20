@@ -131,8 +131,11 @@ internal class ReaderInFlightRegistry<K, V>(
         val entry = entries[key] ?: return false
         if (
             entry.visibleConsumers.get() > 0 ||
-            entry.prefetchConsumers.get() <= 0 ||
-            entry.backgroundConsumers.get() > 0
+            entry.backgroundConsumers.get() > 0 ||
+            (
+                entry.prefetchConsumers.get() <= 0 &&
+                entry.priorityRef.get() != ReaderRequestPriority.PREFETCH
+            )
         ) return false
         entries.remove(key, entry)
         entry.deferred.cancel()
@@ -145,8 +148,11 @@ internal class ReaderInFlightRegistry<K, V>(
             if (
                 predicate(key) &&
                 entry.visibleConsumers.get() <= 0 &&
-                entry.prefetchConsumers.get() > 0 &&
                 entry.backgroundConsumers.get() <= 0 &&
+                (
+                    entry.prefetchConsumers.get() > 0 ||
+                    entry.priorityRef.get() == ReaderRequestPriority.PREFETCH
+                ) &&
                 entries.remove(key, entry)
             ) {
                 entry.deferred.cancel()
@@ -160,8 +166,11 @@ internal class ReaderInFlightRegistry<K, V>(
         entries.entries.toList().forEach { (key, entry) ->
             if (
                 entry.visibleConsumers.get() <= 0 &&
-                entry.prefetchConsumers.get() > 0 &&
                 entry.backgroundConsumers.get() <= 0 &&
+                (
+                    entry.prefetchConsumers.get() > 0 ||
+                    entry.priorityRef.get() == ReaderRequestPriority.PREFETCH
+                ) &&
                 entries.remove(key, entry)
             ) {
                 entry.deferred.cancel()

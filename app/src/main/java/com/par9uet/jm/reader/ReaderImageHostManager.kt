@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkRequest
+import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.edit
 import kotlinx.coroutines.CancellationException
@@ -11,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -22,6 +24,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import java.util.concurrent.TimeUnit
 
 internal data class ReaderImageHostSnapshot(
@@ -60,17 +64,31 @@ internal class ReaderImageHostManager(
     private val hostStates = ConcurrentHashMap<String, HostState>()
     private val configuredHosts = ConcurrentHashMap.newKeySet<String>()
     private val refreshInFlight = AtomicBoolean(false)
+    private val refreshRequested = AtomicBoolean(false)
     private val closed = AtomicBoolean(false)
     private val connectivityManager = appContext.getSystemService(ConnectivityManager::class.java)
+    private val activeNetwork = AtomicReference(connectivityManager?.activeNetwork)
+    private val networkChangeGeneration = AtomicLong()
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
-        override fun onAvailable(network: Network) = onNetworkChanged()
-        override fun onLost(network: Network) = onNetworkChanged()
+        override fun onAvailable(network: Network) {
+            if (connectivityManager?.activeNetwork != network) return
+            val previous = activeNetwork.getAndSet(network)
+            if (previous != network) scheduleNetworkChanged()
+        }
+
+        override fun onLost(network: Network) {
+            if (activeNetwork.compareAndSet(network, null)) scheduleNetworkChanged()
+        }
     }
     private val callbackRegistered = runCatching {
-        connectivityManager?.registerNetworkCallback(
-            NetworkRequest.Builder().build(),
-            networkCallback,
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            connectivityManager?.registerDefaultNetworkCallback(networkCallback)
+        } else {
+            connectivityManager?.registerNetworkCallback(
+                NetworkRequest.Builder().build(),
+                networkCallback,
+            )
+        }
         connectivityManager != null
     }.getOrDefault(false)
 
@@ -125,23 +143,33 @@ internal class ReaderImageHostManager(
 
     fun preferredLatencyMillis(): Long? = preferredHost?.let { hostStates[it]?.latencyMillis }
 
+    @Synchronized
     fun recordSuccess(url: String, elapsedMillis: Long) {
         val host = url.toHttpUrlOrNull()?.host ?: return
         if (host !in allHosts()) return
         val state = hostStates.getOrPut(host) { HostState() }
         state.failedAtMillis = 0L
-        state.latencyMillis = ewma(state.latencyMillis, elapsedMillis.coerceAtLeast(1L))
-        preferredHost = host
+        state.latencyMillis = readerHostLatencyEwma(
+            state.latencyMillis,
+            elapsedMillis.coerceAtLeast(1L),
+        )
+        state.probedAtMillis = System.currentTimeMillis()
+        preferredHost = fastestHost()
         preferences.edit {
-            putString(PREFERRED_HOST_KEY, host)
+            putString(PREFERRED_HOST_KEY, preferredHost)
             putString(LATENCY_KEY, serializeLatencies())
         }
     }
 
+    @Synchronized
     fun recordFailure(url: String) {
         val host = url.toHttpUrlOrNull()?.host ?: return
         if (host !in allHosts()) return
         hostStates.getOrPut(host) { HostState() }.failedAtMillis = System.currentTimeMillis()
+        if (preferredHost == host) {
+            preferredHost = fastestHost()
+            preferences.edit { putString(PREFERRED_HOST_KEY, preferredHost) }
+        }
     }
 
     fun warmImageConnections(originUrl: String) {
@@ -177,12 +205,18 @@ internal class ReaderImageHostManager(
     }
 
     fun scheduleRefresh() {
-        if (!refreshInFlight.compareAndSet(false, true) || closed.get()) return
+        if (closed.get()) return
+        refreshRequested.set(true)
+        if (!refreshInFlight.compareAndSet(false, true)) return
         scope.launch(Dispatchers.IO) {
             try {
-                refreshProbes()
+                do {
+                    refreshRequested.set(false)
+                    refreshProbes()
+                } while (refreshRequested.get() && !closed.get())
             } finally {
                 refreshInFlight.set(false)
+                if (refreshRequested.get() && !closed.get()) scheduleRefresh()
             }
         }
     }
@@ -218,6 +252,15 @@ internal class ReaderImageHostManager(
         scheduleRefresh()
     }
 
+    private fun scheduleNetworkChanged() {
+        if (closed.get()) return
+        val generation = networkChangeGeneration.incrementAndGet()
+        scope.launch(Dispatchers.IO) {
+            delay(NETWORK_CHANGE_DEBOUNCE_MILLIS)
+            if (networkChangeGeneration.get() == generation) onNetworkChanged()
+        }
+    }
+
     fun close() {
         if (!closed.compareAndSet(false, true)) return
         if (callbackRegistered) runCatching { connectivityManager?.unregisterNetworkCallback(networkCallback) }
@@ -230,14 +273,13 @@ internal class ReaderImageHostManager(
         if (closed.get()) return
         val hosts = allHosts()
         if (hosts.isEmpty()) return
-        val hadPreferredHost = preferredHost != null
         val limiter = Semaphore(PROBE_CONCURRENCY)
         hosts.map { host ->
             scope.async(Dispatchers.IO) {
                 limiter.withPermit { probe(host) }
             }
         }.awaitAll()
-        if (!hadPreferredHost && preferredHost == null) preferredHost = fastestHost()
+        preferredHost = fastestHost() ?: preferredHost
         preferences.edit {
             putString(LATENCY_KEY, serializeLatencies())
             putString(PREFERRED_HOST_KEY, preferredHost)
@@ -261,7 +303,7 @@ internal class ReaderImageHostManager(
             } }
             val elapsed = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(1L)
             hostStates.getOrPut(host) { HostState() }.apply {
-                latencyMillis = ewma(latencyMillis, elapsed)
+                latencyMillis = readerHostLatencyEwma(latencyMillis, elapsed)
                 probedAtMillis = System.currentTimeMillis()
                 failedAtMillis = 0L
             }
@@ -300,10 +342,17 @@ internal class ReaderImageHostManager(
         return failedAt > 0L && now - failedAt in 0 until HOST_COOLDOWN_MILLIS
     }
 
-    private fun fastestHost(): String? = allHosts()
-        .mapNotNull { host -> hostStates[host]?.latencyMillis?.let { host to it } }
-        .minByOrNull { it.second }
-        ?.first
+    private fun fastestHost(): String? {
+        val now = System.currentTimeMillis()
+        val hosts = allHosts()
+        return selectReaderPreferredHost(
+            candidates = hosts,
+            latencyMillis = hosts.associateWith { hostStates[it]?.latencyMillis },
+            failedAtMillis = hosts.associateWith { hostStates[it]?.failedAtMillis ?: 0L },
+            nowMillis = now,
+            cooldownMillis = HOST_COOLDOWN_MILLIS,
+        )
+    }
 
     private fun serializeLatencies(): String = allHosts().mapNotNull { host ->
         hostStates[host]?.latencyMillis?.let { "$host|$it|${hostStates[host]?.probedAtMillis ?: 0L}" }
@@ -324,6 +373,7 @@ internal class ReaderImageHostManager(
         private const val MAX_HOST_COUNT = 12
         private const val MAX_LATENCY_MILLIS = 120_000L
         private const val MAX_PREFERENCE_LENGTH = 4_096
+        private const val NETWORK_CHANGE_DEBOUNCE_MILLIS = 300L
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 9; Mobile) AppleWebKit/537.36 Chrome/91.0 Safari/537.36"
         private const val REFERER = "https://18comic.vip"
@@ -360,9 +410,6 @@ internal class ReaderImageHostManager(
             }
             return host
         }
-
-        private fun ewma(previous: Long?, current: Long): Long =
-            if (previous == null) current else (previous * 3L + current) / 4L
     }
 }
 
@@ -392,9 +439,30 @@ internal fun replaceReaderImageHost(originalUrl: String, host: String): String? 
     return runCatching { url.newBuilder().host(host).build().toString() }.getOrNull()
 }
 
-@Suppress("UNUSED_PARAMETER")
 internal fun isReaderImageMirrorAllowed(
     host: String,
     path: String,
     allowlistedHosts: Collection<String>,
-): Boolean = host in allowlistedHosts
+): Boolean = host in allowlistedHosts && isReaderImageMirrorPathAllowed(path)
+
+internal fun isReaderImageMirrorPathAllowed(path: String): Boolean =
+    path.startsWith("/media/photos/") || path.startsWith("/media/albums/")
+
+internal fun readerHostLatencyEwma(previous: Long?, current: Long): Long =
+    if (previous == null) current else (previous + current) / 2L
+
+internal fun selectReaderPreferredHost(
+    candidates: Collection<String>,
+    latencyMillis: Map<String, Long?>,
+    failedAtMillis: Map<String, Long>,
+    nowMillis: Long,
+    cooldownMillis: Long,
+): String? = candidates
+    .asSequence()
+    .filter { host ->
+        val failedAt = failedAtMillis[host] ?: 0L
+        failedAt <= 0L || nowMillis - failedAt !in 0 until cooldownMillis
+    }
+    .mapNotNull { host -> latencyMillis[host]?.let { host to it } }
+    .minByOrNull { it.second }
+    ?.first

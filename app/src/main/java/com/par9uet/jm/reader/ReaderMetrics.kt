@@ -14,13 +14,17 @@ internal data class ReaderMetricsSnapshot(
     val cacheMisses: Long,
     val networkRequests: Long,
     val networkFailures: Long,
+    val networkCanceled: Long,
     val hedgeStarted: Long,
+    val hedgeSecondaryStarted: Long,
     val hedgeWinnerPrimary: Long,
     val hedgeWinnerSecondary: Long,
     val hedgeLoserCanceled: Long,
     val prefetchCanceled: Long,
     val decodeCount: Long,
     val totalTimeToFirstByteMillis: Long,
+    val totalPrimaryTimeToHeadersMillis: Long,
+    val totalBodyDownloadMillis: Long,
     val totalNetworkMillis: Long,
     val totalDecodeMillis: Long,
     val visibleLatencyP50Millis: Long?,
@@ -28,6 +32,7 @@ internal data class ReaderMetricsSnapshot(
     val visibleLatencyP99Millis: Long?,
     val hostSuccesses: Map<String, Long>,
     val hostFailures: Map<String, Long>,
+    val hedgeWinnerHosts: Map<String, Long>,
 )
 
 /** Debug-only counters with no per-page log spam in release builds. */
@@ -44,17 +49,22 @@ internal class ReaderMetrics(
     private val cacheMisses = AtomicLong()
     private val networkRequests = AtomicLong()
     private val networkFailures = AtomicLong()
+    private val networkCanceled = AtomicLong()
     private val hedgeStarted = AtomicLong()
+    private val hedgeSecondaryStarted = AtomicLong()
     private val hedgeWinnerPrimary = AtomicLong()
     private val hedgeWinnerSecondary = AtomicLong()
     private val hedgeLoserCanceled = AtomicLong()
     private val prefetchCanceled = AtomicLong()
     private val decodeCount = AtomicLong()
     private val totalTimeToFirstByteMillis = AtomicLong()
+    private val totalPrimaryTimeToHeadersMillis = AtomicLong()
+    private val totalBodyDownloadMillis = AtomicLong()
     private val totalNetworkMillis = AtomicLong()
     private val totalDecodeMillis = AtomicLong()
     private val hostSuccesses = ConcurrentHashMap<String, AtomicLong>()
     private val hostFailures = ConcurrentHashMap<String, AtomicLong>()
+    private val hedgeWinnerHosts = ConcurrentHashMap<String, AtomicLong>()
     private val visibleLatencySamples = ArrayDeque<Long>()
 
     fun request(priority: ReaderRequestPriority) {
@@ -72,13 +82,24 @@ internal class ReaderMetrics(
     fun sourceHit() { if (enabled) sourceCacheHits.incrementAndGet() }
     fun cacheMiss() { if (enabled) cacheMisses.incrementAndGet() }
     fun networkStarted() { if (enabled) networkRequests.incrementAndGet() }
-    fun responseHeadersReceived(elapsedMillis: Long) {
-        if (enabled) totalTimeToFirstByteMillis.addAndGet(elapsedMillis.coerceAtLeast(0L))
+    fun responseHeadersReceived(elapsedMillis: Long, primary: Boolean = false) {
+        if (!enabled) return
+        val elapsed = elapsedMillis.coerceAtLeast(0L)
+        totalTimeToFirstByteMillis.addAndGet(elapsed)
+        if (primary) totalPrimaryTimeToHeadersMillis.addAndGet(elapsed)
     }
     fun networkFinished(success: Boolean, elapsedMillis: Long) {
         if (!enabled) return
         if (!success) networkFailures.incrementAndGet()
         totalNetworkMillis.addAndGet(elapsedMillis.coerceAtLeast(0L))
+    }
+    fun networkCanceled(elapsedMillis: Long) {
+        if (!enabled) return
+        networkCanceled.incrementAndGet()
+        totalNetworkMillis.addAndGet(elapsedMillis.coerceAtLeast(0L))
+    }
+    fun bodyDownloadFinished(elapsedMillis: Long) {
+        if (enabled) totalBodyDownloadMillis.addAndGet(elapsedMillis.coerceAtLeast(0L))
     }
     fun hostSuccess(host: String) {
         if (enabled) hostSuccesses.getOrPut(host) { AtomicLong() }.incrementAndGet()
@@ -87,9 +108,11 @@ internal class ReaderMetrics(
         if (enabled) hostFailures.getOrPut(host) { AtomicLong() }.incrementAndGet()
     }
     fun hedgeStarted() { if (enabled) hedgeStarted.incrementAndGet() }
-    fun hedgeWinner(primary: Boolean) {
+    fun hedgeSecondaryStarted() { if (enabled) hedgeSecondaryStarted.incrementAndGet() }
+    fun hedgeWinner(primary: Boolean, host: String? = null) {
         if (!enabled) return
         if (primary) hedgeWinnerPrimary.incrementAndGet() else hedgeWinnerSecondary.incrementAndGet()
+        host?.let { hedgeWinnerHosts.getOrPut(it) { AtomicLong() }.incrementAndGet() }
     }
     fun hedgeLoserCanceled() { if (enabled) hedgeLoserCanceled.incrementAndGet() }
     fun prefetchCanceled() { if (enabled) prefetchCanceled.incrementAndGet() }
@@ -123,13 +146,17 @@ internal class ReaderMetrics(
             cacheMisses = cacheMisses.get(),
             networkRequests = networkRequests.get(),
             networkFailures = networkFailures.get(),
+            networkCanceled = networkCanceled.get(),
             hedgeStarted = hedgeStarted.get(),
+            hedgeSecondaryStarted = hedgeSecondaryStarted.get(),
             hedgeWinnerPrimary = hedgeWinnerPrimary.get(),
             hedgeWinnerSecondary = hedgeWinnerSecondary.get(),
             hedgeLoserCanceled = hedgeLoserCanceled.get(),
             prefetchCanceled = prefetchCanceled.get(),
             decodeCount = decodeCount.get(),
             totalTimeToFirstByteMillis = totalTimeToFirstByteMillis.get(),
+            totalPrimaryTimeToHeadersMillis = totalPrimaryTimeToHeadersMillis.get(),
+            totalBodyDownloadMillis = totalBodyDownloadMillis.get(),
             totalNetworkMillis = totalNetworkMillis.get(),
             totalDecodeMillis = totalDecodeMillis.get(),
             visibleLatencyP50Millis = percentile(50),
@@ -137,6 +164,7 @@ internal class ReaderMetrics(
             visibleLatencyP99Millis = percentile(99),
             hostSuccesses = hostSuccesses.mapValues { it.value.get() },
             hostFailures = hostFailures.mapValues { it.value.get() },
+            hedgeWinnerHosts = hedgeWinnerHosts.mapValues { it.value.get() },
         )
     }
 

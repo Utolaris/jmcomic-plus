@@ -7,6 +7,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
@@ -38,6 +41,27 @@ class ReaderAccelerationTest {
                 allowlistedHosts = listOf("cdn.example"),
             ),
         )
+        assertFalse(
+            isReaderImageMirrorAllowed(
+                host = "cdn.example",
+                path = "/api/private/image.webp",
+                allowlistedHosts = listOf("cdn.example"),
+            ),
+        )
+        assertFalse(
+            isReaderImageMirrorAllowed(
+                host = "cdn.example",
+                path = "/user-content/image.webp",
+                allowlistedHosts = listOf("cdn.example"),
+            ),
+        )
+        assertTrue(
+            isReaderImageMirrorAllowed(
+                host = "cdn.example",
+                path = "/media/albums/220980_3x4.jpg",
+                allowlistedHosts = listOf("cdn.example"),
+            ),
+        )
     }
 
     @Test
@@ -55,10 +79,20 @@ class ReaderAccelerationTest {
         val unrelated = first.copy(
             sourceIdentity = "https://example.com/media/photos/7/00003.webp?t=1",
         )
+        val unsupportedFirst = first.copy(
+            sourceIdentity = "https://cdn-msp.jmapiproxy1.cc/api/image/00003.webp?t=1",
+        )
+        val unsupportedSecond = unsupportedFirst.copy(
+            sourceIdentity = "https://cdn-msp.jmapiproxy2.cc/api/image/00003.webp?t=1",
+        )
 
         assertEquals(readerCacheKey(first, "source"), readerCacheKey(second, "source"))
         assertEquals(first.stableIdentity(), second.stableIdentity())
         assertTrue(readerCacheKey(first, "source") != readerCacheKey(unrelated, "source"))
+        assertTrue(
+            readerCacheKey(unsupportedFirst, "source") !=
+                readerCacheKey(unsupportedSecond, "source"),
+        )
     }
 
     @Test
@@ -133,6 +167,29 @@ class ReaderAccelerationTest {
     }
 
     @Test
+    fun preferredHostTracksStableEwmaInsteadOfLastSuccess() {
+        val latencies = mutableMapOf<String, Long?>()
+        fun sample(host: String, elapsedMillis: Long): String? {
+            latencies[host] = readerHostLatencyEwma(latencies[host], elapsedMillis)
+            return selectReaderPreferredHost(
+                candidates = listOf("A", "B"),
+                latencyMillis = latencies,
+                failedAtMillis = emptyMap(),
+                nowMillis = 1_000L,
+                cooldownMillis = 120_000L,
+            )
+        }
+
+        assertEquals("A", sample("A", 40L))
+        assertEquals("A", sample("A", 45L))
+        assertEquals("A", sample("A", 42L))
+        assertEquals("A", sample("B", 120L))
+        assertEquals("A", sample("B", 20L))
+        assertEquals("A", sample("B", 22L))
+        assertEquals("B", sample("B", 18L))
+    }
+
+    @Test
     fun adaptivePolicyBoundsAggressivePrefetchAndUsesSourceOnlyOnSingleSlot() {
         val lowRam = readerAdaptivePrefetchPolicy(
             configuredDistance = 6,
@@ -162,6 +219,75 @@ class ReaderAccelerationTest {
         assertTrue(highEnd.distance > 3)
         assertTrue(highEnd.distance <= 12)
         assertEquals(2, highEnd.parallelism)
+    }
+
+    @Test
+    fun adaptivePrefetchSchedulerEnforcesOneOrTwoActiveWorkers() = runBlocking {
+        suspend fun maximumActive(parallelism: Int): Int {
+            val active = AtomicInteger()
+            val maximum = AtomicInteger()
+            runReaderPrefetchSchedule((0 until 8).toList(), parallelism) {
+                val current = active.incrementAndGet()
+                maximum.updateAndGet { previous -> maxOf(previous, current) }
+                try {
+                    delay(20L)
+                } finally {
+                    active.decrementAndGet()
+                }
+            }
+            return maximum.get()
+        }
+
+        assertEquals(1, maximumActive(parallelism = 1))
+        assertEquals(2, maximumActive(parallelism = 2))
+    }
+
+    @Test
+    fun cancelingPrefetchScheduleStopsItsActiveWorkers() = runBlocking {
+        val started = CompletableDeferred<Unit>()
+        val canceledWorkers = AtomicInteger()
+        val schedule = launch {
+            runReaderPrefetchSchedule((0 until 12).toList(), parallelism = 2) {
+                started.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    canceledWorkers.incrementAndGet()
+                }
+            }
+        }
+
+        started.await()
+        schedule.cancelAndJoin()
+        assertTrue(canceledWorkers.get() in 1..2)
+    }
+
+    @Test
+    fun stalePrefetchEntryCanBeCanceledImmediatelyAfterConsumerLeaves() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        val registry = ReaderInFlightRegistry<String, String>(
+            scope = scope,
+            cancellationGraceMillis = 10_000L,
+        )
+        val loaderStarted = CompletableDeferred<Unit>()
+        val loaderCanceled = CompletableDeferred<Unit>()
+        val consumer = launch {
+            registry.request("stale", ReaderRequestPriority.PREFETCH) {
+                loaderStarted.complete(Unit)
+                try {
+                    awaitCancellation()
+                } finally {
+                    loaderCanceled.complete(Unit)
+                }
+            }
+        }
+
+        loaderStarted.await()
+        consumer.cancelAndJoin()
+        assertTrue(registry.cancelPrefetch("stale"))
+        withTimeout(1_000L) { loaderCanceled.await() }
+        scope.coroutineContext[kotlinx.coroutines.Job]?.cancel()
+        Unit
     }
 
     @Test

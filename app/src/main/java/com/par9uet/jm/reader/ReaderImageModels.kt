@@ -31,7 +31,8 @@ internal fun readerLogicalSourceIdentity(sourceIdentity: String): String {
     val url = sourceIdentity.toHttpUrlOrNull() ?: return sourceIdentity
     if (
         url.scheme != "https" ||
-        url.host !in READER_IMAGE_MIRROR_HOSTS
+        url.host !in READER_IMAGE_MIRROR_HOSTS ||
+        !isReaderImageMirrorPathAllowed(url.encodedPath)
     ) return sourceIdentity
     // Query parameters on JM image URLs are cache-busters; the immutable page path is the
     // content identity, while the original URL still retains the query for the network request.
