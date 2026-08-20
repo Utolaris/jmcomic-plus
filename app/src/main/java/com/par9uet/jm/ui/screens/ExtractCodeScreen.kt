@@ -43,13 +43,13 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.ImageLoader
-import coil.compose.AsyncImage
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.components.JmCoverImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.koin.compose.getKoin
@@ -208,8 +208,9 @@ fun ExtractCodeScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // 左侧封面小窗口
-                    AsyncImage(
-                        model = "${remoteSetting.imgHost}/media/albums/${comic.id}_3x4.jpg",
+                    JmCoverImage(
+                        comicId = comic.id,
+                        remoteHost = remoteSetting.imgHost,
                         imageLoader = imageLoader,
                         contentDescription = "${comic.name}的封面",
                         contentScale = ContentScale.Crop,

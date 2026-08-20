@@ -7,6 +7,9 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.edit
+import com.par9uet.jm.image.JM_IMAGE_HOSTS
+import com.par9uet.jm.image.isJmImagePathAllowed
+import com.par9uet.jm.image.normalizeJmImageHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -93,8 +96,8 @@ internal class ReaderImageHostManager(
     }.getOrDefault(false)
 
     @Volatile
-    private var preferredHost: String? = normalizeHost(preferences.getString(PREFERRED_HOST_KEY, null))
-        ?.takeIf { it in KNOWN_IMAGE_HOSTS }
+    private var preferredHost: String? = normalizeJmImageHost(preferences.getString(PREFERRED_HOST_KEY, null))
+        ?.takeIf { it in JM_IMAGE_HOSTS }
 
     init {
         val savedLatencies = preferences.getString(LATENCY_KEY, null)
@@ -102,7 +105,7 @@ internal class ReaderImageHostManager(
             .lineSequence()
             .mapNotNull { line ->
                 val parts = line.split('|', limit = 3)
-                val host = normalizeHost(parts.getOrNull(0)) ?: return@mapNotNull null
+                val host = normalizeJmImageHost(parts.getOrNull(0)) ?: return@mapNotNull null
                 val latency = parts.getOrNull(1)?.toLongOrNull()?.takeIf { it in 1..MAX_LATENCY_MILLIS }
                 val probedAt = parts.getOrNull(2)?.toLongOrNull()?.takeIf { it > 0L } ?: 0L
                 Triple(host, latency, probedAt)
@@ -116,7 +119,7 @@ internal class ReaderImageHostManager(
         preferredHost?.let { configuredHosts += it }
         scope.launch(Dispatchers.IO) {
             configuredHostFlow.collectLatest { raw ->
-                normalizeHost(raw)?.let { host ->
+                normalizeJmImageHost(raw)?.let { host ->
                     configuredHosts += host
                     hostStates.putIfAbsent(host, HostState())
                     scheduleRefresh()
@@ -332,8 +335,8 @@ internal class ReaderImageHostManager(
         )
     }
 
-    private fun allHosts(): List<String> = (KNOWN_IMAGE_HOSTS + configuredHosts)
-        .mapNotNull(::normalizeHost)
+    private fun allHosts(): List<String> = (JM_IMAGE_HOSTS + configuredHosts)
+        .mapNotNull(::normalizeJmImageHost)
         .distinct()
         .take(MAX_HOST_COUNT)
 
@@ -377,39 +380,6 @@ internal class ReaderImageHostManager(
         private const val USER_AGENT =
             "Mozilla/5.0 (Linux; Android 9; Mobile) AppleWebKit/537.36 Chrome/91.0 Safari/537.36"
         private const val REFERER = "https://18comic.vip"
-        private val KNOWN_IMAGE_HOSTS = listOf(
-            "cdn-msp.jmapiproxy1.cc",
-            "cdn-msp.jmapiproxy2.cc",
-            "cdn-msp2.jmapiproxy2.cc",
-            "cdn-msp3.jmapiproxy2.cc",
-            "cdn-msp.jmapinodeudzn.net",
-            "cdn-msp3.jmapinodeudzn.net",
-        )
-
-        private fun normalizeHost(raw: String?): String? {
-            val value = raw?.trim()?.trimEnd('/').orEmpty()
-            if (value.isBlank()) return null
-            val parsed = (if (value.contains("://")) value else "https://$value").toHttpUrlOrNull()
-                ?: return null
-            if (parsed.scheme != "https" || parsed.port != 443 || parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) {
-                return null
-            }
-            val host = parsed.host.lowercase()
-            if (
-                host.length > 253 ||
-                host.contains("..") ||
-                host.any { it == '/' || it == '?' || it == '#' } ||
-                host.split('.').any { label ->
-                    label.isEmpty() || label.length > 63 ||
-                        label.first().let { !it.isLetterOrDigit() } ||
-                        label.last().let { !it.isLetterOrDigit() } ||
-                        label.any { character -> !character.isLetterOrDigit() && character != '-' }
-                }
-            ) {
-                return null
-            }
-            return host
-        }
     }
 }
 
@@ -446,7 +416,7 @@ internal fun isReaderImageMirrorAllowed(
 ): Boolean = host in allowlistedHosts && isReaderImageMirrorPathAllowed(path)
 
 internal fun isReaderImageMirrorPathAllowed(path: String): Boolean =
-    path.startsWith("/media/photos/") || path.startsWith("/media/albums/")
+    isJmImagePathAllowed(path)
 
 internal fun readerHostLatencyEwma(previous: Long?, current: Long): Long =
     if (previous == null) current else (previous + current) / 2L

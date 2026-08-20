@@ -32,7 +32,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
-import coil.compose.AsyncImage
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
@@ -63,8 +62,9 @@ fun ComicCoverImage(
     var detailLoading by remember { mutableStateOf(false) }
 
     Box(modifier = modifier) {
-        AsyncImage(
-            model = "${remoteSetting.imgHost}/media/albums/${comic.id}_3x4.jpg",
+        JmCoverImage(
+            comicId = comic.id,
+            remoteHost = remoteSetting.imgHost,
             imageLoader = imageLoader,
             contentDescription = "${comic.name}的封面",
             contentScale = ContentScale.Crop,

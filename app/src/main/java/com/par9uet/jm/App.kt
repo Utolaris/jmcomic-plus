@@ -41,6 +41,7 @@ import com.par9uet.jm.ui.screens.AppScreen
 import com.par9uet.jm.ui.screens.LoadingScreen
 import com.par9uet.jm.ui.screens.NsfwWarningDialog
 import com.par9uet.jm.ui.screens.WelcomeScreen
+import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.viewModel.GlobalViewModel
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import kotlinx.coroutines.flow.first
@@ -292,8 +293,9 @@ fun App(
                         horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
                     ) {
                         // 左侧封面小窗口
-                        coil.compose.AsyncImage(
-                            model = "${remoteSetting.imgHost}/media/albums/${detectedComic.id}_3x4.jpg",
+                        JmCoverImage(
+                            comicId = detectedComic.id,
+                            remoteHost = remoteSetting.imgHost,
                             imageLoader = imageLoader,
                             contentDescription = "${detectedComic.name}的封面",
                             contentScale = androidx.compose.ui.layout.ContentScale.Crop,

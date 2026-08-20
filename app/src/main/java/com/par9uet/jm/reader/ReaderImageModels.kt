@@ -1,5 +1,6 @@
 package com.par9uet.jm.reader
 
+import com.par9uet.jm.image.JM_IMAGE_HOSTS
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
@@ -31,22 +32,13 @@ internal fun readerLogicalSourceIdentity(sourceIdentity: String): String {
     val url = sourceIdentity.toHttpUrlOrNull() ?: return sourceIdentity
     if (
         url.scheme != "https" ||
-        url.host !in READER_IMAGE_MIRROR_HOSTS ||
+        url.host !in JM_IMAGE_HOSTS ||
         !isReaderImageMirrorPathAllowed(url.encodedPath)
     ) return sourceIdentity
     // Query parameters on JM image URLs are cache-busters; the immutable page path is the
     // content identity, while the original URL still retains the query for the network request.
     return "image-mirror|${url.encodedPath}"
 }
-
-private val READER_IMAGE_MIRROR_HOSTS = setOf(
-    "cdn-msp.jmapiproxy1.cc",
-    "cdn-msp.jmapiproxy2.cc",
-    "cdn-msp2.jmapiproxy2.cc",
-    "cdn-msp3.jmapiproxy2.cc",
-    "cdn-msp.jmapinodeudzn.net",
-    "cdn-msp3.jmapinodeudzn.net",
-)
 
 /**
  * A reader page deliberately contains metadata and source callbacks only. It does not own a

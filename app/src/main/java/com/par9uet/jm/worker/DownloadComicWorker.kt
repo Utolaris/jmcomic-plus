@@ -5,12 +5,16 @@ import androidx.core.graphics.drawable.toBitmap
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import coil.ImageLoader
+import coil.decode.DataSource
 import coil.request.ErrorResult
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import com.par9uet.jm.cache.getComicChapterDownloadDir
 import com.par9uet.jm.cache.getComicCoverDownloadFile
 import com.par9uet.jm.cache.writeComicCacheConfig
+import com.par9uet.jm.BuildConfig
+import com.par9uet.jm.coil.CoverImageHostResolver
+import com.par9uet.jm.coil.jmCoverCacheKey
 import com.par9uet.jm.data.models.ComicPicImageState
 import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.database.model.DownloadComic
@@ -30,6 +34,7 @@ import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.cancelProgressNotification
 import com.par9uet.jm.utils.compressWebpCompat
 import com.par9uet.jm.utils.showProgressNotification
+import com.par9uet.jm.utils.log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -48,6 +53,8 @@ class DownloadComicWorker(
     private val comicRepository: ComicRepository,
     private val downloadToastAggregator: DownloadToastAggregator,
     private val readerImagePipeline: ReaderImagePipeline,
+    private val coverImageHostResolver: CoverImageHostResolver,
+    private val imageLoader: ImageLoader,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
@@ -102,25 +109,44 @@ class DownloadComicWorker(
 
     private suspend fun downloadCover(downloadTask: DownloadComic, coverOwnerId: Int): String {
         return withContext(Dispatchers.IO) {
-            val coverUrl =
-                "${remoteSettingManager.remoteSettingState.value.imgHost}/media/albums/${coverOwnerId}_3x4.jpg"
-            val loader = ImageLoader(appContext)
-            val request = ImageRequest.Builder(appContext)
-                .data(coverUrl)
-                .allowHardware(false)
-                .build()
+            val cacheKey = jmCoverCacheKey(coverOwnerId)
+            val candidates = coverImageHostResolver.coverUrls(
+                comicId = coverOwnerId,
+                remoteHost = remoteSettingManager.remoteSettingState.value.imgHost,
+            )
+            candidates.forEachIndexed { index, coverUrl ->
+                val request = ImageRequest.Builder(appContext)
+                    .data(coverUrl)
+                    .memoryCacheKey(cacheKey)
+                    .diskCacheKey(cacheKey)
+                    .allowHardware(false)
+                    .build()
 
-            when (val result = loader.execute(request)) {
-                is ErrorResult -> ""
-                is SuccessResult -> {
-                    val bitmap = result.drawable.toBitmap()
-                    val file = getComicCoverDownloadFile(appContext, downloadTask)
-                    FileOutputStream(file).use { out ->
-                        bitmap.compressWebpCompat(50, out)
+                when (val result = imageLoader.execute(request)) {
+                    is ErrorResult -> {
+                        coverImageHostResolver.recordFailure(coverUrl)
+                        if (BuildConfig.DEBUG) {
+                            log(
+                                "CoverImage",
+                                "download JM$coverOwnerId candidate $index failed: " +
+                                    result.throwable::class.java.simpleName,
+                            )
+                        }
                     }
-                    file.absolutePath
+                    is SuccessResult -> {
+                        if (result.dataSource == DataSource.NETWORK) {
+                            coverImageHostResolver.recordSuccess(coverUrl)
+                        }
+                        val bitmap = result.drawable.toBitmap()
+                        val file = getComicCoverDownloadFile(appContext, downloadTask)
+                        FileOutputStream(file).use { out ->
+                            bitmap.compressWebpCompat(50, out)
+                        }
+                        return@withContext file.absolutePath
+                    }
                 }
             }
+            ""
         }
     }
 

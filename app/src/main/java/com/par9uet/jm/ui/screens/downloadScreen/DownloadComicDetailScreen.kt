@@ -61,6 +61,7 @@ import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
 import com.par9uet.jm.ui.components.ChapterSingleSelectDialog
 import com.par9uet.jm.ui.components.ComicContentTag
+import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
 import com.par9uet.jm.utils.CachedComicInfo
@@ -272,10 +273,8 @@ fun DownloadComicDetailScreen(
             LocalCover(
                 title = detailState.title,
                 coverPath = detailState.coverPath,
-                remoteCoverUrl = buildRemoteCoverUrl(
-                    imgHost = remoteSetting.imgHost,
-                    comicId = detailState.remoteCoverComicId
-                ),
+                remoteHost = remoteSetting.imgHost,
+                comicId = detailState.remoteCoverComicId,
                 imageLoader = imageLoader
             )
             Column(
@@ -483,18 +482,13 @@ private fun DownloadDetailBottomActions(
 private fun LocalCover(
     title: String,
     coverPath: String,
-    remoteCoverUrl: String?,
+    remoteHost: String,
+    comicId: Int,
     imageLoader: ImageLoader
 ) {
-    val coverModel: Any? = when {
-        coverPath.isNotBlank() -> File(coverPath)
-        !remoteCoverUrl.isNullOrBlank() -> remoteCoverUrl
-        else -> null
-    }
-
-    if (coverModel != null) {
+    if (coverPath.isNotBlank()) {
         AsyncImage(
-            model = coverModel,
+            model = File(coverPath),
             imageLoader = imageLoader,
             contentDescription = "${title}的封面",
             contentScale = ContentScale.Crop,
@@ -503,18 +497,17 @@ private fun LocalCover(
                 .aspectRatio(0.75f)
         )
     } else {
-        Box(
+        JmCoverImage(
+            comicId = comicId,
+            remoteHost = remoteHost,
+            imageLoader = imageLoader,
+            contentDescription = "${title}的封面",
+            contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(0.75f)
+                .aspectRatio(0.75f),
         )
     }
-}
-
-private fun buildRemoteCoverUrl(imgHost: String, comicId: Int): String? {
-    return imgHost
-        .takeIf { it.isNotBlank() }
-        ?.let { "$it/media/albums/${comicId}_3x4.jpg" }
 }
 
 @Composable

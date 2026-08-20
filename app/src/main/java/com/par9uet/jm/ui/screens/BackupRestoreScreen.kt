@@ -56,7 +56,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import coil.compose.AsyncImage
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.data.models.Comic
@@ -78,6 +77,7 @@ import com.par9uet.jm.storage.AiChatStorage
 import com.par9uet.jm.storage.PersonaStorage
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
 import kotlinx.coroutines.Dispatchers
@@ -1089,9 +1089,6 @@ private fun ComicRestoreRow(
     imgHost: String,
     onToggle: () -> Unit,
 ) {
-    val coverUrl = if (imgHost.isNotBlank()) {
-        "${imgHost}/media/albums/${group.id}_3x4.jpg"
-    } else ""
     val containerColor = if (checked) MaterialTheme.colorScheme.primaryContainer
     else MaterialTheme.colorScheme.surfaceContainer
     val contentColor = if (checked) MaterialTheme.colorScheme.onPrimaryContainer
@@ -1118,21 +1115,13 @@ private fun ComicRestoreRow(
                     .clip(RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                if (coverUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = coverUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Rounded.Book,
-                        contentDescription = null,
-                        tint = contentColor,
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
+                JmCoverImage(
+                    comicId = group.id,
+                    remoteHost = imgHost,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             // 右侧信息
             Column(modifier = Modifier.weight(1f)) {

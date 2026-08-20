@@ -5,6 +5,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.Strictness
 import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.repository.AiChatRepository
+import com.par9uet.jm.coil.CoverImageHostResolver
 import com.par9uet.jm.repository.impl.RemoteSettingRepositoryImpl
 import com.par9uet.jm.storage.AiChatStorage
 import com.par9uet.jm.storage.CookieStorage
@@ -53,6 +54,7 @@ val appModule = module {
     single { AiChatStorage(get()) }
     single { PersonaStorage(get()) }
     single { LauncherDisguiseApplier(get()) }
+    single { CoverImageHostResolver() }
 
     single { RemoteSettingRepositoryImpl(get(), get()) } bind RemoteSettingRepository::class
     single { AiChatRepository(get()) }
