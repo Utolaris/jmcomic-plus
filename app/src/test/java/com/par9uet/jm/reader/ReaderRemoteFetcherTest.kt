@@ -76,6 +76,43 @@ class ReaderRemoteFetcherTest {
     }
 
     @Test
+    fun queuedSecondaryIsNotCountedUntilItsHttpCallIsEnqueued() = runBlocking {
+        val primary = server(
+            MockResponse()
+                .setResponseCode(200)
+                .setHeadersDelay(150L, TimeUnit.MILLISECONDS)
+                .setBody("PRIMARY"),
+        )
+        val secondary = server(MockResponse().setResponseCode(200).setBody("SECONDARY"))
+        val scheduler = ReaderNetworkScheduler(totalConcurrency = 1, initialBackgroundConcurrency = 1)
+        val secondaryStarted = AtomicInteger()
+        val fetcher = fetcher(
+            observer = object : ReaderRemoteObserver {
+                override fun onHedgeSecondaryStarted() {
+                    secondaryStarted.incrementAndGet()
+                }
+            },
+        )
+
+        val result = fetcher.fetchHedged(
+            primaryUrl = primary.url("/media/photos/queued.webp").toString(),
+            secondaryUrl = secondary.url("/media/photos/queued.webp").toString(),
+            delayMillis = 50L,
+            acquirePermit = {
+                scheduler.acquire(
+                    isVisible = { true },
+                    hasVisibleRequest = { true },
+                )
+            },
+            shouldPreempt = { false },
+        )
+
+        assertEquals("PRIMARY", result.file.readText())
+        assertEquals(0, secondary.requestCount)
+        assertEquals(0, secondaryStarted.get())
+    }
+
+    @Test
     fun slowPrimaryHeadersStartSecondaryAndCancelPrimaryCall() = runBlocking {
         val primary = server(
             MockResponse()

@@ -118,7 +118,6 @@ internal class ReaderRemoteFetcher(
                     observer.onHedgeWinner(primary = true, url = winner.url)
                     return@supervisorScope winner
                 }
-                observer.onHedgeSecondaryStarted()
                 val secondary = fetchCandidate(
                     url = secondaryUrl,
                     candidate = ReaderRemoteCandidate.SECONDARY,
@@ -133,7 +132,6 @@ internal class ReaderRemoteFetcher(
                     ?: primaryResult.exceptionOrNull()
                     ?: ReaderImageException("CDN 请求失败")
             }
-            observer.onHedgeSecondaryStarted()
             val secondary = fetchCandidate(
                 url = secondaryUrl,
                 candidate = ReaderRemoteCandidate.SECONDARY,
@@ -149,7 +147,6 @@ internal class ReaderRemoteFetcher(
                 ?: ReaderImageException("CDN 请求失败")
         }
 
-        observer.onHedgeSecondaryStarted()
         val secondary = async(start = CoroutineStart.DEFAULT) {
             openCandidate(
                 url = secondaryUrl,
@@ -207,8 +204,12 @@ internal class ReaderRemoteFetcher(
             if (shouldPreempt()) throw ReaderBackgroundPreempted()
             startedAt = clockMillis()
             call = client.newCall(imageRequest(url))
-            observer.onRequestStarted(url, candidate, call)
-            response = awaitResponse(call, shouldPreempt)
+            response = awaitResponse(call, shouldPreempt) {
+                observer.onRequestStarted(url, candidate, call)
+                if (candidate == ReaderRemoteCandidate.SECONDARY) {
+                    observer.onHedgeSecondaryStarted()
+                }
+            }
             val headersMillis = (clockMillis() - startedAt).coerceAtLeast(0L)
             observer.onResponseHeaders(url, candidate, headersMillis)
             if (!response.isSuccessful) throw ReaderImageException("HTTP ${response.code}")
@@ -262,19 +263,21 @@ internal class ReaderRemoteFetcher(
     private suspend fun awaitResponse(
         call: Call,
         shouldPreempt: () -> Boolean,
+        onEnqueued: () -> Unit,
     ): Response {
         val completed = CompletableDeferred<Response>()
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                completed.completeExceptionally(e)
-            }
-
-            override fun onResponse(call: Call, response: Response) {
-                if (!completed.complete(response)) response.close()
-            }
-        })
         var delivered = false
         try {
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    completed.completeExceptionally(e)
+                }
+
+                override fun onResponse(call: Call, response: Response) {
+                    if (!completed.complete(response)) response.close()
+                }
+            })
+            onEnqueued()
             while (true) {
                 if (shouldPreempt()) throw ReaderBackgroundPreempted()
                 val response = withTimeoutOrNull(PREEMPT_POLL_MILLIS) { completed.await() }
