@@ -19,7 +19,8 @@ open class BaseRepository {
             } else {
                 val errMsg = response.errorMsg ?: "未知错误"
                 logError(this::class.java.simpleName, "API 返回错误: $errMsg")
-                NetWorkResult.Error(errMsg)
+                // 透传服务端错误码，供上层区分凭据失效（401）与临时网络错误
+                NetWorkResult.Error(errMsg, response.code)
             }
         } catch (e: Exception) {
             handleException(e)
@@ -46,7 +47,7 @@ open class BaseRepository {
                     401 -> "账号或密码错误，请重新输入"
                     else -> "网络错误：${e.response.code}"
                 }
-                NetWorkResult.Error(errMsg)
+                NetWorkResult.Error(errMsg, e.response.code)
             }
 
             else -> NetWorkResult.Error(

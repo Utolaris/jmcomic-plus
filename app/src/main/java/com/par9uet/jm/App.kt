@@ -74,9 +74,10 @@ fun App(
     var sessionNsfwDismissed by remember { mutableStateOf(localSetting.nsfwWarningDismissed) }
 
     // Only the small local state needed to choose the first safe screen is loaded here. All
-    // network, history, launcher, notification, and account work starts after this composable
-    // has produced a real screen.
+    // network, history, launcher, notification, and account work waits for the first frame to be
+    // handed to the user, so background tasks never compete with first-frame CPU/disk work.
     LaunchedEffect(Unit) {
+        withFrameNanos { }
         postStartupInitializer.start()
     }
 

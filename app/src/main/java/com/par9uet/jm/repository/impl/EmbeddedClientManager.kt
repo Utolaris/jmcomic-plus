@@ -1,6 +1,7 @@
 package com.par9uet.jm.repository.impl
 
 import com.par9uet.jm.storage.CookieStorage
+import com.par9uet.jm.utils.log
 import io.github.jukomu.jmcomic.api.enums.ClientType
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import io.github.jukomu.jmcomic.core.config.JmConfiguration
@@ -16,6 +17,10 @@ import java.time.Duration
  *
  * The client is created on the first embedded-API request, never while the application shell is
  * starting. Domain probing therefore belongs to the request path and cannot delay TTID/TTI.
+ *
+ * Android 6 兼容：JmDomainManager 的域名探活使用 CompletableFuture.runAsync（ForkJoinPool），
+ * 在 Android 6 上可能初始化失败导致 blockUntilInitialized 永久阻塞。
+ * 此处在创建客户端后启动守护线程，超时后强制解除阻塞。
  */
 class EmbeddedClientManager(
     private val cookieStorage: CookieStorage,
@@ -67,6 +72,24 @@ class EmbeddedClientManager(
             }
             .build()
         val jmClient = JmApiClient(config, clientWithCookieInjection, context.cookieManager, domainManager)
+
+        // 守护线程：域名探活初始化超时后强制解除阻塞，避免 Android 6 上永久卡死。
+        // 客户端只在首次 Embedded API 请求时创建，因此不会进入启动关键路径。
+        Thread({
+            try {
+                // 等待 8 秒让域名探活完成
+                Thread.sleep(8000)
+                if (!domainManager.isInitialized) {
+                    log("EmbeddedClientManager: 域名探活初始化超时，强制解除阻塞")
+                    domainManager.setInitialized(true)
+                }
+            } catch (e: InterruptedException) {
+                // 忽略
+            }
+        }, "embedded-domain-init-guard").apply {
+            isDaemon = true
+            start()
+        }
 
         return jmClient
     }

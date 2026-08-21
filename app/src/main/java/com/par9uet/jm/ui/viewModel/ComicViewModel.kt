@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
 class ComicViewModel(
@@ -41,13 +42,23 @@ class ComicViewModel(
     private val _homeComicState = MutableStateFlow(HomeComicUIState())
     val homeComicState = _homeComicState.asStateFlow()
     private var homeRequestJob: Job? = null
+    private var homeRequestSource: String? = null
     private var loadedHomeSource: String? = null
 
     fun getHomeComic(force: Boolean = false) {
         val source = localSettingManager.localSettingState.value.comicApiSource
-        if (homeRequestJob?.isActive == true) return
+        val activeJob = homeRequestJob
+        if (activeJob?.isActive == true) {
+            if (homeRequestSource == source) return
+            // 数据源已切换：旧请求的结果不再属于当前 source，取消后立即为新 source 重新请求，
+            // 否则旧请求完成后会把 loadedHomeSource 写回旧值，导致首页一直显示旧数据源内容。
+            activeJob.cancel()
+            // 被取消的请求不会再执行收尾更新，这里手动复位加载状态，避免刷新指示器卡住。
+            _homeComicState.update { it.copy(isLoading = false) }
+        }
         if (!force && loadedHomeSource == source) return
 
+        homeRequestSource = source
         homeRequestJob = viewModelScope.launch {
             _homeComicState.update {
                 it.copy(
@@ -69,6 +80,8 @@ class ComicViewModel(
                     }
                 }
             }
+            // 请求期间数据源可能已被切换（本 Job 被取消），取消后不得再写入结果
+            ensureActive()
             loadedHomeSource = source
             _homeComicState.update {
                 it.copy(isLoading = false)

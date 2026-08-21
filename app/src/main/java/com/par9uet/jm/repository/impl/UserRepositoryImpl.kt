@@ -16,6 +16,7 @@ import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.retrofit.service.UserService
 import com.par9uet.jm.store.LocalSettingManager
+import io.github.jukomu.jmcomic.api.exception.ResponseException
 import io.github.jukomu.jmcomic.api.model.ForumQuery
 import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
@@ -44,6 +45,9 @@ class UserRepositoryImpl(
                         client.login(username, password)
                     }
                     NetWorkResult.Success(userInfo.toLoginResponse())
+                } catch (e: ResponseException) {
+                    // 保留服务端错误码（如 401），供上层区分凭据失效与临时网络错误
+                    NetWorkResult.Error("内置API登录失败：${e.message ?: "未知错误"}", e.errorCode)
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置API登录失败：${e.message ?: "未知错误"}")
                 }
