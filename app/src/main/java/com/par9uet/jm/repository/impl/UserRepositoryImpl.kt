@@ -7,6 +7,8 @@ import com.par9uet.jm.repository.BaseRepository
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
+import com.par9uet.jm.retrofit.Retrofit
+import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
@@ -16,7 +18,7 @@ import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.retrofit.service.UserService
 import com.par9uet.jm.store.LocalSettingManager
-import io.github.jukomu.jmcomic.api.exception.ResponseException
+import io.github.jukomu.jmcomic.api.exception.NetworkException
 import io.github.jukomu.jmcomic.api.model.ForumQuery
 import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
@@ -26,36 +28,106 @@ import io.github.jukomu.jmcomic.api.model.JmCommentList
 import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
 import io.github.jukomu.jmcomic.api.model.JmUserInfo
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import java.io.IOException
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 class UserRepositoryImpl(
     private val service: UserService,
     private val localSettingManager: LocalSettingManager,
     private val embeddedClientManager: EmbeddedClientManager,
+    private val retrofit: Retrofit,
 ) : BaseRepository(), UserRepository {
 
     override suspend fun login(username: String, password: String): NetWorkResult<LoginResponse> {
+        return loginInternal(username, password, isolatedSession = false)
+    }
+
+    override suspend fun verifyLogin(username: String, password: String): NetWorkResult<LoginResponse> {
+        return loginInternal(username, password, isolatedSession = true)
+    }
+
+    override fun clearSession() {
+        embeddedClientManager.clearSession()
+    }
+
+    private suspend fun loginInternal(
+        username: String,
+        password: String,
+        isolatedSession: Boolean,
+    ): NetWorkResult<LoginResponse> {
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
-                    val userInfo = withEmbeddedClient { client ->
-                        client.login(username, password)
+                    when (val result = embeddedClientManager.login(username, password, isolatedSession)) {
+                        is EmbeddedClientManager.EmbeddedLoginResult.Success -> {
+                            NetWorkResult.Success(result.userInfo.toLoginResponse())
+                        }
+                        is EmbeddedClientManager.EmbeddedLoginResult.Failure -> {
+                            val exception = result.exception
+                            NetWorkResult.Error(
+                                message = "内置API登录失败：${exception.message ?: "未知错误"}",
+                                code = result.businessCode ?: exception.errorCode,
+                                authFailure = result.classifyAuthFailure()
+                            )
+                        }
                     }
-                    NetWorkResult.Success(userInfo.toLoginResponse())
-                } catch (e: ResponseException) {
-                    // 保留服务端错误码（如 401），供上层区分凭据失效与临时网络错误
-                    NetWorkResult.Error("内置API登录失败：${e.message ?: "未知错误"}", e.errorCode)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
-                    NetWorkResult.Error("内置API登录失败：${e.message ?: "未知错误"}")
+                    NetWorkResult.Error(
+                        message = "内置API登录失败：${e.message ?: "未知错误"}",
+                        authFailure = e.classifyAuthFailure()
+                    )
                 }
             }
         }
-        return safeApiCall {
-            service.login(username, password)
+        val loginService = if (isolatedSession) {
+            retrofit.createIsolatedService(UserService::class.java)
+        } else {
+            service
         }
+        return safeApiCall { loginService.login(username, password) }.asAuthResult()
+    }
+
+    private fun EmbeddedClientManager.EmbeddedLoginResult.Failure.classifyAuthFailure(): AuthFailure {
+        return when {
+            // This is the API JSON code captured before JmApiResponse consumed the body.
+            businessCode == 401 -> AuthFailure.InvalidCredentials
+            // ResponseException.errorCode is the HTTP status in JMComic-Api-Java 1.1.6.
+            exception.errorCode == 401 -> AuthFailure.InvalidCredentials
+            exception.errorCode in 500..599 -> AuthFailure.TemporaryFailure
+            exception.cause is NetworkException || exception.cause is IOException -> AuthFailure.TemporaryFailure
+            else -> AuthFailure.Unknown
+        }
+    }
+
+    private fun Exception.classifyAuthFailure(): AuthFailure {
+        return when {
+            this is NetworkException || cause is NetworkException -> AuthFailure.TemporaryFailure
+            this is SocketTimeoutException || this is ConnectException || this is UnknownHostException -> AuthFailure.TemporaryFailure
+            this is IOException || cause is IOException -> AuthFailure.TemporaryFailure
+            cause is SocketTimeoutException || cause is ConnectException || cause is UnknownHostException -> AuthFailure.TemporaryFailure
+            else -> AuthFailure.Unknown
+        }
+    }
+
+    private fun NetWorkResult<LoginResponse>.asAuthResult(): NetWorkResult<LoginResponse> {
+        if (this !is NetWorkResult.Error) return this
+        return copy(
+            authFailure = authFailure ?: when {
+                code == 401 -> AuthFailure.InvalidCredentials
+                code in 500..599 -> AuthFailure.TemporaryFailure
+                code == -1 && message in setOf("网络连接超时", "网络连接失败", "网络不可用") -> AuthFailure.TemporaryFailure
+                else -> AuthFailure.Unknown
+            }
+        )
     }
 
     override suspend fun getCollectComicList(
@@ -77,7 +149,7 @@ class UserRepositoryImpl(
                     val listWithFullTags = coroutineScope {
                         metas.map { meta ->
                             async {
-                                val fullTags = runCatching {
+                                val fullTags = runCatchingCancellable {
                                     client.getAlbum(meta.id().orEmpty()).tags().orEmpty()
                                 }.getOrDefault(meta.tags().orEmpty())
                                 meta.toListItem(fullTags)
@@ -92,6 +164,8 @@ class UserRepositoryImpl(
                             total = favPage.totalItems()
                         )
                     )
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置API获取收藏列表失败：${e.message ?: "未知错误"}")
                 }
@@ -113,6 +187,8 @@ class UserRepositoryImpl(
                             total = albumMetas.size
                         )
                     })
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置API获取历史漫画失败：${e.message ?: "未知错误"}")
                 }
@@ -130,6 +206,8 @@ class UserRepositoryImpl(
                     client.deleteWatchHistory(id.toString())
                 }
                 NetWorkResult.Success(Unit)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logError("UserRepositoryImpl", "删除历史记录 id=$id 失败: ${e.message}")
                 NetWorkResult.Error("删除历史记录失败：${e.message ?: "未知错误"}")
@@ -154,6 +232,8 @@ class UserRepositoryImpl(
                             total = commentList.total
                         )
                     })
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置API获取评论历史失败：${e.message ?: "未知错误"}")
                 }
@@ -172,6 +252,8 @@ class UserRepositoryImpl(
                         val status = client.getDailyCheckInStatus(userId.toString())
                         status.toSignInDataResponse()
                     })
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置API获取签到数据失败：${e.message ?: "未知错误"}")
                 }
@@ -190,6 +272,8 @@ class UserRepositoryImpl(
                         client.doDailyCheckin(userId.toString(), dailyId.toString())
                     }
                     NetWorkResult.Success(SignInResponse(msg = "签到成功"))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置API签到失败：${e.message ?: "未知错误"}")
                 }

@@ -44,22 +44,23 @@ class ComicViewModel(
     private var homeRequestJob: Job? = null
     private var homeRequestSource: String? = null
     private var loadedHomeSource: String? = null
+    private var homeStateSource: String? = null
+    private var homeRequestGeneration = 0L
 
     fun getHomeComic(force: Boolean = false) {
         val source = localSettingManager.localSettingState.value.comicApiSource
         val activeJob = homeRequestJob
-        if (activeJob?.isActive == true) {
-            if (homeRequestSource == source) return
-            // 数据源已切换：旧请求的结果不再属于当前 source，取消后立即为新 source 重新请求，
-            // 否则旧请求完成后会把 loadedHomeSource 写回旧值，导致首页一直显示旧数据源内容。
-            activeJob.cancel()
-            // 被取消的请求不会再执行收尾更新，这里手动复位加载状态，避免刷新指示器卡住。
-            _homeComicState.update { it.copy(isLoading = false) }
-        }
-        if (!force && loadedHomeSource == source) return
+        if (!force && activeJob?.isActive == true && homeRequestSource == source) return
+
+        // Invalidate the previous request before cancelling it. Embedded API calls are blocking,
+        // so cancellation alone cannot guarantee that their physical call has already returned.
+        val requestGeneration = ++homeRequestGeneration
+        activeJob?.cancel()
+        if (!force && activeJob?.isActive != true && loadedHomeSource == source && homeStateSource == source) return
 
         homeRequestSource = source
         homeRequestJob = viewModelScope.launch {
+            if (!isCurrentHomeRequest(requestGeneration, source)) return@launch
             _homeComicState.update {
                 it.copy(
                     isLoading = true,
@@ -67,7 +68,14 @@ class ComicViewModel(
                     errorMsg = ""
                 )
             }
-            when (val data = comicRepository.getHomeSwiperComicList()) {
+            val data = comicRepository.getHomeSwiperComicList()
+
+            // A cancelled request may finish a synchronous embedded call before the coroutine
+            // observes cancellation. Never let that result enter the state machine.
+            ensureActive()
+            if (!isCurrentHomeRequest(requestGeneration, source)) return@launch
+
+            when (data) {
                 is NetWorkResult.Error -> {
                     _homeComicState.update {
                         it.copy(isError = true, errorMsg = data.message)
@@ -80,14 +88,20 @@ class ComicViewModel(
                     }
                 }
             }
-            // 请求期间数据源可能已被切换（本 Job 被取消），取消后不得再写入结果
             ensureActive()
+            if (!isCurrentHomeRequest(requestGeneration, source)) return@launch
             loadedHomeSource = source
+            homeStateSource = source
             _homeComicState.update {
                 it.copy(isLoading = false)
             }
         }
     }
+
+    private fun isCurrentHomeRequest(requestGeneration: Long, source: String): Boolean =
+        homeRequestGeneration == requestGeneration &&
+            homeRequestSource == source &&
+            localSettingManager.localSettingState.value.comicApiSource == source
 
     private val _searchComicFilterState = MutableStateFlow(SearchComicFilter())
     val searchComicFilterState = _searchComicFilterState.asStateFlow()

@@ -11,6 +11,14 @@ import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 
 interface UserRepository {
     suspend fun login(username: String, password: String): NetWorkResult<LoginResponse>
+
+    /** Verifies credentials without changing the active Retrofit or embedded client session. */
+    suspend fun verifyLogin(username: String, password: String): NetWorkResult<LoginResponse> =
+        login(username, password)
+
+    /** Clears client-side session state without performing a network logout request. */
+    fun clearSession() = Unit
+
     suspend fun getCollectComicList(
         page: Int = 1,
         order: CollectComicOrderFilter = CollectComicOrderFilter.COLLECT_TIME,

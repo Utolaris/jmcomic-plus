@@ -1,12 +1,15 @@
 package com.par9uet.jm.repository
 
 import coil.network.HttpException
+import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.ResponseWrapper
 import com.par9uet.jm.utils.logError
+import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import kotlinx.coroutines.CancellationException
 
 open class BaseRepository {
 
@@ -22,6 +25,8 @@ open class BaseRepository {
                 // 透传服务端错误码，供上层区分凭据失效（401）与临时网络错误
                 NetWorkResult.Error(errMsg, response.code)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleException(e)
         }
@@ -31,17 +36,44 @@ open class BaseRepository {
         return try {
             val response = apiCall()
             NetWorkResult.Success(response)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             handleException(e)
+        }
+    }
+
+    protected suspend inline fun <T> runCatchingCancellable(
+        crossinline block: suspend () -> T,
+    ): Result<T> {
+        return try {
+            Result.success(block())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Result.failure(e)
         }
     }
 
     private fun handleException(e: Exception): NetWorkResult.Error {
         logError(this::class.java.simpleName, "请求异常: ${e.stackTraceToString()}")
         return when (e) {
-            is SocketTimeoutException -> NetWorkResult.Error("网络连接超时")
-            is ConnectException -> NetWorkResult.Error("网络连接失败")
-            is UnknownHostException -> NetWorkResult.Error("网络不可用")
+            is SocketTimeoutException -> NetWorkResult.Error(
+                "网络连接超时",
+                authFailure = AuthFailure.TemporaryFailure,
+            )
+            is ConnectException -> NetWorkResult.Error(
+                "网络连接失败",
+                authFailure = AuthFailure.TemporaryFailure,
+            )
+            is UnknownHostException -> NetWorkResult.Error(
+                "网络不可用",
+                authFailure = AuthFailure.TemporaryFailure,
+            )
+            is IOException -> NetWorkResult.Error(
+                "网络请求失败",
+                authFailure = AuthFailure.TemporaryFailure,
+            )
             is HttpException -> {
                 val errMsg = when (e.response.code) {
                     401 -> "账号或密码错误，请重新输入"

@@ -88,8 +88,8 @@ class UserViewModel(
                 }
 
                 is NetWorkResult.Success<LoginResponse> -> {
-                    // UserManager persists the identity while serializing it with background
-                    // login verification, so a manual login cannot race the startup verifier.
+                    // UserManager persists the identity through a generation-checked commit, so
+                    // a manual login cannot be overwritten by the startup verifier.
                 }
             }
             _loginState.update {

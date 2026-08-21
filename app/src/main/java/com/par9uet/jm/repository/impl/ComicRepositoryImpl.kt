@@ -46,6 +46,7 @@ import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksList
 import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksType
 import io.github.jukomu.jmcomic.api.model.SearchQuery
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -107,6 +108,8 @@ class ComicRepositoryImpl(
                         client.toggleAlbumLike(id.toString())
                     }
                     NetWorkResult.Success(LikeComicResponse(code = 200, msg = "success", status = "ok"))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置 API 点赞失败：${e.message ?: "未知错误"}")
                 }
@@ -125,6 +128,8 @@ class ComicRepositoryImpl(
                         client.toggleAlbumFavorite(id.toString(), "0")
                     }
                     NetWorkResult.Success(CollectComicResponse(msg = "success", status = "ok", type = "collect"))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置 API 收藏失败：${e.message ?: "未知错误"}")
                 }
@@ -143,6 +148,8 @@ class ComicRepositoryImpl(
                         client.toggleAlbumFavorite(id.toString(), "0")
                     }
                     NetWorkResult.Success(CollectComicResponse(msg = "success", status = "ok", type = "uncollect"))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置 API 取消收藏失败：${e.message ?: "未知错误"}")
                 }
@@ -223,6 +230,8 @@ class ComicRepositoryImpl(
                             }
                         )
                     })
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置 API 获取周刊数据失败：${e.message ?: "未知错误"}")
                 }
@@ -267,6 +276,8 @@ class ComicRepositoryImpl(
                             }
                         )
                     })
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置 API 获取周刊详情失败：${e.message ?: "未知错误"}")
                 }
@@ -299,6 +310,8 @@ class ComicRepositoryImpl(
                             total = commentList.total.toString()
                         )
                     })
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置 API 获取评论列表失败：${e.message ?: "未知错误"}")
                 }
@@ -337,6 +350,8 @@ class ComicRepositoryImpl(
                             spoiler = "0"
                         )
                     )
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error("内置 API 评论失败：${e.message ?: "未知错误"}")
                 }
@@ -365,6 +380,8 @@ class ComicRepositoryImpl(
                         client.manageFavoriteFolder(FavoriteFolderType.ADD, "0", name, "")
                     }
                     NetWorkResult.Success(Unit)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logError("ComicRepositoryImpl", "创建收藏夹失败：${e.message}")
                     NetWorkResult.Error("内置API创建收藏夹失败：${e.message ?: "未知错误"}")
@@ -382,6 +399,8 @@ class ComicRepositoryImpl(
                         client.manageFavoriteFolder(FavoriteFolderType.DELETE, folderId, "", "")
                     }
                     NetWorkResult.Success(Unit)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logError("ComicRepositoryImpl", "删除收藏夹失败：${e.message}")
                     NetWorkResult.Error("内置API删除收藏夹失败：${e.message ?: "未知错误"}")
@@ -399,6 +418,8 @@ class ComicRepositoryImpl(
                         client.manageFavoriteFolder(FavoriteFolderType.EDIT, folderId, newName, "")
                     }
                     NetWorkResult.Success(Unit)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logError("ComicRepositoryImpl", "重命名收藏夹失败：${e.message}")
                     NetWorkResult.Error("内置API重命名收藏夹失败：${e.message ?: "未知错误"}")
@@ -416,6 +437,8 @@ class ComicRepositoryImpl(
                         client.manageFavoriteFolder(FavoriteFolderType.MOVE, folderId, "", comicId.toString())
                     }
                     NetWorkResult.Success(Unit)
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: Exception) {
                     logError("ComicRepositoryImpl", "移动漫画到收藏夹失败：${e.message}")
                     NetWorkResult.Error("内置API移动漫画到收藏夹失败：${e.message ?: "未知错误"}")
@@ -439,6 +462,8 @@ class ComicRepositoryImpl(
                         .build()
                     val result = try {
                         client.search(query)
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         logError("ComicRepositoryImpl", "搜索标签 [$tagName] 第${page}页失败：${e.message}")
                         break
@@ -454,6 +479,8 @@ class ComicRepositoryImpl(
                 }
                 log("ComicRepositoryImpl", "标签 [$tagName] 获取到 ${ids.size} 个漫画ID")
                 ids
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logError("ComicRepositoryImpl", "获取标签 [$tagName] 漫画ID失败：${e.message}")
                 emptySet()
@@ -483,6 +510,8 @@ class ComicRepositoryImpl(
                 NetWorkResult.Success(withEmbeddedClient { client ->
                     client.getAlbum(id.toString()).toComicDetailResponse()
                 })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 NetWorkResult.Error("内置 API 获取漫画详情失败：${e.message ?: "未知错误"}")
             }
@@ -495,22 +524,22 @@ class ComicRepositoryImpl(
                 val client = getEmbeddedClient()
                 coroutineScope {
                     // 并发拉取各分类首页数据，单个分类失败不影响其他分类
-                    val latestDeferred = async { runCatching { client.getLatest(1).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val randomDeferred = async { runCatching { client.getRandomRecommend().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val serializationDeferred = async { runCatching { client.getSerialization(1).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val latestDeferred = async { runCatchingCancellable { client.getLatest(1).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val randomDeferred = async { runCatchingCancellable { client.getRandomRecommend().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val serializationDeferred = async { runCatchingCancellable { client.getSerialization(1).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
                     // 按分类 + 排序维度
-                    val doujinDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().category(Category.DOUJIN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val singleDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().category(Category.SINGLE).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val shortDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().category(Category.SHORT).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val koreanDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().category(Category.KOREAN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val americanDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().category(Category.AMERICAN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val cosplayDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().category(Category.COSPLAY).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val image3dDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().category(Category.IMAGE_3D).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val doujinDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.DOUJIN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val singleDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.SINGLE).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val shortDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.SHORT).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val koreanDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.KOREAN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val americanDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.AMERICAN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val cosplayDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.COSPLAY).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val image3dDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.IMAGE_3D).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
                     // 按排序维度
-                    val weekHotDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_VIEWED).time(TimeOption.WEEK).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val monthHotDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_VIEWED).time(TimeOption.MONTH).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val mostLikedDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_LIKED).time(TimeOption.ALL).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val mostImagesDeferred = async { runCatching { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_IMAGES).time(TimeOption.ALL).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val weekHotDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_VIEWED).time(TimeOption.WEEK).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val monthHotDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_VIEWED).time(TimeOption.MONTH).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val mostLikedDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_LIKED).time(TimeOption.ALL).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
+                    val mostImagesDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_IMAGES).time(TimeOption.ALL).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
 
                     val builtinCategories = listOf(
                         HomeSwiperComicListItemResponse("builtin_latest", "最新上架", "builtin_latest", "builtin", "", latestDeferred.await()),
@@ -532,7 +561,7 @@ class ComicRepositoryImpl(
                     // 偏好推荐开关开启时，额外请求网络 API 获取基于登录账号的个性化推荐
                     val preferenceEnabled = localSettingManager.localSettingState.value.preferenceRecommendEnabled
                     val preferenceCategories: List<HomeSwiperComicListItemResponse> = if (preferenceEnabled) {
-                        runCatching {
+                        runCatchingCancellable {
                             val networkResponse = service.getHomeSwiperComicList()
                             if (networkResponse.code == 200) {
                                 networkResponse.data.orEmpty()
@@ -557,6 +586,8 @@ class ComicRepositoryImpl(
 
                     NetWorkResult.Success(preferenceCategories + builtinCategories)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 NetWorkResult.Error("内置 API 获取首页数据失败：${e.message ?: "未知错误"}")
             }
@@ -567,7 +598,13 @@ class ComicRepositoryImpl(
         return withContext(Dispatchers.IO) {
             try {
                 withEmbeddedClient { client ->
-                    val photo = runCatching { client.getPhoto(id.toString()) }.getOrNull()
+                    val photo = try {
+                        client.getPhoto(id.toString())
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        null
+                    }
                     val images = photo?.images()?.takeIf { it.isNotEmpty() }
                         ?: client.getComicRead(id.toString()).images().orEmpty()
                     if (images.isEmpty()) {
@@ -588,6 +625,8 @@ class ComicRepositoryImpl(
                         )
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 NetWorkResult.Error("内置 API 获取图片列表失败：${e.message ?: "未知错误"}")
             }
@@ -609,6 +648,8 @@ class ComicRepositoryImpl(
                     }
                     response.body?.bytes()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logError("ComicRepositoryImpl", "下载图片异常 comicId=$comicId index=$imageIndex: ${e.message} URL=$imageUrl")
                 null
@@ -631,6 +672,8 @@ class ComicRepositoryImpl(
                         .build()
                     client.search(query).toComicListResponse(searchContent)
                 })
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 NetWorkResult.Error("内置 API 搜索漫画失败：${e.message ?: "未知错误"}")
             }
