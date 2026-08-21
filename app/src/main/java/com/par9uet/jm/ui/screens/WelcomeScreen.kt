@@ -320,9 +320,7 @@ fun WelcomeScreen(
                     )
                     9 -> PreferenceRecommendStepContent(
                         enabled = localSetting.preferenceRecommendEnabled,
-                        recommendSource = localSetting.recommendSource,
-                        onToggle = { localSettingManager.updatePreferenceRecommendEnabled(it) },
-                        onRecommendSourceChange = { localSettingManager.updateRecommendSource(it) }
+                        onToggle = { localSettingManager.updatePreferenceRecommendEnabled(it) }
                     )
                 }
             }
@@ -737,14 +735,12 @@ private fun AutoSignInStepContent(
 @Composable
 private fun PreferenceRecommendStepContent(
     enabled: Boolean,
-    recommendSource: String,
     onToggle: (Boolean) -> Unit,
-    onRecommendSourceChange: (String) -> Unit,
 ) {
     StepWithControlLayout(
         icon = Icons.Rounded.Recommend,
         title = "偏好推荐（可选）",
-        description = "已检测到登录。开启后将在首页显示基于你账号的个性化推荐分类。可在内置 API 推荐（基于收藏标签的客户端推荐）与网络 API 推荐之间切换。"
+        description = "已检测到登录。开启后首页将优先展示基于你账号的个性化推荐。"
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -753,39 +749,6 @@ private fun PreferenceRecommendStepContent(
         ) {
             Text("启用偏好推荐", style = MaterialTheme.typography.bodyLarge)
             Switch(checked = enabled, onCheckedChange = onToggle)
-        }
-        if (enabled) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                "推荐源",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                FilterChip(
-                    selected = recommendSource == "builtin",
-                    onClick = { onRecommendSourceChange("builtin") },
-                    label = { Text("内置 API 推荐") }
-                )
-                FilterChip(
-                    selected = recommendSource == "network",
-                    onClick = { onRecommendSourceChange("network") },
-                    label = { Text("网络 API 推荐") }
-                )
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = if (recommendSource == "builtin")
-                    "内置 API 推荐：基于你的收藏标签偏好在客户端计算推荐，不依赖网络 API。"
-                else
-                    "网络 API 推荐：请求网络 API 获取基于登录账号的个性化推荐，可能不稳定。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
     }
 }

@@ -92,9 +92,7 @@ private sealed class SettingType {
     object Shunt : SettingType()
     object PrefetchCount : SettingType()
     object ReadMode : SettingType()
-    object ReadTapMode : SettingType()
     object NotificationManagement : SettingType()
-    object RecommendSource : SettingType()
     object AllGridColumns : SettingType()
     object ReadDecodeConcurrency : SettingType()
 }
@@ -236,17 +234,10 @@ fun LocalSettingScreen(
                         if (localSetting.preferenceRecommendEnabled) {
                             Text(
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                text = "\u5f00\u542f\u540e\u5c06\u8bf7\u6c42\u7f51\u7edc API \u83b7\u53d6\u57fa\u4e8e\u767b\u5f55\u8d26\u53f7\u7684\u4e2a\u6027\u5316\u63a8\u8350\uff0c\u53ef\u80fd\u4e0d\u7a33\u5b9a",
+                                text = "\u5f00\u542f\u540e\u9996\u9875\u9ed8\u8ba4\u5c55\u793a\u57fa\u4e8e\u767b\u5f55\u8d26\u53f7\u7684\u4e2a\u6027\u5316\u63a8\u8350\uff0c\u53ef\u80fd\u4e0d\u7a33\u5b9a",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
-                            SettingsRow(
-                                icon = Icons.Rounded.Source,
-                                title = "\u63a8\u8350\u6e90",
-                                value = if (localSetting.recommendSource == "builtin") "\u5185\u7f6e API \u63a8\u8350" else "\u7f51\u7edc API \u63a8\u8350"
-                            ) {
-                                openSetting(SettingType.RecommendSource)
-                            }
                         }
                         SettingsRow(
                             icon = Icons.Rounded.Block,
@@ -265,13 +256,6 @@ fun LocalSettingScreen(
                     }
                     SettingsRow(Icons.AutoMirrored.Rounded.MenuBook, "\u9605\u8bfb\u6a21\u5f0f", readModeText(localSetting.readMode)) {
                         openSetting(SettingType.ReadMode)
-                    }
-                    SettingsRow(
-                        Icons.Rounded.Tune,
-                        "\u70b9\u51fb\u7ffb\u56fe",
-                        if (localSetting.readTapMode == "side") "\u5de6\u53f3\u4e24\u4fa7" else "\u9ed8\u8ba4\u533a\u57df"
-                    ) {
-                        openSetting(SettingType.ReadTapMode)
                     }
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Memory,
@@ -384,12 +368,6 @@ private fun SettingSelectDialogContent(
     val apiSelectOptionList by remember(localSetting.apiList) {
         derivedStateOf { localSetting.apiList.map { SelectOption(it.removePrefix("https://"), it) } }
     }
-    val recommendSourceOptionList = remember {
-        listOf(
-            SelectOption("\u5185\u7f6e API \u63a8\u8350", "builtin"),
-            SelectOption("\u7f51\u7edc API \u63a8\u8350", "network")
-        )
-    }
     val comicApiSourceOptionList by remember(localSetting.comicApiSourceList) {
         derivedStateOf {
             localSetting.comicApiSourceList.map {
@@ -428,14 +406,6 @@ private fun SettingSelectDialogContent(
             )
         }
     }
-    val readTapModeOptionList by remember {
-        derivedStateOf {
-            listOf(
-                SelectOption("\u9ed8\u8ba4\u533a\u57df", "default"),
-                SelectOption("\u5de6\u53f3\u4e24\u4fa7", "side")
-            )
-        }
-    }
     val notificationOptionList by remember {
         derivedStateOf {
             listOf(
@@ -466,9 +436,7 @@ private fun SettingSelectDialogContent(
             is SettingType.Shunt -> shuntOptionList
             is SettingType.PrefetchCount -> prefetchCountOptionList
             is SettingType.ReadMode -> readModeOptionList
-            is SettingType.ReadTapMode -> readTapModeOptionList
             is SettingType.NotificationManagement -> notificationOptionList
-            is SettingType.RecommendSource -> recommendSourceOptionList
             is SettingType.ReadDecodeConcurrency -> readDecodeConcurrencyOptionList
         },
         onSelect = {
@@ -480,14 +448,12 @@ private fun SettingSelectDialogContent(
                 is SettingType.Shunt -> localSettingManager.updateShunt(it)
                 is SettingType.PrefetchCount -> localSettingManager.updatePrefetchCount(it)
                 is SettingType.ReadMode -> localSettingManager.updateReadMode(it)
-                is SettingType.ReadTapMode -> localSettingManager.updateReadTapMode(it)
                 is SettingType.NotificationManagement -> {
                     localSettingManager.updateNotificationSettings(
                         show = it != NOTIFICATION_OFF,
                         showName = it == NOTIFICATION_ON_WITH_NAME
                     )
                 }
-                is SettingType.RecommendSource -> localSettingManager.updateRecommendSource(it)
                 is SettingType.ReadDecodeConcurrency -> localSettingManager.updateReadDecodeConcurrency(it.toIntOrNull() ?: 2)
             }
             onDismiss()
@@ -800,9 +766,7 @@ private fun settingTitle(type: SettingType): String {
         is SettingType.Shunt -> "\u56fe\u7247\u7ebf\u8def"
         is SettingType.PrefetchCount -> "\u56fe\u7247\u9884\u52a0\u8f7d"
         is SettingType.ReadMode -> "\u9605\u8bfb\u6a21\u5f0f"
-        is SettingType.ReadTapMode -> "\u70b9\u51fb\u7ffb\u56fe"
         is SettingType.NotificationManagement -> "\u901a\u77e5\u7ba1\u7406"
-        is SettingType.RecommendSource -> "\u63a8\u8350\u6e90"
         is SettingType.AllGridColumns -> "\u7f51\u683c\u5217\u6570"
         is SettingType.ReadDecodeConcurrency -> "\u5e76\u53d1\u89e3\u7801\u6570"
     }
@@ -817,13 +781,11 @@ private fun settingValue(type: SettingType, localSetting: LocalSetting): String 
         is SettingType.Shunt -> localSetting.shunt
         is SettingType.PrefetchCount -> "${localSetting.prefetchCount}"
         is SettingType.ReadMode -> localSetting.readMode
-        is SettingType.ReadTapMode -> localSetting.readTapMode
         is SettingType.NotificationManagement -> when {
             !localSetting.showComicCacheNotification -> NOTIFICATION_OFF
             localSetting.showComicCacheNotificationName -> NOTIFICATION_ON_WITH_NAME
             else -> NOTIFICATION_ON_WITHOUT_NAME
         }
-        is SettingType.RecommendSource -> localSetting.recommendSource
         is SettingType.AllGridColumns -> ""
         is SettingType.ReadDecodeConcurrency -> "${localSetting.readDecodeConcurrency}"
     }

@@ -33,6 +33,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -53,7 +54,6 @@ import com.par9uet.jm.ui.components.Comic
 import com.par9uet.jm.ui.components.ComicSkeleton
 import com.par9uet.jm.ui.components.TabSkeleton
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
-import com.par9uet.jm.ui.state.rememberTabIndexState
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.utils.filterBlockedTags
 import org.koin.compose.getKoin
@@ -131,7 +131,7 @@ fun HomeScreen(
     localSettingManager: LocalSettingManager = getKoin().get()
 ) {
     val mainNavController = LocalMainNavController.current
-    val homeComicState by comicViewModel.homeComicState.collectAsState()
+    val homeState by comicViewModel.homeState.collectAsState()
     val isLogin by userManager.isLoginState.collectAsState(false)
     val localSetting by localSettingManager.localSettingState.collectAsState()
     val onSearch = { mainNavController.navigate("comicSearch") }
@@ -146,11 +146,15 @@ fun HomeScreen(
         }
     }
 
-    LaunchedEffect(localSetting.comicApiSource) {
-        comicViewModel.getHomeComic()
+    LaunchedEffect(localSetting.comicApiSource, localSetting.preferenceRecommendEnabled) {
+        comicViewModel.refreshHome()
     }
 
-    if (homeComicState.list.isEmpty() && homeComicState.isLoading) {
+    val selectedCategoryId = homeState.selectedCategoryId
+    val selectedState = selectedCategoryId?.let { homeState.states[it] }
+    val showSkeleton = selectedCategoryId == null ||
+        (selectedState != null && selectedState.content.isEmpty() && selectedState.isLoading)
+    if (showSkeleton) {
         HomeSkeleton(
             onSearch = onSearch,
             onDownload = onDownload,
@@ -161,29 +165,33 @@ fun HomeScreen(
         return
     }
 
-    val selectedTabIndexState = rememberTabIndexState()
+    val selectedIndex = homeState.categories
+        .indexOfFirst { it.id == selectedCategoryId }
+        .coerceAtLeast(0)
     val onTabClick: (index: Int) -> Unit = {
-        selectedTabIndexState.value = it.coerceIn(0, (homeComicState.list.size - 1).coerceAtLeast(0))
+        homeState.categories.getOrNull(it)?.let { category ->
+            comicViewModel.selectHomeCategory(category.id)
+        }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        val currentPageData = homeComicState.list.getOrNull(selectedTabIndexState.value)
+        val currentContent = selectedState?.content.orEmpty()
         val allExcludedTags = remember(localSetting.blockedTagList, localSetting.homeExcludedTags) {
             (localSetting.blockedTagList + localSetting.homeExcludedTags).distinct()
         }
-        val comicList = remember(currentPageData, allExcludedTags) {
-            (currentPageData?.list ?: listOf()).filterBlockedTags(allExcludedTags)
+        val comicList = remember(currentContent, allExcludedTags) {
+            currentContent.map { it.toComic() }.filterBlockedTags(allExcludedTags)
         }
         val chipsScrollState = rememberScrollState()
         PullToRefreshBox(
             modifier = Modifier.fillMaxSize(),
-            isRefreshing = homeComicState.isLoading,
-            onRefresh = { comicViewModel.getHomeComic(force = true) }
+            isRefreshing = selectedState?.isLoading == true,
+            onRefresh = { comicViewModel.refreshSelectedHomeCategory() }
         ) {
             LazyVerticalGrid(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(selectedTabIndexState.value, homeComicState.list.size) {
+                    .pointerInput(selectedIndex, homeState.categories.size) {
                         awaitEachGesture {
                             val down = awaitFirstDown(requireUnconsumed = false)
                             val chipsScrollAtDown = chipsScrollState.value
@@ -204,9 +212,9 @@ fun HomeScreen(
                                 abs(totalX) > abs(totalY) * 1.2f
                             ) {
                                 if (totalX < 0) {
-                                    onTabClick(selectedTabIndexState.value + 1)
+                                    onTabClick(selectedIndex + 1)
                                 } else {
-                                    onTabClick(selectedTabIndexState.value - 1)
+                                    onTabClick(selectedIndex - 1)
                                 }
                             }
                         }
@@ -219,7 +227,7 @@ fun HomeScreen(
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         HomeHeader(
-                            categoryTitle = currentPageData?.title.orEmpty(),
+                            categoryTitle = homeState.categories.getOrNull(selectedIndex)?.title.orEmpty(),
                             onSearch = onSearch,
                             onDownload = onDownload,
                             onRecommend = onRecommend,
@@ -227,17 +235,45 @@ fun HomeScreen(
                             onSign = onSign
                         )
                         HomeCategoryChips(
-                            categories = homeComicState.list.map { it.title },
-                            selectedIndex = selectedTabIndexState.value,
+                            categories = homeState.categories.map { it.title },
+                            selectedIndex = selectedIndex,
                             onSelect = onTabClick,
                             scrollState = chipsScrollState
                         )
                     }
                 }
+                if (selectedState != null && selectedState.isError && comicList.isEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 48.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                modifier = Modifier.size(48.dp),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                            )
+                            Text(
+                                text = selectedState.errorMsg ?: "加载失败",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            TextButton(onClick = { comicViewModel.refreshSelectedHomeCategory() }) {
+                                Text("重试")
+                            }
+                        }
+                    }
+                }
                 items(items = comicList, key = { it.id }) {
                     Comic(it)
                 }
-                if (comicList.isEmpty() && !homeComicState.isLoading) {
+                if (comicList.isEmpty() && !(selectedState?.isLoading == true) &&
+                    !(selectedState?.isError == true)
+                ) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(
                             modifier = Modifier

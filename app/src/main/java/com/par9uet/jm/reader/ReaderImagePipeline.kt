@@ -72,11 +72,14 @@ class ReaderImagePipeline(
     private val activityManager = appContext.getSystemService(ActivityManager::class.java)
     private val memoryClassMb = activityManager?.memoryClass ?: 256
     private val lowRamDevice = activityManager?.isLowRamDevice ?: false
-    private val imageWorkConcurrency = if (lowRamDevice || memoryClassMb < 384) 1 else 2
-    private val maxDecodeConcurrency = if (imageWorkConcurrency == 1) 1 else 4
-    private val initialDecodeConcurrency = localSettingManager.localSettingState.value
-        .readDecodeConcurrency
-        .coerceIn(1, maxDecodeConcurrency)
+    private val imageWorkConcurrency = ReaderConcurrencyPolicy.imageWorkConcurrency(lowRamDevice, memoryClassMb)
+    private val maxDecodeConcurrency = ReaderConcurrencyPolicy.maxDecodeConcurrency(lowRamDevice, memoryClassMb)
+    private val initialDecodeConcurrency = ReaderConcurrencyPolicy.effectiveDecodeConcurrency(
+        memoryOptEnabled = localSettingManager.localSettingState.value.readMemoryOptEnabled,
+        userConcurrency = localSettingManager.localSettingState.value.readDecodeConcurrency,
+        lowRamDevice = lowRamDevice,
+        memoryClassMb = memoryClassMb,
+    )
     private val networkConcurrency = if (
         imageWorkConcurrency > 1 && memoryClassMb >= 512
     ) {
@@ -245,7 +248,16 @@ class ReaderImagePipeline(
         appContext.registerComponentCallbacks(memoryCallbacks)
         scope.launch {
             localSettingManager.localSettingState
-                .map { it.readDecodeConcurrency.coerceIn(1, maxDecodeConcurrency) }
+                // 内存优化开关与并发设置共同决定生效并发；关闭内存优化后恢复硬件默认，
+                // 不再被历史保存的 readDecodeConcurrency 限速。运行时切换立即生效。
+                .map { setting ->
+                    ReaderConcurrencyPolicy.effectiveDecodeConcurrency(
+                        memoryOptEnabled = setting.readMemoryOptEnabled,
+                        userConcurrency = setting.readDecodeConcurrency,
+                        lowRamDevice = lowRamDevice,
+                        memoryClassMb = memoryClassMb,
+                    )
+                }
                 .distinctUntilChanged()
                 .collect { concurrency ->
                     decodeLimiter.updateLimit(concurrency)

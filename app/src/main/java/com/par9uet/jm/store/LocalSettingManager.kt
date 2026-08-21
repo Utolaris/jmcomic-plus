@@ -51,9 +51,6 @@ class LocalSettingManager(
     fun updateAutoSignInEnabled(enabled: Boolean) =
         updateSetting { it.copy(autoSignInEnabled = enabled) }
 
-    fun updateRecommendSource(source: String) =
-        updateSetting { it.copy(recommendSource = source) }
-
     fun updateApi(api: String) = updateSetting { it.copy(api = api) }
 
     fun updateTheme(theme: String) = updateSetting { it.copy(theme = theme) }
@@ -70,9 +67,6 @@ class LocalSettingManager(
 
     fun closeShowComicPageReadTip() =
         updateSetting { it.copy(showComicPageReadTip = false) }
-
-    fun updateReadTapMode(readTapMode: String) =
-        updateSetting { it.copy(readTapMode = readTapMode) }
 
     fun updateLauncherDisguise(launcherDisguise: String) {
         val disguise = LauncherDisguise.fromId(launcherDisguise)

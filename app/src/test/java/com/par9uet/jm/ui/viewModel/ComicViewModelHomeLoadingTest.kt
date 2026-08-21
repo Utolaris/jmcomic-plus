@@ -29,13 +29,18 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 /**
- * Home 轮播加载状态测试：loading 归当前请求代次所有，取消的陈旧请求不能清掉
- * 新请求的 loading，返回已缓存来源时必须复位 loading 且不发起多余网络请求。
+ * 首页分类 lazy 加载测试：
+ * - 启动只请求默认分类（推荐关 = 最新上架；推荐开 = 推荐本本）
+ * - 其它分类点击才请求，再次点击复用缓存
+ * - force refresh 只刷新当前分类
+ * - 数据源变化丢弃旧缓存，迟到的旧请求结果不得写入新状态
+ * - 失败后可重试
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class ComicViewModelHomeLoadingTest {
@@ -52,18 +57,29 @@ class ComicViewModelHomeLoadingTest {
         Dispatchers.resetMain()
     }
 
-    private class FakeSettings : AppLocalSettings {
-        override val localSettingState = MutableStateFlow(LocalSetting())
+    private class FakeSettings(initial: LocalSetting = LocalSetting()) : AppLocalSettings {
+        override val localSettingState = MutableStateFlow(initial)
     }
 
     private class FakeComicRepository(
-        private val homeResult: suspend () -> NetWorkResult<List<HomeSwiperComicListItemResponse>>,
+        private val embeddedHandler: suspend (String) -> NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> =
+            { NetWorkResult.Error("stub") },
+        private val networkHandler: suspend () -> NetWorkResult<List<HomeSwiperComicListItemResponse>> =
+            { NetWorkResult.Error("stub") },
     ) : ComicRepository {
-        var homeCalls = 0
+        val embeddedCalls = mutableListOf<String>()
+        var networkPageCalls = 0
 
-        override suspend fun getHomeSwiperComicList(): NetWorkResult<List<HomeSwiperComicListItemResponse>> {
-            homeCalls++
-            return homeResult()
+        override suspend fun getEmbeddedHomeCategory(
+            categoryId: String
+        ): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> {
+            embeddedCalls.add(categoryId)
+            return embeddedHandler(categoryId)
+        }
+
+        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> {
+            networkPageCalls++
+            return networkHandler()
         }
 
         override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
@@ -127,144 +143,265 @@ class ComicViewModelHomeLoadingTest {
         override suspend fun getComicIdsByTag(tagName: String, maxPages: Int): Set<Int> = emptySet()
     }
 
-    private fun item(id: Int): HomeSwiperComicListItemResponse =
-        HomeSwiperComicListItemResponse(
+    private fun item(id: Int): HomeSwiperComicListItemResponse.ListItem =
+        HomeSwiperComicListItemResponse.ListItem(
             id = id.toString(),
-            title = "item$id",
-            slug = "",
-            type = "",
-            filter_val = "",
-            content = listOf(),
+            author = "",
+            description = null,
+            name = "comic$id",
+            image = "",
+            category = HomeSwiperComicListItemResponse.ListItem.Category(null, null),
+            category_sub = HomeSwiperComicListItemResponse.ListItem.Category(null, null),
+            liked = false,
+            is_favorite = false,
+            update_at = 0,
         )
 
-    private fun vm(
-        settings: FakeSettings,
-        homeResult: suspend () -> NetWorkResult<List<HomeSwiperComicListItemResponse>>,
-    ): Pair<ComicViewModel, FakeComicRepository> {
-        val repository = FakeComicRepository(homeResult)
-        return ComicViewModel(repository, settings) to repository
+    private fun page(id: String, title: String, items: List<HomeSwiperComicListItemResponse.ListItem>) =
+        HomeSwiperComicListItemResponse(
+            id = id,
+            title = title,
+            slug = id,
+            type = "preference",
+            filter_val = "",
+            content = items,
+        )
+
+    private fun embeddedOk(categoryId: String): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> =
+        NetWorkResult.Success(listOf(item(categoryId.hashCode())))
+
+    @Test
+    fun recommendOffStartupRequestsOnlyLatest() = runTest(scheduler) {
+        val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
+        val settings = FakeSettings()
+        val vm = ComicViewModel(repo, settings)
+
+        vm.refreshHome()
+        advanceUntilIdle()
+
+        assertEquals(listOf(ComicViewModel.CATEGORY_LATEST), repo.embeddedCalls)
+        assertEquals(0, repo.networkPageCalls)
+        assertEquals(ComicViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
+        assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
+        assertNull(vm.homeState.value.states[ComicViewModel.CATEGORY_RECOMMEND])
     }
 
     @Test
-    fun returningToCachedSourceClearsLoadingWithoutExtraNetwork() = runTest(scheduler) {
-        val gate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse>>>()
+    fun recommendOnStartupRequestsOnlyRecommendTab() = runTest(scheduler) {
+        val repo = FakeComicRepository(
+            embeddedHandler = { embeddedOk(it) },
+            networkHandler = { NetWorkResult.Success(listOf(page("rec", "推荐本本", listOf(item(7))))) },
+        )
+        val settings = FakeSettings(LocalSetting().copy(preferenceRecommendEnabled = true))
+        val vm = ComicViewModel(repo, settings)
+
+        vm.refreshHome()
+        advanceUntilIdle()
+
+        assertEquals(1, repo.networkPageCalls)
+        assertTrue(repo.embeddedCalls.isEmpty())
+        assertEquals(ComicViewModel.CATEGORY_RECOMMEND, vm.homeState.value.selectedCategoryId)
+        assertEquals("推荐本本", vm.homeState.value.categories.first().title)
+        assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_RECOMMEND]?.content?.size)
+        assertNull(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST])
+    }
+
+    @Test
+    fun clickingCategoryRequestsItOnceThenUsesCache() = runTest(scheduler) {
+        val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
         val settings = FakeSettings()
-        val (viewModel, repository) = vm(settings) {
-            if (settings.localSettingState.value.comicApiSource == "network") {
-                gate.await()
-            } else {
-                NetWorkResult.Success(listOf(item(1)))
-            }
-        }
+        val vm = ComicViewModel(repo, settings)
 
-        // A（builtin）加载完成。
-        viewModel.getHomeComic()
+        vm.refreshHome()
         advanceUntilIdle()
-        assertEquals(1, repository.homeCalls)
-        assertFalse(viewModel.homeComicState.value.isLoading)
 
-        // 切到 B（network）：isLoading = true，请求挂在 gate 上。
+        vm.selectHomeCategory("builtin_week_hot")
+        advanceUntilIdle()
+        assertEquals(listOf(ComicViewModel.CATEGORY_LATEST, "builtin_week_hot"), repo.embeddedCalls)
+        assertEquals("builtin_week_hot", vm.homeState.value.selectedCategoryId)
+
+        // 再次点击同一分类：无新请求。
+        vm.selectHomeCategory("builtin_week_hot")
+        advanceUntilIdle()
+        assertEquals(2, repo.embeddedCalls.size)
+
+        // 切走再切回：命中缓存，无新请求。
+        vm.selectHomeCategory(ComicViewModel.CATEGORY_LATEST)
+        advanceUntilIdle()
+        vm.selectHomeCategory("builtin_week_hot")
+        advanceUntilIdle()
+        assertEquals(2, repo.embeddedCalls.size)
+        assertEquals(1, vm.homeState.value.states["builtin_week_hot"]?.content?.size)
+    }
+
+    @Test
+    fun forceRefreshOnlyRefreshesCurrentCategory() = runTest(scheduler) {
+        val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
+        val settings = FakeSettings()
+        val vm = ComicViewModel(repo, settings)
+
+        vm.refreshHome()
+        advanceUntilIdle()
+        vm.selectHomeCategory("builtin_week_hot")
+        advanceUntilIdle()
+
+        vm.refreshSelectedHomeCategory()
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(ComicViewModel.CATEGORY_LATEST, "builtin_week_hot", "builtin_week_hot"),
+            repo.embeddedCalls,
+        )
+        // 其它分类缓存未被破坏。
+        assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
+    }
+
+    @Test
+    fun staleResultAfterSourceChangeIsDiscarded() = runTest(scheduler) {
+        val gate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        val repo = FakeComicRepository(
+            embeddedHandler = {
+                if (it == "builtin_week_hot") gate.await() else embeddedOk(it)
+            },
+            networkHandler = { NetWorkResult.Success(listOf(page("home", "首页", listOf(item(3))))) },
+        )
+        val settings = FakeSettings()
+        val vm = ComicViewModel(repo, settings)
+
+        vm.refreshHome()
+        advanceUntilIdle()
+        vm.selectHomeCategory("builtin_week_hot")
+        advanceUntilIdle()
+        assertTrue(vm.homeState.value.states["builtin_week_hot"]?.isLoading == true)
+
+        // 用户切换到网络数据源：旧分类表与缓存全部作废。
         settings.localSettingState.update { it.copy(comicApiSource = "network") }
-        viewModel.getHomeComic()
+        vm.refreshHome()
         advanceUntilIdle()
-        assertTrue(viewModel.homeComicState.value.isLoading)
+        assertTrue(vm.homeState.value.categories.none { it.id == "builtin_week_hot" })
 
-        // B 完成前切回已缓存的 A：必须立即回到 isLoading = false，且不发起第三次请求
-        // （前两次分别是 A 与 B 的正常请求）。
+        // 迟到的旧请求完成：不得写入任何状态。
+        gate.complete(NetWorkResult.Success(listOf(item(9))))
+        advanceUntilIdle()
+
+        assertNull(vm.homeState.value.states["builtin_week_hot"])
+        // 网络首页正常展开。
+        assertTrue(vm.homeState.value.categories.isNotEmpty())
+        assertTrue(vm.homeState.value.states.values.any { it.content.isNotEmpty() })
+    }
+
+    @Test
+    fun failedCategoryCanRetry() = runTest(scheduler) {
+        var fail = true
+        val repo = FakeComicRepository(
+            embeddedHandler = {
+                if (it == "builtin_doujin" && fail) {
+                    NetWorkResult.Error("boom")
+                } else {
+                    embeddedOk(it)
+                }
+            },
+        )
+        val settings = FakeSettings()
+        val vm = ComicViewModel(repo, settings)
+
+        vm.refreshHome()
+        advanceUntilIdle()
+        vm.selectHomeCategory("builtin_doujin")
+        advanceUntilIdle()
+        assertTrue(vm.homeState.value.states["builtin_doujin"]?.isError == true)
+        assertEquals("boom", vm.homeState.value.states["builtin_doujin"]?.errorMsg)
+        assertFalse(vm.homeState.value.states["builtin_doujin"]?.isLoading == true)
+
+        // 重试成功。
+        fail = false
+        vm.refreshSelectedHomeCategory()
+        advanceUntilIdle()
+        assertFalse(vm.homeState.value.states["builtin_doujin"]?.isError == true)
+        assertEquals(1, vm.homeState.value.states["builtin_doujin"]?.content?.size)
+    }
+
+    @Test
+    fun networkSourceExpandsToTabsAndDropsOldEmbeddedCache() = runTest(scheduler) {
+        var network = true
+        val repo = FakeComicRepository(
+            embeddedHandler = {
+                if (network) embeddedOk(it) else NetWorkResult.Error("should not be requested")
+            },
+            networkHandler = {
+                NetWorkResult.Success(
+                    listOf(
+                        page("a", "推荐本本", listOf(item(1))),
+                        page("b", "最新上架", listOf(item(2))),
+                    )
+                )
+            },
+        )
+        val settings = FakeSettings()
+        val vm = ComicViewModel(repo, settings)
+
+        // 内置模式先加载最新上架。
+        vm.refreshHome()
+        advanceUntilIdle()
+        assertEquals(1, repo.embeddedCalls.size)
+
+        // 切到网络数据源：整页一次请求，展开为 tab，旧内置缓存不再显示。
+        settings.localSettingState.update { it.copy(comicApiSource = "network") }
+        vm.refreshHome()
+        advanceUntilIdle()
+        assertEquals(1, repo.networkPageCalls)
+        assertEquals(listOf("推荐本本", "最新上架"), vm.homeState.value.categories.map { it.title })
+        assertEquals("net_a", vm.homeState.value.selectedCategoryId)
+
+        // 切回内置：旧网络缓存丢弃，重新请求默认分类。
         settings.localSettingState.update { it.copy(comicApiSource = "builtin") }
-        viewModel.getHomeComic()
+        vm.refreshHome()
         advanceUntilIdle()
-        assertEquals(2, repository.homeCalls)
-        assertFalse(viewModel.homeComicState.value.isLoading)
-        assertEquals(1, viewModel.homeComicState.value.list.size)
-
-        // B 的物理请求迟到完成：结果被丢弃，不能复活 loading 或覆盖 A 的数据。
-        gate.complete(NetWorkResult.Success(listOf(item(2))))
-        advanceUntilIdle()
-        assertEquals(2, repository.homeCalls)
-        assertFalse(viewModel.homeComicState.value.isLoading)
-        assertEquals(listOf("1"), viewModel.homeComicState.value.list.map { it.id })
+        assertEquals(2, repo.embeddedCalls.size)
+        assertEquals(ComicViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
+        assertTrue(vm.homeState.value.categories.none { it.id == "net_a" })
     }
 
     @Test
-    fun nowLoadingOwnerIsLatestRequestGeneration() = runTest(scheduler) {
-        val gateB = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse>>>()
-        val gateC = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse>>>()
+    fun togglePreferenceWhileCategoryLoadingDoesNotBlockLaterLoad() = runTest(scheduler) {
+        val gate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        var firstLatest = true
+        val repo = FakeComicRepository(
+            embeddedHandler = {
+                if (it == ComicViewModel.CATEGORY_LATEST && firstLatest) {
+                    firstLatest = false
+                    gate.await()
+                } else {
+                    embeddedOk(it)
+                }
+            },
+            networkHandler = {
+                NetWorkResult.Success(listOf(page("rec", "推荐本本", listOf(item(5)))))
+            },
+        )
         val settings = FakeSettings()
-        val (viewModel, _) = vm(settings) {
-            when (settings.localSettingState.value.comicApiSource) {
-                "builtin" -> NetWorkResult.Success(listOf(item(1)))
-                "network" -> gateB.await()
-                else -> gateC.await()
-            }
-        }
+        val vm = ComicViewModel(repo, settings)
 
-        viewModel.getHomeComic()
+        vm.refreshHome()
         advanceUntilIdle()
-        assertFalse(viewModel.homeComicState.value.isLoading)
+        assertTrue(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.isLoading == true)
 
-        // A -> B -> C 快速切换：B 被取消，C 持有 loading。
-        settings.localSettingState.update { it.copy(comicApiSource = "network") }
-        viewModel.getHomeComic()
+        // 最新上架加载中切换推荐开关：默认分类切到推荐本本。
+        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = true) }
+        vm.refreshHome()
         advanceUntilIdle()
-        settings.localSettingState.update { it.copy(comicApiSource = "mixed") }
-        viewModel.getHomeComic()
-        advanceUntilIdle()
-        assertTrue(viewModel.homeComicState.value.isLoading)
+        assertEquals(ComicViewModel.CATEGORY_RECOMMEND, vm.homeState.value.selectedCategoryId)
 
-        // B 的物理请求迟到完成：不得把 C 的 loading 清掉，不得写入数据。
-        gateB.complete(NetWorkResult.Success(listOf(item(2))))
+        // 迟到的“最新上架”结果被丢弃。
+        gate.complete(NetWorkResult.Success(listOf(item(9))))
         advanceUntilIdle()
-        assertTrue(viewModel.homeComicState.value.isLoading)
-        assertEquals(1, viewModel.homeComicState.value.list.size)
 
-        // C 完成：数据更新、loading 结束。
-        gateC.complete(NetWorkResult.Success(listOf(item(3))))
+        // 之后点击“最新上架”必须发起新请求，不能被孤立 loading 吞掉。
+        val callsBefore = repo.embeddedCalls.size
+        vm.selectHomeCategory(ComicViewModel.CATEGORY_LATEST)
         advanceUntilIdle()
-        assertFalse(viewModel.homeComicState.value.isLoading)
-        assertEquals(listOf("3"), viewModel.homeComicState.value.list.map { it.id })
-    }
-
-    @Test
-    fun refreshThenSwitchDiscardsLateRefreshResult() = runTest(scheduler) {
-        val gateRefresh = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse>>>()
-        val gateB = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse>>>()
-        val settings = FakeSettings()
-        var inRefresh = false
-        val (viewModel, repository) = vm(settings) {
-            when {
-                settings.localSettingState.value.comicApiSource == "network" -> gateB.await()
-                inRefresh -> gateRefresh.await()
-                else -> NetWorkResult.Success(listOf(item(1)))
-            }
-        }
-
-        viewModel.getHomeComic()
-        advanceUntilIdle()
-        assertFalse(viewModel.homeComicState.value.isLoading)
-
-        // refresh A：刷新请求挂在 gateRefresh 上。
-        inRefresh = true
-        viewModel.getHomeComic(force = true)
-        advanceUntilIdle()
-        assertTrue(viewModel.homeComicState.value.isLoading)
-
-        // 刷新完成前切到 B。
-        settings.localSettingState.update { it.copy(comicApiSource = "network") }
-        viewModel.getHomeComic()
-        advanceUntilIdle()
-        assertTrue(viewModel.homeComicState.value.isLoading)
-
-        // 迟到的刷新结果被丢弃；B 完成后展示 B 的数据。
-        gateRefresh.complete(NetWorkResult.Success(listOf(item(9))))
-        advanceUntilIdle()
-        assertEquals(listOf("1"), viewModel.homeComicState.value.list.map { it.id })
-        assertTrue(viewModel.homeComicState.value.isLoading)
-
-        gateB.complete(NetWorkResult.Success(listOf(item(2))))
-        advanceUntilIdle()
-        assertFalse(viewModel.homeComicState.value.isLoading)
-        assertEquals(listOf("2"), viewModel.homeComicState.value.list.map { it.id })
-        assertEquals(3, repository.homeCalls)
+        assertEquals(callsBefore + 1, repo.embeddedCalls.size)
+        assertFalse(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.isLoading == true)
+        assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
     }
 }

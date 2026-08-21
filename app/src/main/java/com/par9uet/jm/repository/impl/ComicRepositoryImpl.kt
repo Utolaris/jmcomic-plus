@@ -160,14 +160,97 @@ class ComicRepositoryImpl(
         }
     }
 
-    override suspend fun getHomeSwiperComicList(): NetWorkResult<List<HomeSwiperComicListItemResponse>> {
-        if (useEmbeddedApi()) {
-            return getHomeSwiperComicListFromEmbeddedApi()
-        }
-        return safeApiCall {
-            service.getHomeSwiperComicList()
+    override suspend fun getEmbeddedHomeCategory(
+        categoryId: String,
+    ): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> {
+        if (!useEmbeddedApi()) return NetWorkResult.Error("内置 API 分类仅在内置数据源可用")
+        return withContext(Dispatchers.IO) {
+            try {
+                val client = getEmbeddedClient()
+                val items = runCatchingCancellable {
+                    when (categoryId) {
+                        "builtin_latest" ->
+                            client.getLatest(1).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_week_hot" ->
+                            client.getCategories(
+                                SearchQuery.Builder()
+                                    .orderBy(OrderBy.MOST_VIEWED).time(TimeOption.WEEK).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_month_hot" ->
+                            client.getCategories(
+                                SearchQuery.Builder()
+                                    .orderBy(OrderBy.MOST_VIEWED).time(TimeOption.MONTH).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_most_liked" ->
+                            client.getCategories(
+                                SearchQuery.Builder()
+                                    .orderBy(OrderBy.MOST_LIKED).time(TimeOption.ALL).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_random" ->
+                            client.getRandomRecommend().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_serialization" ->
+                            client.getSerialization(1).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_doujin" ->
+                            client.getCategories(
+                                SearchQuery.Builder().category(Category.DOUJIN).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_single" ->
+                            client.getCategories(
+                                SearchQuery.Builder().category(Category.SINGLE).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_short" ->
+                            client.getCategories(
+                                SearchQuery.Builder().category(Category.SHORT).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_korean" ->
+                            client.getCategories(
+                                SearchQuery.Builder().category(Category.KOREAN).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_american" ->
+                            client.getCategories(
+                                SearchQuery.Builder().category(Category.AMERICAN).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_cosplay" ->
+                            client.getCategories(
+                                SearchQuery.Builder().category(Category.COSPLAY).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_3d" ->
+                            client.getCategories(
+                                SearchQuery.Builder().category(Category.IMAGE_3D).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        "builtin_most_images" ->
+                            client.getCategories(
+                                SearchQuery.Builder()
+                                    .orderBy(OrderBy.MOST_IMAGES).time(TimeOption.ALL).page(1).build()
+                            ).content().orEmpty().map { it.toHomeListItem() }
+
+                        else -> throw IllegalArgumentException("未知首页分类: " + categoryId)
+                    }
+                }.getOrElse { throw it }
+                NetWorkResult.Success(items)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                NetWorkResult.Error("内置 API 获取首页分类失败：" + (e.message ?: "未知错误"))
+            }
         }
     }
+
+    override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> =
+        safeApiCall { service.getHomeSwiperComicList() }
 
     override suspend fun getComicPicList(id: Int, shunt: String): NetWorkResult<ComicPicListResponse> {
         if (useEmbeddedApi() && !useNetworkApiForImages()) {
@@ -518,81 +601,6 @@ class ComicRepositoryImpl(
         }
     }
 
-    private suspend fun getHomeSwiperComicListFromEmbeddedApi(): NetWorkResult<List<HomeSwiperComicListItemResponse>> {
-        return withContext(Dispatchers.IO) {
-            try {
-                val client = getEmbeddedClient()
-                coroutineScope {
-                    // 并发拉取各分类首页数据，单个分类失败不影响其他分类
-                    val latestDeferred = async { runCatchingCancellable { client.getLatest(1).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val randomDeferred = async { runCatchingCancellable { client.getRandomRecommend().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val serializationDeferred = async { runCatchingCancellable { client.getSerialization(1).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    // 按分类 + 排序维度
-                    val doujinDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.DOUJIN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val singleDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.SINGLE).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val shortDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.SHORT).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val koreanDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.KOREAN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val americanDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.AMERICAN).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val cosplayDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.COSPLAY).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val image3dDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().category(Category.IMAGE_3D).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    // 按排序维度
-                    val weekHotDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_VIEWED).time(TimeOption.WEEK).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val monthHotDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_VIEWED).time(TimeOption.MONTH).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val mostLikedDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_LIKED).time(TimeOption.ALL).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-                    val mostImagesDeferred = async { runCatchingCancellable { client.getCategories(SearchQuery.Builder().orderBy(OrderBy.MOST_IMAGES).time(TimeOption.ALL).page(1).build()).content().orEmpty().map { it.toHomeListItem() } }.getOrDefault(emptyList()) }
-
-                    val builtinCategories = listOf(
-                        HomeSwiperComicListItemResponse("builtin_latest", "最新上架", "builtin_latest", "builtin", "", latestDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_week_hot", "本周热门", "builtin_week_hot", "builtin", "", weekHotDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_month_hot", "本月热门", "builtin_month_hot", "builtin", "", monthHotDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_most_liked", "最多喜欢", "builtin_most_liked", "builtin", "", mostLikedDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_random", "随机推荐", "builtin_random", "builtin", "", randomDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_serialization", "连载系列", "builtin_serialization", "builtin", "", serializationDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_doujin", "同人", "builtin_doujin", "builtin", "", doujinDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_single", "单本", "builtin_single", "builtin", "", singleDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_short", "短篇", "builtin_short", "builtin", "", shortDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_korean", "韩漫", "builtin_korean", "builtin", "", koreanDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_american", "美漫", "builtin_american", "builtin", "", americanDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_cosplay", "Cosplay", "builtin_cosplay", "builtin", "", cosplayDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_3d", "3D", "builtin_3d", "builtin", "", image3dDeferred.await()),
-                        HomeSwiperComicListItemResponse("builtin_most_images", "图片最多", "builtin_most_images", "builtin", "", mostImagesDeferred.await()),
-                    ).filter { it.content.isNotEmpty() }
-
-                    // 偏好推荐开关开启时，额外请求网络 API 获取基于登录账号的个性化推荐
-                    val preferenceEnabled = localSettingManager.localSettingState.value.preferenceRecommendEnabled
-                    val preferenceCategories: List<HomeSwiperComicListItemResponse> = if (preferenceEnabled) {
-                        runCatchingCancellable {
-                            val networkResponse = service.getHomeSwiperComicList()
-                            if (networkResponse.code == 200) {
-                                networkResponse.data.orEmpty()
-                                    .filter { it.content.isNotEmpty() }
-                                    .map { item ->
-                                        HomeSwiperComicListItemResponse(
-                                            id = "pref_${item.id}",
-                                            title = item.title,
-                                            slug = item.slug,
-                                            type = "preference",
-                                            filter_val = item.filter_val,
-                                            content = item.content
-                                        )
-                                    }
-                            } else {
-                                emptyList()
-                            }
-                        }.getOrDefault(emptyList())
-                    } else {
-                        emptyList()
-                    }
-
-                    NetWorkResult.Success(preferenceCategories + builtinCategories)
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置 API 获取首页数据失败：${e.message ?: "未知错误"}")
-            }
-        }
-    }
 
     private suspend fun getComicPicListFromEmbeddedApi(id: Int): NetWorkResult<ComicPicListResponse> {
         return withContext(Dispatchers.IO) {

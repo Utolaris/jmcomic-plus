@@ -261,8 +261,9 @@ fun UserCollectComicScreen(
     // 当前激活的筛选项数量，用于在筛选按钮上展示
     val activeFilterCount = collectComicFilter.selectedTags.size + collectComicFilter.selectedAuthors.size
 
+    // 收藏夹 chips 是可见 UI，进入收藏页时加载其元数据（单页轻量请求）。
+    // tag/author 统计是重型全量扫描，只在用户打开筛选时按需加载。
     LaunchedEffect(Unit) {
-        userViewModel.refreshCollectTagCounts()
         userViewModel.refreshFolderList()
     }
 
@@ -287,6 +288,8 @@ fun UserCollectComicScreen(
                 )
                 IconButton(
                     onClick = {
+                        // 筛选面板打开时才扫描 tag/author 统计，避免进入收藏页即全量遍历。
+                        userViewModel.refreshCollectTagCounts()
                         draftSelectedTags = collectComicFilter.selectedTags
                         draftSelectedAuthors = collectComicFilter.selectedAuthors
                         draftTagLogic = collectComicFilter.tagLogic

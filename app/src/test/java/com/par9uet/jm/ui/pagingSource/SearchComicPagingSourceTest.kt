@@ -86,7 +86,11 @@ class SearchComicPagingSourceTest {
 
         override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> = unused()
 
-        override suspend fun getHomeSwiperComicList(): NetWorkResult<List<HomeSwiperComicListItemResponse>> = unused()
+        override suspend fun getEmbeddedHomeCategory(
+            categoryId: String
+        ): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> = unused()
+
+        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> = unused()
 
         override suspend fun getComicPicList(id: Int, shunt: String): NetWorkResult<ComicPicListResponse> = unused()
 
