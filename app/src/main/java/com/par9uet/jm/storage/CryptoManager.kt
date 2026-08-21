@@ -19,14 +19,16 @@ class CryptoManager {
     }
 
     private val keyAlias = "app_master_key"
-    private val keyStore: KeyStore? = runCatching {
-        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
-            return@runCatching null
-        }
-        KeyStore.getInstance("AndroidKeyStore").apply {
-            load(null)
-        }
-    }.getOrNull()
+    private val keyStore: KeyStore? by lazy {
+        runCatching {
+            if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.M) {
+                return@runCatching null
+            }
+            KeyStore.getInstance("AndroidKeyStore").apply {
+                load(null)
+            }
+        }.getOrNull()
+    }
 
     private fun getSecretKey(): SecretKey? {
         val store = keyStore ?: return null

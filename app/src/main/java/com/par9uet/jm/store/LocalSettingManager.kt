@@ -4,8 +4,6 @@ import com.par9uet.jm.data.models.BlockedTagTemplate
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.storage.LocalSettingStorage
-import com.par9uet.jm.task.AppInitTask
-import com.par9uet.jm.task.AppTaskInfo
 import com.par9uet.jm.utils.LauncherDisguiseApplier
 import com.par9uet.jm.utils.flattenBlockedTagTemplates
 import com.par9uet.jm.utils.log
@@ -19,9 +17,19 @@ import kotlinx.coroutines.flow.update
 class LocalSettingManager(
     private val localSettingStorage: LocalSettingStorage,
     private val launcherDisguiseApplier: LauncherDisguiseApplier,
-) : AppInitTask {
+) {
     private val _localSettingState = MutableStateFlow(LocalSetting())
     val localSettingState = _localSettingState.asStateFlow()
+    private val loadLock = Any()
+
+    @Volatile
+    private var loaded = false
+
+    init {
+        // These values determine the first safe screen and the theme. The payload is small and
+        // LocalSettingStorage caches the decoded value, so load it once before composition.
+        ensureLoaded()
+    }
 
     fun updateComicApiSource(comicApiSource: String) =
         updateSetting { it.copy(comicApiSource = comicApiSource) }
@@ -220,6 +228,7 @@ class LocalSettingManager(
     }
 
     private fun updateSetting(update: (LocalSetting) -> LocalSetting) {
+        ensureLoaded()
         _localSettingState.update(update)
         localSettingStorage.set(_localSettingState.value)
     }
@@ -232,19 +241,26 @@ class LocalSettingManager(
         )
     }
 
-    private var appTaskInfo = AppTaskInfo(
-        taskName = "load local app settings",
-        sort = 3,
-    )
-
-    override suspend fun init() {
-        log("local app settings init start")
-        _localSettingState.update {
-            localSettingStorage.get()
-        }
+    /**
+     * Applies the launcher alias after the first UI is available. PackageManager IPC is not
+     * needed to decide which screen to show, and should not be part of the startup path.
+     */
+    fun applyLauncherDisguiseIfNeeded() {
+        ensureLoaded()
         launcherDisguiseApplier.apply(LauncherDisguise.fromId(_localSettingState.value.launcherDisguise))
-        log("local app settings init finished")
     }
 
-    override fun getAppTaskInfo(): AppTaskInfo = appTaskInfo
+    private fun ensureLoaded() {
+        if (loaded) return
+        synchronized(loadLock) {
+            if (loaded) return
+            val setting = runCatching { localSettingStorage.get() }
+                .getOrElse {
+                    log("加载本地设置失败：${it.message}")
+                    LocalSetting()
+                }
+            _localSettingState.value = setting
+            loaded = true
+        }
+    }
 }

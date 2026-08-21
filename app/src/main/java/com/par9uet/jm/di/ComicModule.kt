@@ -13,7 +13,7 @@ import org.koin.dsl.module
 
 val comicModule = module {
     single { EmbeddedClientManager(get()) }
-    single { ComicRepositoryImpl(get(), get(), get(), get(), get()) } bind ComicRepository::class
+    single { ComicRepositoryImpl(get(), get(), get()) } bind ComicRepository::class
     single { ReaderImagePipeline(get(), get(), get()) }
 
     viewModel { ComicViewModel(get(), get()) }

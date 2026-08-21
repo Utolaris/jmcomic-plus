@@ -3,15 +3,12 @@ package com.par9uet.jm.repository
 import coil.network.HttpException
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.ResponseWrapper
-import com.par9uet.jm.store.InitManager
 import com.par9uet.jm.utils.logError
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
-open class BaseRepository(
-    private val initManager: InitManager
-) {
+open class BaseRepository {
 
     suspend fun <T> safeApiCall(apiCall: suspend () -> ResponseWrapper<T>): NetWorkResult<T> {
         return try {

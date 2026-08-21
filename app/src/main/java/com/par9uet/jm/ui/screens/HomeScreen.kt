@@ -178,7 +178,7 @@ fun HomeScreen(
         PullToRefreshBox(
             modifier = Modifier.fillMaxSize(),
             isRefreshing = homeComicState.isLoading,
-            onRefresh = { comicViewModel.getHomeComic() }
+            onRefresh = { comicViewModel.getHomeComic(force = true) }
         ) {
             LazyVerticalGrid(
                 modifier = Modifier

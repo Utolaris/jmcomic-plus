@@ -10,12 +10,24 @@ class LauncherDisguiseApplier(
 ) {
     fun apply(disguise: LauncherDisguise) {
         val packageManager = context.packageManager
-        val componentClassPrefix = context.applicationContext::class.java.packageName
+        val componentClassPrefix = context.packageName
         LauncherDisguise.entries.forEach { item ->
             runCatching {
+                val componentName = ComponentName(
+                    context.packageName,
+                    "$componentClassPrefix${item.aliasClassName}"
+                )
+                val expectedEnabled = item == disguise
+                val currentEnabled = when (packageManager.getComponentEnabledSetting(componentName)) {
+                    PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
+                    PackageManager.COMPONENT_ENABLED_STATE_DISABLED -> false
+                    // The default alias is enabled in the manifest; the disguise aliases are not.
+                    else -> item == LauncherDisguise.Default
+                }
+                if (currentEnabled == expectedEnabled) return@runCatching
                 packageManager.setComponentEnabledSetting(
-                    ComponentName(context.packageName, "$componentClassPrefix${item.aliasClassName}"),
-                    if (item == disguise) {
+                    componentName,
+                    if (expectedEnabled) {
                         PackageManager.COMPONENT_ENABLED_STATE_ENABLED
                     } else {
                         PackageManager.COMPONENT_ENABLED_STATE_DISABLED

@@ -4,54 +4,50 @@ import com.par9uet.jm.data.models.RemoteSetting
 import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.RemoteSettingResponse
-import com.par9uet.jm.task.AppInitTask
-import com.par9uet.jm.task.AppTaskInfo
+import com.par9uet.jm.storage.SecureStorage
 import com.par9uet.jm.utils.log
+import com.google.gson.reflect.TypeToken
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class RemoteSettingManager(
-    private val remoteSettingRepository: RemoteSettingRepository
-) : AppInitTask {
-    private val _remoteSettingState = MutableStateFlow(RemoteSetting(
-        imgHost = ""
-    ))
+    private val remoteSettingRepository: RemoteSettingRepository,
+    private val secureStorage: SecureStorage,
+) {
+    companion object {
+        private const val STORAGE_KEY = "remoteSetting"
+    }
+
+    private val refreshMutex = Mutex()
+    private val _remoteSettingState = MutableStateFlow(loadCachedSetting())
     val remoteSettingState = _remoteSettingState.asStateFlow()
 
-    private var appTaskInfo = AppTaskInfo(
-        taskName = "加载 app 远端应用数据",
-        sort = 2,
-    )
-
-    private suspend fun getRemoteSetting() {
+    /** Refreshes the remote value without ever being part of the first-screen dependency graph. */
+    suspend fun refresh() = refreshMutex.withLock {
         when (val data = remoteSettingRepository.getRemoteSetting()) {
             is NetWorkResult.Error -> {
-                log("获取远程应用设置失败")
-                appTaskInfo = appTaskInfo.copy(
-                    isError = true,
-                    errorMsg = data.message
-                )
+                log("获取远程应用设置失败，继续使用本地缓存：${data.message}")
             }
 
             is NetWorkResult.Success<RemoteSettingResponse> -> {
-                log("获取远程应用设置成功")
-                _remoteSettingState.update {
-                    data.data.toRemoteSetting()
+                val setting = data.data.toRemoteSetting()
+                if (setting.imgHost.isNotBlank()) {
+                    _remoteSettingState.value = setting
+                    secureStorage.set(STORAGE_KEY, setting)
                 }
-                appTaskInfo = appTaskInfo.copy(
-                    isError = false,
-                    errorMsg = "",
-                )
+                log("获取远程应用设置成功")
             }
         }
     }
 
-    override suspend fun init() {
-        log("远程应用设置开始初始化")
-        getRemoteSetting()
-        log("远程应用设置初始化结束")
+    private fun loadCachedSetting(): RemoteSetting {
+        return runCatching {
+            secureStorage.get<RemoteSetting>(
+                STORAGE_KEY,
+                object : TypeToken<RemoteSetting>() {}.type
+            )
+        }.getOrNull()?.takeIf { it.imgHost.isNotBlank() } ?: RemoteSetting()
     }
-
-    override fun getAppTaskInfo(): AppTaskInfo = appTaskInfo
 }

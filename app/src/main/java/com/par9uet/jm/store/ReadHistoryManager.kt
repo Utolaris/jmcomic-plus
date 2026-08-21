@@ -3,8 +3,6 @@ package com.par9uet.jm.store
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.storage.ComicReadHistory
 import com.par9uet.jm.storage.ReadHistoryStorage
-import com.par9uet.jm.task.AppInitTask
-import com.par9uet.jm.task.AppTaskInfo
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -12,7 +10,7 @@ import kotlinx.coroutines.flow.update
 
 class ReadHistoryManager(
     private val readHistoryStorage: ReadHistoryStorage
-) : AppInitTask {
+) {
     private val _readHistoryState = MutableStateFlow<Map<Int, ComicReadHistory>>(emptyMap())
     val readHistoryState = _readHistoryState.asStateFlow()
 
@@ -86,16 +84,10 @@ class ReadHistoryManager(
         return entry.lastPageIndex.coerceIn(0, entry.lastChapterPageCount - 1)
     }
 
-    override suspend fun init() {
+    suspend fun load() {
         log("加载阅读历史")
         _readHistoryState.update { readHistoryStorage.get() }
         log("阅读历史已加载")
     }
 
-    private val appTaskInfo = AppTaskInfo(
-        taskName = "加载阅读历史",
-        sort = 5,
-    )
-
-    override fun getAppTaskInfo(): AppTaskInfo = appTaskInfo
 }

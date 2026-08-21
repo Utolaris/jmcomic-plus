@@ -32,15 +32,20 @@ class LocalSettingStorage(
         _state.update {
             localSetting
         }
-        secureStorage.set(STORAGE_KEY, this.state.value)
+        secureStorage.setStartup(STORAGE_KEY, localSetting)
     }
 
     fun get(): LocalSetting {
         if (_state.value == null) {
             _state.update {
-                val savedJson = secureStorage.getString(STORAGE_KEY)
-                val saved = secureStorage.get<LocalSetting>(
-                    STORAGE_KEY,
+                // New installations read only the small startup preferences file. The legacy
+                // lookup is kept for one-time migration of existing installations.
+                val savedJson = secureStorage.getStartupString(STORAGE_KEY)
+                    ?: secureStorage.getString(STORAGE_KEY)?.also {
+                        secureStorage.setStartupString(STORAGE_KEY, it)
+                    }
+                val saved = secureStorage.decode<LocalSetting>(
+                    savedJson,
                     object : TypeToken<LocalSetting>() {}.type
                 ) ?: LocalSetting()
                 // 旧版本字段 appLockType 迁移到 appLockUnlockMode
@@ -147,6 +152,7 @@ class LocalSettingStorage(
             LocalSetting()
         }
         secureStorage.remove(STORAGE_KEY)
+        secureStorage.removeStartup(STORAGE_KEY)
     }
 }
 

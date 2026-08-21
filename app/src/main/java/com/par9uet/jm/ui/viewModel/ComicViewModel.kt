@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 class ComicViewModel(
@@ -39,8 +40,15 @@ class ComicViewModel(
 
     private val _homeComicState = MutableStateFlow(HomeComicUIState())
     val homeComicState = _homeComicState.asStateFlow()
-    fun getHomeComic() {
-        viewModelScope.launch {
+    private var homeRequestJob: Job? = null
+    private var loadedHomeSource: String? = null
+
+    fun getHomeComic(force: Boolean = false) {
+        val source = localSettingManager.localSettingState.value.comicApiSource
+        if (homeRequestJob?.isActive == true) return
+        if (!force && loadedHomeSource == source) return
+
+        homeRequestJob = viewModelScope.launch {
             _homeComicState.update {
                 it.copy(
                     isLoading = true,
@@ -61,6 +69,7 @@ class ComicViewModel(
                     }
                 }
             }
+            loadedHomeSource = source
             _homeComicState.update {
                 it.copy(isLoading = false)
             }

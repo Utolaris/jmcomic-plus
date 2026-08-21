@@ -1,6 +1,5 @@
 package com.par9uet.jm.retrofit.service
 
-import com.par9uet.jm.retrofit.annotation.GInit
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.ResponseWrapper
 import com.par9uet.jm.retrofit.model.SignInDataResponse
@@ -16,7 +15,6 @@ import retrofit2.http.Query
 
 interface UserService {
 
-    @GInit
     @POST("login")
     @Multipart
     suspend fun login(

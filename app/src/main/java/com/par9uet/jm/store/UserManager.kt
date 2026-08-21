@@ -5,32 +5,35 @@ import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.Retrofit
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.UserStorage
-import com.par9uet.jm.task.AppInitTask
-import com.par9uet.jm.task.AppTaskInfo
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class UserManager(
     private val userStorage: UserStorage,
     private val cookieStorage: CookieStorage,
     private val userRepository: UserRepository,
     private val retrofit: Retrofit
-) : AppInitTask {
+) {
     private val _userState = MutableStateFlow(CommonUIState<User>())
     val userState = _userState.asStateFlow()
 
     val isLoginState = _userState.map { (it.data?.id ?: 0) > 0 }
+    private val loginMutex = Mutex()
 
-    private val appTaskInfo = AppTaskInfo(
-        taskName = "加载上次退出前保存的用户信息",
-        sort = 4,
-    )
+    init {
+        // Restoring the local identity is cheap and keeps the first frame consistent with the
+        // last session. Network verification is deliberately started after the UI is ready.
+        _userState.value = _userState.value.copy(data = runCatching { userStorage.get() }.getOrNull())
+    }
 
     fun updateUser(user: User) {
         _userState.update {
@@ -41,18 +44,57 @@ class UserManager(
         userStorage.set(user)
     }
 
-    fun clearUser() {
-        _userState.update {
-            it.copy(
-                data = User.create()
-            )
-        }
+    suspend fun clearUser() = loginMutex.withLock {
+        _userState.update { it.copy(data = User.create()) }
         retrofit.clearCookie()
         userStorage.remove()
         cookieStorage.remove()
     }
 
+    /** Performs a user-requested login without discarding the previous local identity on error. */
+    suspend fun login(username: String, password: String): NetWorkResult<LoginResponse> {
+        return loginInternal(username, password, clearUserOnError = false)
+    }
+
+    /** Verifies the saved credentials after the first screen is interactive. */
+    suspend fun verifyStoredLogin() {
+        val userData = _userState.value.data
+        if (userData != null && userData.username.isNotEmpty() && userData.password.isNotEmpty()) {
+            val username = userData.username
+            val password = userData.password
+            log("检测到已保存了用户登录信息，后台验证登录状态")
+            loginInternal(username, password, clearUserOnError = true)
+        }
+    }
+
+    /** Runs automatic sign-in under the same mutex as manual and saved-login verification. */
+    suspend fun autoSignInIfNeeded(enabled: Boolean, toastManager: ToastManager) =
+        loginMutex.withLock {
+            if (!enabled) return@withLock
+            val user = _userState.value.data?.takeIf { it.id > 0 } ?: return@withLock
+            val signData = when (val result = userRepository.getSignData(user.id)) {
+                is NetWorkResult.Error -> return@withLock
+                is NetWorkResult.Success<SignInDataResponse> -> result.data.toSignData()
+            }
+            val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH)
+            if (signData.dateMap[today]?.isSign == true) return@withLock
+
+            when (val result = userRepository.signIn(user.id, signData.dailyId)) {
+                is NetWorkResult.Success -> toastManager.showAsync(result.data.msg)
+                is NetWorkResult.Error -> log("自动签到", "签到失败：${result.message}")
+            }
+        }
+
+    /** Compatibility entry point for callers that used the old auto-login name. */
     suspend fun autoLogin(username: String, password: String) {
+        loginInternal(username, password, clearUserOnError = true)
+    }
+
+    private suspend fun loginInternal(
+        username: String,
+        password: String,
+        clearUserOnError: Boolean,
+    ): NetWorkResult<LoginResponse> = loginMutex.withLock {
         _userState.update {
             it.copy(
                 isLoading = true,
@@ -60,50 +102,27 @@ class UserManager(
                 errorMsg = ""
             )
         }
-        when (val data = userRepository.login(username, password)) {
+        val result = userRepository.login(username, password)
+        when (result) {
             is NetWorkResult.Error -> {
                 _userState.update {
                     it.copy(
                         isError = true,
-                        errorMsg = data.message,
-                        data = User.create()
+                        errorMsg = result.message,
+                        data = if (clearUserOnError) User.create() else it.data
                     )
                 }
             }
 
             is NetWorkResult.Success<LoginResponse> -> {
                 updateUser(
-                    data.data.toUser(
+                    result.data.toUser(
                         password = password
                     )
                 )
             }
         }
-        _userState.update {
-            it.copy(
-                isLoading = false
-            )
-        }
+        _userState.update { it.copy(isLoading = false) }
+        result
     }
-
-    override suspend fun init() {
-        log("用户信息开始初始化")
-        log("加载本地用户、cookie、登录信息")
-        _userState.update {
-            it.copy(
-                data = userStorage.get()
-            )
-        }
-        log("已加载本地用户、cookie、登录信息")
-        val userData = _userState.value.data
-        if (userData != null && userData.username.isNotEmpty() && userData.password.isNotEmpty()) {
-            val username = userData.username
-            val password = userData.password
-            log("检测到已保存了用户登录信息，开始执行一次用户登录")
-            autoLogin(username, password)
-        }
-        log("用户信息初始化结束")
-    }
-
-    override fun getAppTaskInfo(): AppTaskInfo = appTaskInfo
 }

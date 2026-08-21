@@ -77,7 +77,7 @@ class UserViewModel(
                     errorMsg = ""
                 )
             }
-            when (val data = userRepository.login(username, password)) {
+            when (val data = userManager.login(username, password)) {
                 is NetWorkResult.Error -> {
                     _loginState.update {
                         it.copy(
@@ -88,11 +88,8 @@ class UserViewModel(
                 }
 
                 is NetWorkResult.Success<LoginResponse> -> {
-                    userManager.updateUser(
-                        data.data.toUser(
-                            password = password
-                        )
-                    )
+                    // UserManager persists the identity while serializing it with background
+                    // login verification, so a manual login cannot race the startup verifier.
                 }
             }
             _loginState.update {

@@ -15,10 +15,7 @@ import com.par9uet.jm.retrofit.model.UserCollectComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.retrofit.service.UserService
-import com.par9uet.jm.storage.CookieStorage
-import com.par9uet.jm.store.InitManager
 import com.par9uet.jm.store.LocalSettingManager
-import io.github.jukomu.jmcomic.api.enums.ClientType
 import io.github.jukomu.jmcomic.api.model.ForumQuery
 import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
@@ -28,22 +25,16 @@ import io.github.jukomu.jmcomic.api.model.JmCommentList
 import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
 import io.github.jukomu.jmcomic.api.model.JmUserInfo
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
-import io.github.jukomu.jmcomic.core.config.JmConfiguration
-import io.github.jukomu.jmcomic.core.net.OkHttpBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
-import okhttp3.Cookie
-import java.time.Duration
 
 class UserRepositoryImpl(
     private val service: UserService,
     private val localSettingManager: LocalSettingManager,
-    initManager: InitManager,
-    private val cookieStorage: CookieStorage,
     private val embeddedClientManager: EmbeddedClientManager,
-) : BaseRepository(initManager), UserRepository {
+) : BaseRepository(), UserRepository {
 
     override suspend fun login(username: String, password: String): NetWorkResult<LoginResponse> {
         if (useEmbeddedApi()) {

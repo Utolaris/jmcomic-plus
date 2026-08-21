@@ -40,6 +40,19 @@ cd "`dirname \"$PRG\"`/" >/dev/null
 APP_HOME="`pwd -P`"
 cd "$SAVED" >/dev/null
 
+# Prefer the local macOS toolchain used by this workspace. Override either path with
+# JM_GRADLE_BIN or JM_ANDROID_SDK when the tools live elsewhere. Set JM_USE_GRADLE_WRAPPER=1
+# to use the distribution declared in gradle-wrapper.properties instead.
+LOCAL_GRADLE_BIN="${JM_GRADLE_BIN:-/opt/homebrew/bin/gradle}"
+LOCAL_ANDROID_SDK="${JM_ANDROID_SDK:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/opt/homebrew/share/android-commandlinetools}}}"
+if [ "${JM_USE_GRADLE_WRAPPER:-0}" != "1" ] &&
+   [ -x "$LOCAL_GRADLE_BIN" ] && [ -d "$LOCAL_ANDROID_SDK" ]; then
+    export ANDROID_HOME="$LOCAL_ANDROID_SDK"
+    export ANDROID_SDK_ROOT="$LOCAL_ANDROID_SDK"
+    export PATH="$LOCAL_ANDROID_SDK/platform-tools:$LOCAL_ANDROID_SDK/emulator:$LOCAL_ANDROID_SDK/cmdline-tools/latest/bin:$PATH"
+    exec "$LOCAL_GRADLE_BIN" "$@"
+fi
+
 APP_NAME="Gradle"
 APP_BASE_NAME=`basename "$0"`
 

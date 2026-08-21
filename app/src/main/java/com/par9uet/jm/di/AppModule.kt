@@ -18,14 +18,12 @@ import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.store.AppUpdateDownloadManager
 import com.par9uet.jm.store.DownloadToastAggregator
 import com.par9uet.jm.store.HistorySearchManager
-import com.par9uet.jm.store.InitManager
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.PostStartupInitializer
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.task.AppInitTask
-import com.par9uet.jm.ui.viewModel.GlobalViewModel
 import com.par9uet.jm.ui.viewModel.AiChatViewModel
 import com.par9uet.jm.ui.viewModel.PersonaViewModel
 import com.par9uet.jm.utils.LauncherDisguiseApplier
@@ -34,6 +32,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import org.koin.core.context.GlobalContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.bind
 import org.koin.dsl.module
@@ -56,22 +55,21 @@ val appModule = module {
     single { LauncherDisguiseApplier(get()) }
     single { CoverImageHostResolver() }
 
-    single { RemoteSettingRepositoryImpl(get(), get()) } bind RemoteSettingRepository::class
+    single { RemoteSettingRepositoryImpl(get()) } bind RemoteSettingRepository::class
     single { AiChatRepository(get()) }
 
-    single { UserManager(get(), get(), get(), get()) } bind AppInitTask::class
-    single { RemoteSettingManager(get()) } bind AppInitTask::class
-    single { LocalSettingManager(get(), get()) } bind AppInitTask::class
-    single { HistorySearchManager(get()) } bind AppInitTask::class
-    single { ReadHistoryManager(get()) } bind AppInitTask::class
+    single { UserManager(get(), get(), get(), get()) }
+    single { RemoteSettingManager(get(), get()) }
+    single { LocalSettingManager(get(), get()) }
+    single { HistorySearchManager(get()) }
+    single { ReadHistoryManager(get()) }
     single { ToastManager() }
     single { DownloadToastAggregator(get()) }
-    single { InitManager() }
+    single { PostStartupInitializer(get(), GlobalContext.get()) }
     single { AppUpdateDownloadManager(get(), get(), get()) }
 
     single<Gson> { GsonBuilder().setStrictness(Strictness.LENIENT).serializeNulls().create() }
 
-    viewModel { GlobalViewModel(getAll(), get()) }
     viewModel { AiChatViewModel(get(), get(), get()) }
     viewModel { PersonaViewModel(get()) }
 }

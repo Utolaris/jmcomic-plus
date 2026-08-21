@@ -20,13 +20,16 @@ class UserStorage(
         _state.update {
             user
         }
-        secureStorage.set(STORAGE_KEY, this.state.value)
+        secureStorage.setStartup(STORAGE_KEY, user)
     }
 
     fun get(): User {
         if (_state.value == null) {
             _state.update {
-                secureStorage.get(STORAGE_KEY, object : TypeToken<User>() {}.type) ?: User.create()
+                secureStorage.getStartup<User>(STORAGE_KEY, object : TypeToken<User>() {}.type)
+                    ?: secureStorage.get<User>(STORAGE_KEY, object : TypeToken<User>() {}.type)
+                    ?.also { secureStorage.setStartup(STORAGE_KEY, it) }
+                    ?: User.create()
             }
         }
         return _state.value ?: User.create()
@@ -37,5 +40,6 @@ class UserStorage(
             User.create()
         }
         secureStorage.remove(STORAGE_KEY)
+        secureStorage.removeStartup(STORAGE_KEY)
     }
 }

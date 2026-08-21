@@ -23,12 +23,9 @@ import com.par9uet.jm.retrofit.parseHtml
 import com.par9uet.jm.retrofit.parseRange
 import com.par9uet.jm.retrofit.parseSpeed
 import com.par9uet.jm.retrofit.service.ComicService
-import com.par9uet.jm.storage.CookieStorage
-import com.par9uet.jm.store.InitManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
-import io.github.jukomu.jmcomic.api.enums.ClientType
 import io.github.jukomu.jmcomic.api.enums.Category
 import io.github.jukomu.jmcomic.api.enums.FavoriteFolderType
 import io.github.jukomu.jmcomic.api.enums.ForumMode
@@ -49,26 +46,20 @@ import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksList
 import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksType
 import io.github.jukomu.jmcomic.api.model.SearchQuery
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
-import io.github.jukomu.jmcomic.core.config.JmConfiguration
-import io.github.jukomu.jmcomic.core.net.OkHttpBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.Cookie
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.time.Duration
 import java.util.concurrent.TimeUnit
 
 class ComicRepositoryImpl(
     private val service: ComicService,
-    initManager: InitManager,
     private val localSettingManager: LocalSettingManager,
-    private val cookieStorage: CookieStorage,
     private val embeddedClientManager: EmbeddedClientManager,
-) : BaseRepository(initManager), ComicRepository {
+) : BaseRepository(), ComicRepository {
 
     companion object {
         private val imageCache = mutableMapOf<Int, List<JmImage>>()
