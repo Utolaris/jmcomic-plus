@@ -14,12 +14,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+/** 应用本地设置（含主题/图片来源开关等）的可读视图，便于 ViewModel 单元测试替换。 */
+interface AppLocalSettings {
+    val localSettingState: kotlinx.coroutines.flow.StateFlow<LocalSetting>
+}
+
 class LocalSettingManager(
     private val localSettingStorage: LocalSettingStorage,
     private val launcherDisguiseApplier: LauncherDisguiseApplier,
-) {
+) : AppLocalSettings {
     private val _localSettingState = MutableStateFlow(LocalSetting())
-    val localSettingState = _localSettingState.asStateFlow()
+    override val localSettingState = _localSettingState.asStateFlow()
     private val loadLock = Any()
 
     @Volatile

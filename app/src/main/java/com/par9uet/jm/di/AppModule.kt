@@ -13,15 +13,19 @@ import com.par9uet.jm.storage.HistorySearchStorage
 import com.par9uet.jm.storage.LocalSettingStorage
 import com.par9uet.jm.storage.PersonaStorage
 import com.par9uet.jm.storage.ReadHistoryStorage
+import com.par9uet.jm.storage.SecureCookieStorage
 import com.par9uet.jm.storage.SecureStorage
+import com.par9uet.jm.storage.SecureUserStorage
 import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.store.AppUpdateDownloadManager
+import com.par9uet.jm.store.AppLocalSettings
 import com.par9uet.jm.store.DownloadToastAggregator
 import com.par9uet.jm.store.HistorySearchManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.PostStartupInitializer
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.RemoteSettingManager
+import com.par9uet.jm.store.SessionReadinessHolder
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.viewModel.AiChatViewModel
@@ -45,8 +49,8 @@ val appModule = module {
     }
 
     single { SecureStorage(get()) }
-    single { UserStorage(get()) }
-    single { CookieStorage(get()) }
+    single { SecureUserStorage(get()) } bind UserStorage::class
+    single { SecureCookieStorage(get()) } bind CookieStorage::class
     single { LocalSettingStorage(get()) }
     single { HistorySearchStorage(get()) }
     single { ReadHistoryStorage(get()) }
@@ -58,9 +62,10 @@ val appModule = module {
     single { RemoteSettingRepositoryImpl(get()) } bind RemoteSettingRepository::class
     single { AiChatRepository(get()) }
 
-    single { UserManager(get(), get(), get(), get()) }
+    single { SessionReadinessHolder() }
+    single { UserManager(get(), get(), get(), get(), get()) }
     single { RemoteSettingManager(get(), get()) }
-    single { LocalSettingManager(get(), get()) }
+    single { LocalSettingManager(get(), get()) } bind AppLocalSettings::class
     single { HistorySearchManager(get()) }
     single { ReadHistoryManager(get()) }
     single { ToastManager() }

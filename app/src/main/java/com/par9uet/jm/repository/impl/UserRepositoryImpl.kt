@@ -4,10 +4,15 @@ import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.data.models.COMIC_API_SOURCE_BUILTIN
 import com.par9uet.jm.data.models.COMIC_API_SOURCE_MIXED
 import com.par9uet.jm.repository.BaseRepository
+import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
+import com.par9uet.jm.repository.VerifiedCredentials
+import com.par9uet.jm.store.SessionReadinessHolder
+import com.par9uet.jm.store.awaitReady
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
 import com.par9uet.jm.retrofit.Retrofit
+import com.par9uet.jm.retrofit.CapturingCookieJar
 import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
@@ -43,36 +48,27 @@ class UserRepositoryImpl(
     private val localSettingManager: LocalSettingManager,
     private val embeddedClientManager: EmbeddedClientManager,
     private val retrofit: Retrofit,
+    private val sessionReadinessHolder: SessionReadinessHolder,
 ) : BaseRepository(), UserRepository {
 
-    override suspend fun login(username: String, password: String): NetWorkResult<LoginResponse> {
-        return loginInternal(username, password, isolatedSession = false)
-    }
-
-    override suspend fun verifyLogin(username: String, password: String): NetWorkResult<LoginResponse> {
-        return loginInternal(username, password, isolatedSession = true)
-    }
-
-    override fun clearSession() {
-        embeddedClientManager.clearSession()
-    }
-
-    private suspend fun loginInternal(
-        username: String,
-        password: String,
-        isolatedSession: Boolean,
-    ): NetWorkResult<LoginResponse> {
+    override suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
-                    when (val result = embeddedClientManager.login(username, password, isolatedSession)) {
+                    when (val result = embeddedClientManager.loginActive(username, password)) {
                         is EmbeddedClientManager.EmbeddedLoginResult.Success -> {
-                            NetWorkResult.Success(result.userInfo.toLoginResponse())
+                            NetWorkResult.Success(
+                                LoginSession(
+                                    loginResponse = result.userInfo.toLoginResponse(),
+                                    embeddedCookies = result.sessionCookies,
+                                )
+                            )
                         }
+
                         is EmbeddedClientManager.EmbeddedLoginResult.Failure -> {
                             val exception = result.exception
                             NetWorkResult.Error(
-                                message = "内置API登录失败：${exception.message ?: "未知错误"}",
+                                message = "内置API登录失败：" + (exception.message ?: "未知错误"),
                                 code = result.businessCode ?: exception.errorCode,
                                 authFailure = result.classifyAuthFailure()
                             )
@@ -82,18 +78,82 @@ class UserRepositoryImpl(
                     throw e
                 } catch (e: Exception) {
                     NetWorkResult.Error(
-                        message = "内置API登录失败：${e.message ?: "未知错误"}",
+                        message = "内置API登录失败：" + (e.message ?: "未知错误"),
                         authFailure = e.classifyAuthFailure()
                     )
                 }
             }
         }
-        val loginService = if (isolatedSession) {
-            retrofit.createIsolatedService(UserService::class.java)
-        } else {
-            service
+        return safeApiCall { service.login(username, password) }
+            .asAuthResult()
+            .mapLogin { LoginSession(loginResponse = it) }
+    }
+
+    override suspend fun verifyLogin(username: String, password: String): NetWorkResult<VerifiedCredentials> {
+        if (useEmbeddedApi()) {
+            return withContext(Dispatchers.IO) {
+                try {
+                    when (val result = embeddedClientManager.verifyCandidate(username, password)) {
+                        is EmbeddedClientManager.EmbeddedLoginResult.Success -> {
+                            NetWorkResult.Success(
+                                VerifiedCredentials(
+                                    loginResponse = result.userInfo.toLoginResponse(),
+                                    embeddedCookies = result.sessionCookies,
+                                )
+                            )
+                        }
+
+                        is EmbeddedClientManager.EmbeddedLoginResult.Failure -> {
+                            val exception = result.exception
+                            NetWorkResult.Error(
+                                message = "内置API登录失败：" + (exception.message ?: "未知错误"),
+                                code = result.businessCode ?: exception.errorCode,
+                                authFailure = result.classifyAuthFailure()
+                            )
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    NetWorkResult.Error(
+                        message = "内置API登录失败：" + (e.message ?: "未知错误"),
+                        authFailure = e.classifyAuthFailure()
+                    )
+                }
+            }
         }
-        return safeApiCall { loginService.login(username, password) }.asAuthResult()
+        val captured = CapturingCookieJar()
+        val loginService = retrofit.createCapturingService(UserService::class.java, captured)
+        return safeApiCall { loginService.login(username, password) }
+            .asAuthResult()
+            .mapLogin {
+                VerifiedCredentials(
+                    loginResponse = it,
+                    networkCookies = captured.capturedCookies,
+                )
+            }
+    }
+
+    /**
+     * 把已验证的候选会话提升为活动会话。调用方（UserManager）已确认 generation 有效。
+     */
+    override fun activateVerifiedSession(verified: VerifiedCredentials) {
+        if (useEmbeddedApi()) {
+            embeddedClientManager.activateCandidateSession(verified.embeddedCookies)
+        } else {
+            retrofit.promoteCapturedCookies(verified.networkCookies)
+        }
+    }
+
+    override fun clearSession() {
+        embeddedClientManager.clearSession()
+    }
+
+    private fun <T> NetWorkResult<LoginResponse>.mapLogin(transform: (LoginResponse) -> T): NetWorkResult<T> {
+        return when (this) {
+            is NetWorkResult.Success -> NetWorkResult.Success(transform(data))
+            is NetWorkResult.Error -> this
+        }
     }
 
     private fun EmbeddedClientManager.EmbeddedLoginResult.Failure.classifyAuthFailure(): AuthFailure {
@@ -135,6 +195,7 @@ class UserRepositoryImpl(
         order: CollectComicOrderFilter,
         folderId: Int
     ): NetWorkResult<UserCollectComicListResponse> {
+        awaitAuthenticatedSessionReady()
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
@@ -177,6 +238,7 @@ class UserRepositoryImpl(
     }
 
     override suspend fun getHistoryComicList(page: Int): NetWorkResult<UserHistoryComicListResponse> {
+        awaitAuthenticatedSessionReady()
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
@@ -200,6 +262,7 @@ class UserRepositoryImpl(
     }
 
     override suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit> {
+        awaitAuthenticatedSessionReady()
         return withContext(Dispatchers.IO) {
             try {
                 withEmbeddedClient { client ->
@@ -219,6 +282,7 @@ class UserRepositoryImpl(
         page: Int,
         userId: Int
     ): NetWorkResult<UserHistoryCommentListResponse> {
+        awaitAuthenticatedSessionReady()
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
@@ -245,6 +309,7 @@ class UserRepositoryImpl(
     }
 
     override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> {
+        awaitAuthenticatedSessionReady()
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
@@ -265,6 +330,7 @@ class UserRepositoryImpl(
     }
 
     override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<SignInResponse> {
+        awaitAuthenticatedSessionReady()
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
@@ -287,6 +353,21 @@ class UserRepositoryImpl(
     private fun useEmbeddedApi(): Boolean {
         val source = localSettingManager.localSettingState.value.comicApiSource
         return source == COMIC_API_SOURCE_BUILTIN || source == COMIC_API_SOURCE_MIXED
+    }
+
+    /**
+     * 启动阶段的后台会话恢复尚未完成时，认证类请求做有界等待（默认 2 秒），
+     * 避免用未恢复/未验证的会话发出注定 401 的请求。公开接口不调用此方法。
+     * 若已有持久化会话（恢复是瞬时的），直接放行，不等后台验证。
+     */
+    private suspend fun awaitAuthenticatedSessionReady() {
+        val hasInstantSession = if (useEmbeddedApi()) {
+            embeddedClientManager.hasPersistedSession()
+        } else {
+            retrofit.hasPersistedSession()
+        }
+        if (hasInstantSession) return
+        sessionReadinessHolder.awaitReady()
     }
 
     private fun <T> withEmbeddedClient(block: (JmApiClient) -> T): T {

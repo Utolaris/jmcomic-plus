@@ -10,8 +10,8 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.SignInData
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.repository.ComicRepository
+import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
@@ -87,7 +87,7 @@ class UserViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<LoginResponse> -> {
+                is NetWorkResult.Success<LoginSession> -> {
                     // UserManager persists the identity through a generation-checked commit, so
                     // a manual login cannot be overwritten by the startup verifier.
                 }

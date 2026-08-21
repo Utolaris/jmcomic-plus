@@ -1,10 +1,11 @@
 package com.par9uet.jm.store
 
 import com.par9uet.jm.data.models.User
+import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.retrofit.Retrofit
+import com.par9uet.jm.repository.VerifiedCredentials
+import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.retrofit.model.AuthFailure
-import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.storage.CookieStorage
@@ -25,11 +26,22 @@ import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.coroutineContext
 
+/**
+ * 用户会话状态机。
+ *
+ * 会话正确性边界：sessionGeneration。任何“把结果应用到活动会话”的提交都必须在
+ * loginMutex 内做 generation + 身份双重校验；网络请求本身（登录/验证）始终在锁外执行，
+ * 因此手动登录/登出不会被 10-20 秒的阻塞网络调用拖住。
+ *
+ * Cookie 提交统一走 [UserRepository.activateVerifiedSession]：只有 generation 仍然有效时
+ * 才把候选/登录会话的完整 cookie（内置 API 含 AVS）持久化并同步到活动客户端。
+ */
 class UserManager(
     private val userStorage: UserStorage,
     private val cookieStorage: CookieStorage,
     private val userRepository: UserRepository,
-    private val retrofit: Retrofit
+    private val retrofit: ActiveSessionCookieStore,
+    private val sessionReadinessHolder: SessionReadinessHolder,
 ) {
     private val _userState = MutableStateFlow(CommonUIState<User>())
     val userState = _userState.asStateFlow()
@@ -49,6 +61,14 @@ class UserManager(
         // Restoring the local identity is cheap and keeps the first frame consistent with the
         // last session. Network verification is deliberately started after the UI is ready.
         _userState.value = _userState.value.copy(data = runCatching { userStorage.get() }.getOrNull())
+        val cached = _userState.value.data
+        sessionReadinessHolder.set(
+            if (cached != null && cached.id > 0 && cached.username.isNotEmpty() && cached.password.isNotEmpty()) {
+                SessionReadiness.Restoring
+            } else {
+                SessionReadiness.Unauthenticated
+            }
+        )
     }
 
     /** Compatibility entry point for callers that replace the active identity directly. */
@@ -63,11 +83,12 @@ class UserManager(
         loginMutex.withLock {
             sessionGeneration.incrementAndGet()
             clearIdentityWhileLocked()
+            sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
         }
     }
 
     /** Performs a user-requested login without discarding the previous local identity on error. */
-    suspend fun login(username: String, password: String): NetWorkResult<LoginResponse> {
+    suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
         cancelBackgroundJob()
         val generation = beginManualLogin()
         val result = userRepository.login(username, password)
@@ -83,6 +104,9 @@ class UserManager(
      * Verifies the saved credentials after the first screen is interactive.
      * 只有认证分类明确为 InvalidCredentials 才注销本地身份；离线、超时等临时错误保留缓存身份，
      * 避免“秒开时暂时没网 → 后台验证失败 → 用户被突然登出”。
+     *
+     * 网络验证在 loginMutex 外运行；提交（cookie 持久化、用户写入、读就绪状态）在锁内
+     * 做 generation + 身份校验，陈旧候选结果（验证 A 期间手动登录 B / 登出）一律丢弃。
      */
     suspend fun verifyStoredLogin() {
         val snapshot = loginMutex.withLock {
@@ -115,19 +139,25 @@ class UserManager(
                     is NetWorkResult.Error -> {
                         if (result.authFailure == AuthFailure.InvalidCredentials) {
                             clearIdentityWhileLocked(result.message)
+                            sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
                         } else {
+                            // 临时失败保留缓存身份与已持久化的会话；仍按“已认证”对待，
+                            // 避免收藏等请求在验证失败后一直空等。
+                            sessionReadinessHolder.set(SessionReadiness.Authenticated)
                             _userState.update {
                                 it.copy(isError = true, errorMsg = result.message, isLoading = false)
                             }
                         }
                     }
 
-                    is NetWorkResult.Success<LoginResponse> -> {
+                    is NetWorkResult.Success<VerifiedCredentials> -> {
                         persistUserWhileLocked(
-                            result.data.toUser(
+                            result.data.loginResponse.toUser(
                                 password = snapshot.user.password
                             )
                         )
+                        userRepository.activateVerifiedSession(result.data)
+                        sessionReadinessHolder.set(SessionReadiness.Authenticated)
                         _userState.update { it.copy(isLoading = false) }
                     }
                 }
@@ -161,7 +191,7 @@ class UserManager(
                 if (isCurrentSession(snapshot)) toastManager.showAsync(result.data.msg)
             }
 
-            is NetWorkResult.Error -> log("自动签到", "签到失败：${result.message}")
+            is NetWorkResult.Error -> log("自动签到", "签到失败：" + result.message)
         }
     }
 
@@ -214,9 +244,9 @@ class UserManager(
     private suspend fun commitLoginResult(
         generation: Long,
         password: String,
-        result: NetWorkResult<LoginResponse>,
+        result: NetWorkResult<LoginSession>,
         clearUserOnError: Boolean,
-    ): NetWorkResult<LoginResponse> {
+    ): NetWorkResult<LoginSession> {
         coroutineContext.ensureActive()
         return loginMutex.withLock {
             if (sessionGeneration.get() != generation) return@withLock result
@@ -224,6 +254,7 @@ class UserManager(
                 is NetWorkResult.Error -> {
                     if (clearUserOnError && result.authFailure == AuthFailure.InvalidCredentials) {
                         clearIdentityWhileLocked(result.message)
+                        sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
                     } else {
                         _userState.update {
                             it.copy(
@@ -234,12 +265,22 @@ class UserManager(
                     }
                 }
 
-                is NetWorkResult.Success<LoginResponse> -> {
+                is NetWorkResult.Success<LoginSession> -> {
                     persistUserWhileLocked(
-                        result.data.toUser(
+                        result.data.loginResponse.toUser(
                             password = password
                         )
                     )
+                    // 提交完整会话（内置 API 含 AVS；网络 API 登录响应已由活动 CookieJar
+                    // 自行持久化，此处为空操作）。generation 校验保证陈旧的登录/验证结果
+                    // 无法覆盖更新的会话。
+                    userRepository.activateVerifiedSession(
+                        VerifiedCredentials(
+                            loginResponse = result.data.loginResponse,
+                            embeddedCookies = result.data.embeddedCookies,
+                        )
+                    )
+                    sessionReadinessHolder.set(SessionReadiness.Authenticated)
                 }
             }
             if (result !is NetWorkResult.Error || result.authFailure != AuthFailure.InvalidCredentials || !clearUserOnError) {

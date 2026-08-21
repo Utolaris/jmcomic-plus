@@ -12,7 +12,7 @@ import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekResponse
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.AppLocalSettings
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.SearchComicFilter
 import com.par9uet.jm.ui.pagingSource.SearchComicPagingSource
@@ -30,7 +30,7 @@ import kotlinx.coroutines.launch
 
 class ComicViewModel(
     private val comicRepository: ComicRepository,
-    private val localSettingManager: LocalSettingManager,
+    private val localSettingManager: AppLocalSettings,
 ) : ViewModel() {
     data class HomeComicUIState(
         val isLoading: Boolean = true,
@@ -56,7 +56,16 @@ class ComicViewModel(
         // so cancellation alone cannot guarantee that their physical call has already returned.
         val requestGeneration = ++homeRequestGeneration
         activeJob?.cancel()
-        if (!force && activeJob?.isActive != true && loadedHomeSource == source && homeStateSource == source) return
+        if (!force && loadedHomeSource == source && homeStateSource == source) {
+            // 返回已缓存来源（此时不存在同源进行中的请求，首个守卫已排除）：
+            // 当前 isLoading 若为 true，它属于刚被作废的其他来源请求代次，直接复位，
+            // 不发起多余网络请求。迟到的旧请求结果被 generation 守卫丢弃，
+            // 不会把 loading 重新置回。
+            if (_homeComicState.value.isLoading) {
+                _homeComicState.update { it.copy(isLoading = false) }
+            }
+            return
+        }
 
         homeRequestSource = source
         homeRequestJob = viewModelScope.launch {

@@ -50,7 +50,9 @@ open class BaseRepository {
             Result.success(block())
         } catch (e: CancellationException) {
             throw e
-        } catch (e: Throwable) {
+        } catch (e: Exception) {
+            // 只把普通异常转换为 Result.failure；OOM/LinkageError/StackOverflowError 等
+            // JVM 致命错误保持抛出，避免被当成普通网络失败吞掉。
             Result.failure(e)
         }
     }

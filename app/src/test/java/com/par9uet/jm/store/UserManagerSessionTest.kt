@@ -1,0 +1,394 @@
+package com.par9uet.jm.store
+
+import com.par9uet.jm.data.models.User
+import com.par9uet.jm.data.models.CollectComicOrderFilter
+import com.par9uet.jm.repository.LoginSession
+import com.par9uet.jm.repository.UserRepository
+import com.par9uet.jm.repository.VerifiedCredentials
+import com.par9uet.jm.retrofit.ActiveSessionCookieStore
+import com.par9uet.jm.retrofit.model.AuthFailure
+import com.par9uet.jm.retrofit.model.LoginResponse
+import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.retrofit.model.SignInDataResponse
+import com.par9uet.jm.retrofit.model.SignInResponse
+import com.par9uet.jm.retrofit.model.UserCollectComicListResponse
+import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
+import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
+import com.par9uet.jm.storage.CookieStorage
+import com.par9uet.jm.storage.UserStorage
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
+import okhttp3.Cookie
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+/**
+ * UserManager 会话状态机测试：验证 generation + 身份校验边界下，
+ * 陈旧验证结果不能覆盖更新的登录/登出，临时失败保留身份，InvalidCredentials 才清除。
+ */
+class UserManagerSessionTest {
+
+    private class FakeUserStorage(initial: User = User.create()) : UserStorage {
+        private val state = MutableStateFlow(initial)
+        override fun get(): User = state.value
+        override fun set(user: User) {
+            state.value = user
+        }
+
+        override fun remove() {
+            state.value = User.create()
+        }
+    }
+
+    private class FakeCookieStorage(initial: List<Cookie> = emptyList()) : CookieStorage {
+        private val _state = MutableStateFlow<List<Cookie>?>(initial)
+        override val state: StateFlow<List<Cookie>?> = _state.asStateFlow()
+        private val writes = mutableListOf<List<Cookie>>()
+
+        override fun set(cookieStore: List<Cookie>) {
+            writes.add(cookieStore)
+            _state.value = cookieStore
+        }
+
+        override fun get(): List<Cookie> = _state.value ?: emptyList()
+        override fun remove() {
+            writes.add(emptyList())
+            _state.value = emptyList()
+        }
+
+        fun writesCount(): Int = writes.size
+    }
+
+    private class FakeSessionClearer : ActiveSessionCookieStore {
+        var clearCount = 0
+        override fun clearCookie() {
+            clearCount++
+        }
+    }
+
+    /**
+     * 可编排的网络替身。verifyLogin 模拟真实的不可取消阻塞网络调用：
+     * gate 完成前即使外部 job 被取消，调用仍会完成（返回后由 ensureActive 中止提交）。
+     */
+    private class GateUserRepository(
+        private val cookieStorage: CookieStorage,
+    ) : UserRepository {
+        val verifyStarted = CompletableDeferred<Unit>()
+        private val verifyGate = CompletableDeferred<NetWorkResult<VerifiedCredentials>>()
+        val activated = mutableListOf<VerifiedCredentials>()
+        var loginHandler: (suspend (String, String) -> NetWorkResult<LoginSession>)? = null
+        var favoritesSeenCookies = emptyList<Cookie>()
+        var favoritesCalls = 0
+
+        fun completeVerify(result: NetWorkResult<VerifiedCredentials>) {
+            verifyGate.complete(result)
+        }
+
+        override suspend fun verifyLogin(
+            username: String,
+            password: String
+        ): NetWorkResult<VerifiedCredentials> {
+            verifyStarted.complete(Unit)
+            return withContext(Dispatchers.Default + NonCancellable) {
+                verifyGate.await()
+            }
+        }
+
+        override suspend fun login(
+            username: String,
+            password: String
+        ): NetWorkResult<LoginSession> {
+            return checkNotNull(loginHandler).invoke(username, password)
+        }
+
+        override fun activateVerifiedSession(verified: VerifiedCredentials) {
+            activated += verified
+            if (verified.embeddedCookies.isNotEmpty()) {
+                cookieStorage.set(verified.embeddedCookies)
+            }
+            if (verified.networkCookies.isNotEmpty()) {
+                cookieStorage.set(cookieStorage.get() + verified.networkCookies)
+            }
+        }
+
+        override fun clearSession() = Unit
+
+        override suspend fun getCollectComicList(
+            page: Int,
+            order: CollectComicOrderFilter,
+            folderId: Int
+        ): NetWorkResult<UserCollectComicListResponse> {
+            favoritesCalls++
+            favoritesSeenCookies = cookieStorage.get()
+            return NetWorkResult.Error("stub")
+        }
+
+        override suspend fun getHistoryComicList(
+            page: Int
+        ): NetWorkResult<UserHistoryComicListResponse> = NetWorkResult.Error("stub")
+
+        override suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit> =
+            NetWorkResult.Error("stub")
+
+        override suspend fun getHistoryCommentList(
+            page: Int,
+            userId: Int
+        ): NetWorkResult<UserHistoryCommentListResponse> = NetWorkResult.Error("stub")
+
+        override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> =
+            NetWorkResult.Error("stub")
+
+        override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<SignInResponse> =
+            NetWorkResult.Error("stub")
+    }
+
+    private fun user(id: Int, name: String, password: String = "pwd"): User = User(
+        id = id,
+        username = name,
+        password = password,
+        avatar = "",
+        level = 1,
+        levelName = "M",
+        currentLevelExp = 0,
+        nextLevelExp = 100,
+        currentCollectCount = 0,
+        maxCollectCount = 100,
+        jCoin = 0,
+    )
+
+    private fun loginResponse(id: Int, name: String): LoginResponse = LoginResponse(
+        uid = id,
+        username = name,
+        email = "",
+        photo = "",
+        coin = "0",
+        album_favorites = 0,
+        level_name = "M",
+        level = 1,
+        nextLevelExp = 100,
+        exp = 0,
+        expPercent = 0.0,
+        album_favorites_max = 100,
+    )
+
+    private fun avsCookie(value: String = "session-1"): Cookie = Cookie.Builder()
+        .name("AVS")
+        .value(value)
+        .domain("18comic.vip")
+        .path("/")
+        .build()
+
+    private fun manager(
+        userStorage: UserStorage,
+        cookieStorage: CookieStorage,
+        repository: UserRepository,
+        clearer: ActiveSessionCookieStore,
+        readiness: SessionReadinessHolder = SessionReadinessHolder(),
+    ) = UserManager(userStorage, cookieStorage, repository, clearer, readiness)
+
+    @Test
+    fun staleVerifierCannotOverwriteNewerManualLogin() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        repository.loginHandler = { _, _ ->
+            NetWorkResult.Success(
+                LoginSession(
+                    loginResponse = loginResponse(2, "accountB"),
+                    embeddedCookies = listOf(avsCookie("session-B")),
+                )
+            )
+        }
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+
+        val verifier = launch { manager.verifyStoredLogin() }
+        repository.verifyStarted.await()
+
+        // 验证 A 的网络请求仍在进行时，用户手动登录 B 并完成。
+        val loginResult = manager.login("accountB", "pwdB")
+        assertTrue(loginResult is NetWorkResult.Success)
+
+        // A 的候选验证随后返回。
+        repository.completeVerify(
+            NetWorkResult.Success(
+                VerifiedCredentials(
+                    loginResponse = loginResponse(1, "accountA"),
+                    embeddedCookies = listOf(avsCookie("session-A")),
+                )
+            )
+        )
+        verifier.join()
+
+        // 活动身份仍然是 B；存储 cookie 是 B 的会话；A 的候选从未被激活。
+        assertEquals(2, manager.userState.value.data?.id)
+        assertEquals("session-B", cookieStorage.get().single().value)
+        assertTrue(repository.activated.none {
+            it.embeddedCookies.any { c -> c.value == "session-A" }
+        })
+        assertTrue(repository.activated.any {
+            it.embeddedCookies.any { c -> c.value == "session-B" }
+        })
+    }
+
+    @Test
+    fun staleVerifierCannotRestoreAfterLogout() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
+        val repository = GateUserRepository(cookieStorage)
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+
+        val verifier = launch { manager.verifyStoredLogin() }
+        repository.verifyStarted.await()
+
+        // 验证进行中用户登出。
+        manager.clearUser()
+        assertEquals(0, manager.userState.value.data?.id)
+
+        repository.completeVerify(
+            NetWorkResult.Success(
+                VerifiedCredentials(
+                    loginResponse = loginResponse(1, "accountA"),
+                    embeddedCookies = listOf(avsCookie("session-A")),
+                )
+            )
+        )
+        verifier.join()
+
+        // 登出保持有效：身份为空、cookie 存储被清空、没有发生激活。
+        assertEquals(0, manager.userState.value.data?.id)
+        assertTrue(cookieStorage.get().isEmpty())
+        assertEquals(User.create(), userStorage.get())
+        assertTrue(repository.activated.isEmpty())
+    }
+
+    @Test
+    fun transientVerifyFailureRetainsCachedIdentity() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
+        val repository = GateUserRepository(cookieStorage)
+        val readiness = SessionReadinessHolder()
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+
+        val verifier = launch { manager.verifyStoredLogin() }
+        repository.verifyStarted.await()
+        repository.completeVerify(
+            NetWorkResult.Error("网络连接超时", authFailure = AuthFailure.TemporaryFailure)
+        )
+        verifier.join()
+
+        assertEquals(1, manager.userState.value.data?.id)
+        assertEquals("session-A", cookieStorage.get().single().value)
+        assertTrue(repository.activated.isEmpty())
+        assertEquals(SessionReadiness.Authenticated, readiness.state.value)
+        assertEquals(false, manager.userState.value.isLoading)
+    }
+
+    @Test
+    fun invalidCredentialsClearsPersistentIdentity() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
+        val repository = GateUserRepository(cookieStorage)
+        val clearer = FakeSessionClearer()
+        val readiness = SessionReadinessHolder()
+        val manager = manager(userStorage, cookieStorage, repository, clearer, readiness)
+
+        val verifier = launch { manager.verifyStoredLogin() }
+        repository.verifyStarted.await()
+        repository.completeVerify(
+            NetWorkResult.Error(
+                "账号或密码错误",
+                code = 401,
+                authFailure = AuthFailure.InvalidCredentials
+            )
+        )
+        verifier.join()
+
+        assertEquals(0, manager.userState.value.data?.id)
+        assertEquals(User.create(), userStorage.get())
+        assertTrue(cookieStorage.get().isEmpty())
+        assertEquals(1, clearer.clearCount)
+        assertEquals(SessionReadiness.Unauthenticated, readiness.state.value)
+    }
+
+    @Test
+    fun successfulCandidateVerificationPromotesFullSessionWithAVS() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        val readiness = SessionReadinessHolder()
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+
+        val verifier = launch { manager.verifyStoredLogin() }
+        repository.verifyStarted.await()
+        repository.completeVerify(
+            NetWorkResult.Success(
+                VerifiedCredentials(
+                    loginResponse = loginResponse(1, "accountA"),
+                    embeddedCookies = listOf(avsCookie("session-A")),
+                )
+            )
+        )
+        verifier.join()
+
+        assertEquals(1, manager.userState.value.data?.id)
+        // 完整 embedded cookie（含 AVS）被持久化为活动会话。
+        val persisted = cookieStorage.get()
+        assertEquals(1, persisted.size)
+        assertEquals("AVS", persisted.single().name)
+        assertEquals("session-A", persisted.single().value)
+        assertEquals(SessionReadiness.Authenticated, readiness.state.value)
+        assertEquals(1, repository.activated.size)
+    }
+
+    @Test
+    fun promotedSessionIsUsedBySubsequentAuthenticatedFavoritesCall() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+
+        val verifier = launch { manager.verifyStoredLogin() }
+        repository.verifyStarted.await()
+        repository.completeVerify(
+            NetWorkResult.Success(
+                VerifiedCredentials(
+                    loginResponse = loginResponse(1, "accountA"),
+                    embeddedCookies = listOf(avsCookie("session-A")),
+                )
+            )
+        )
+        verifier.join()
+
+        repository.getCollectComicList(1, CollectComicOrderFilter.COLLECT_TIME, 0)
+        assertEquals(1, repository.favoritesCalls)
+        assertEquals("AVS", repository.favoritesSeenCookies.single().name)
+        assertEquals("session-A", repository.favoritesSeenCookies.single().value)
+    }
+
+    @Test
+    fun savedActiveSessionSurvivesProcessStyleReconstruction() = runBlocking {
+        val savedUser = user(1, "accountA")
+        val savedCookies = listOf(avsCookie("session-A"))
+        val userStorage = FakeUserStorage(savedUser)
+        val cookieStorage = FakeCookieStorage(savedCookies)
+        val repository = GateUserRepository(cookieStorage)
+        val readiness = SessionReadinessHolder()
+
+        // 模拟进程重启：用同一持久化存储重建 UserManager。
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+
+        assertEquals(1, manager.userState.value.data?.id)
+        assertEquals("accountA", manager.userState.value.data?.username)
+        assertEquals("session-A", cookieStorage.get().single().value)
+        // 后台验证尚未运行，就绪状态为 Restoring，认证请求会做有界等待。
+        assertEquals(SessionReadiness.Restoring, readiness.state.value)
+    }
+}
