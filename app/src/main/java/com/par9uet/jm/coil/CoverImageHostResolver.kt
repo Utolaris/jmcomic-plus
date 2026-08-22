@@ -32,12 +32,17 @@ class CoverImageHostResolver internal constructor(
     fun coverUrls(comicId: Int, remoteHost: String?): List<String> = candidateHosts(remoteHost)
         .map { host -> buildJmCoverUrl(host, comicId) }
 
-    fun recordSuccess(candidateUrl: String, elapsedMillis: Long) {
-        hostHealth.recordSuccess(candidateUrl, elapsedMillis)
+    /**
+     * 封面加载成功：只标记主机健康（清除冷却），不把 Coil 全量加载耗时
+     * （含排队/下载/解码/渲染）写入 Reader 排序使用的 TTFB 延迟 EWMA。
+     */
+    fun recordHealthy(candidateUrl: String) {
+        hostHealth.recordHealthy(candidateUrl)
     }
 
-    fun recordFailure(candidateUrl: String) {
-        hostHealth.recordFailure(candidateUrl)
+    /** 主机/网络级失败才调用；资源级失败（404/解码等）不应全局惩罚 CDN。 */
+    fun recordHostFailure(candidateUrl: String) {
+        hostHealth.recordHostFailure(candidateUrl)
     }
 
     internal fun candidateHosts(remoteHost: String?): List<String> {

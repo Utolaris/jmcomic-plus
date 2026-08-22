@@ -1,6 +1,5 @@
 package com.par9uet.jm.ui.components
 
-import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -18,6 +17,8 @@ import com.par9uet.jm.BuildConfig
 import com.par9uet.jm.coil.CoverImageHostResolver
 import com.par9uet.jm.coil.jmCoverCacheKey
 import com.par9uet.jm.coil.nextCoverCandidateUrl
+import com.par9uet.jm.image.ImageHostFailureKind
+import com.par9uet.jm.image.classifyImageHostFailure
 import com.par9uet.jm.image.normalizeJmImageHost
 import com.par9uet.jm.utils.log
 import org.koin.compose.getKoin
@@ -42,7 +43,6 @@ internal fun JmCoverImage(
         mutableStateOf(emptySet<String>())
     }
     val candidateUrl = nextCoverCandidateUrl(candidateUrls, attemptedUrls)
-    val requestStartedAtMillis = remember(candidateUrl) { SystemClock.elapsedRealtime() }
     val cacheKey = remember(comicId) { jmCoverCacheKey(comicId) }
     val request = remember(context, candidateUrl, cacheKey) {
         candidateUrl?.let { url ->
@@ -63,10 +63,9 @@ internal fun JmCoverImage(
         onSuccess = { state ->
             val loadedUrl = candidateUrl ?: return@AsyncImage
             if (state.result.dataSource == DataSource.NETWORK) {
-                resolver.recordSuccess(
-                    loadedUrl,
-                    (SystemClock.elapsedRealtime() - requestStartedAtMillis).coerceAtLeast(1L),
-                )
+                // Coil 全量加载耗时（排队/下载/解码/渲染）不是 TTFB，
+                // 只标记主机健康，不写入 Reader 排序使用的延迟 EWMA
+                resolver.recordHealthy(loadedUrl)
             }
             if (BuildConfig.DEBUG) {
                 log(
@@ -78,14 +77,21 @@ internal fun JmCoverImage(
         },
         onError = { state ->
             val failedUrl = candidateUrl ?: return@AsyncImage
-            resolver.recordFailure(failedUrl)
+            val failureKind = classifyImageHostFailure(state.result.throwable)
+            // 只有主机/网络级失败才全局冷却 CDN；404/解码等资源级失败仅回退到下一个候选
+            if (failureKind == ImageHostFailureKind.HOST_FAILURE) {
+                resolver.recordHostFailure(failedUrl)
+            }
+            if (failureKind == ImageHostFailureKind.CANCELLED) {
+                return@AsyncImage
+            }
             val updatedAttempts = attemptedUrls + failedUrl
             val nextUrl = nextCoverCandidateUrl(candidateUrls, updatedAttempts)
             if (BuildConfig.DEBUG) {
                 log(
                     "CoverImage",
                     "JM$comicId host ${normalizeJmImageHost(failedUrl)} failed: " +
-                        "${state.result.throwable::class.java.simpleName}; " +
+                        "${state.result.throwable::class.java.simpleName}($failureKind); " +
                         "fallbackHost=${nextUrl?.let(::normalizeJmImageHost)}; " +
                         "attempts=${updatedAttempts.size}",
                 )

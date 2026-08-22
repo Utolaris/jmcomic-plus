@@ -3,6 +3,8 @@ package com.par9uet.jm.coil
 import com.par9uet.jm.image.JmImageHostHealthStore
 import com.par9uet.jm.image.JmImageHostLatency
 import com.par9uet.jm.image.JmImageHostPersistence
+import com.par9uet.jm.image.ImageHostFailureKind
+import com.par9uet.jm.image.classifyImageHostFailure
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,8 +39,8 @@ class CoverImageHostResolverTest {
     @Test
     fun successfulHostIsPromotedForTheNextCover() {
         val resolver = resolver()
-        resolver.recordFailure(buildJmCoverUrl("a.example", 1))
-        resolver.recordSuccess(buildJmCoverUrl("b.example", 1), elapsedMillis = 20L)
+        resolver.recordHostFailure(buildJmCoverUrl("a.example", 1))
+        resolver.recordHealthy(buildJmCoverUrl("b.example", 1))
 
         assertEquals("b.example", resolver.candidateHosts("https://a.example").first())
     }
@@ -47,7 +49,7 @@ class CoverImageHostResolverTest {
     fun failedHostMovesBehindAvailableHostsDuringCooldown() {
         val clock = MutableClock(10_000L)
         val resolver = resolver(clock)
-        resolver.recordFailure(buildJmCoverUrl("a.example", 1))
+        resolver.recordHostFailure(buildJmCoverUrl("a.example", 1))
 
         assertEquals(
             listOf("b.example", "a.example"),
@@ -59,7 +61,7 @@ class CoverImageHostResolverTest {
     fun failedHostRejoinsNormalOrderAfterCooldownExpires() {
         val clock = MutableClock(10_000L)
         val resolver = resolver(clock)
-        resolver.recordFailure(buildJmCoverUrl("a.example", 1))
+        resolver.recordHostFailure(buildJmCoverUrl("a.example", 1))
         clock.nowMillis += 1_001L
 
         assertEquals(
@@ -98,6 +100,25 @@ class CoverImageHostResolverTest {
     }
 
     @Test
+    fun resourceFailureAdvancesCoverWithoutCoolingHost() {
+        val clock = MutableClock(10_000L)
+        val resolver = resolver(clock)
+        val candidates = resolver.coverUrls(123, "a.example")
+        val failedUrl = candidates.first()
+        val kind = classifyImageHostFailure(
+            RuntimeException("HTTP 404"),
+            httpCodeHint = 404,
+        )
+        if (kind == ImageHostFailureKind.HOST_FAILURE) {
+            resolver.recordHostFailure(failedUrl)
+        }
+
+        assertEquals(candidates[1], nextCoverCandidateUrl(candidates, setOf(failedUrl)))
+        // A stays globally eligible because this was a per-resource 404.
+        assertEquals("a.example", resolver.candidateHosts("a.example").first())
+    }
+
+    @Test
     fun logicalCacheKeyIsStableAcrossMirrorsAndDifferentAcrossComics() {
         val firstMirror = buildJmCoverUrl("a.example", 123)
         val secondMirror = buildJmCoverUrl("b.example", 123)
@@ -128,8 +149,29 @@ class CoverImageHostResolverTest {
         val resolver = CoverImageHostResolver(store, maxCandidates = 4)
 
         assertEquals(store.orderedHosts("a.example"), resolver.candidateHosts("a.example"))
-        resolver.recordFailure(buildJmCoverUrl("b.example", 1))
+        resolver.recordHostFailure(buildJmCoverUrl("b.example", 1))
         assertEquals(listOf("a.example", "b.example"), resolver.candidateHosts("a.example"))
+    }
+
+    @Test
+    fun coverHealthyFeedbackNeverUsesFullLoadDurationAsLatency() {
+        val store = JmImageHostHealthStore(
+            knownHosts = listOf("a.example", "b.example"),
+            clockMillis = { 10_000L },
+            cooldownMillis = 1_000L,
+            maxHosts = 4,
+        )
+        store.recordLatencySample("a.example", 35L)
+        store.recordHostFailure("a.example")
+        val resolver = CoverImageHostResolver(store, maxCandidates = 4)
+
+        // Cover/Download callers expose no duration argument, so a Coil full-load
+        // duration cannot accidentally enter the shared Reader TTFB EWMA.
+        resolver.recordHealthy(buildJmCoverUrl("a.example", 123))
+
+        val snapshot = store.snapshot()
+        assertEquals(35L, snapshot.latencyMillis["a.example"])
+        assertFalse("a.example" in snapshot.failedHosts)
     }
 
     @Test

@@ -58,12 +58,14 @@ internal class ReaderImageHostManager(
 
     fun preferredLatencyMillis(): Long? = healthManager.preferredLatencyMillis()
 
-    fun recordSuccess(url: String, elapsedMillis: Long) {
-        healthManager.recordSuccess(url, elapsedMillis)
+    /** Reader 的 TTFB（响应头到达耗时）样本，进入延迟 EWMA。 */
+    fun recordLatencySample(url: String, ttfbMillis: Long) {
+        healthManager.recordLatencySample(url, ttfbMillis)
     }
 
-    fun recordFailure(url: String) {
-        healthManager.recordFailure(url)
+    /** 主机/网络级失败才调用；资源级失败（404/内容断言等）不全局惩罚 CDN。 */
+    fun recordHostFailure(url: String) {
+        healthManager.recordHostFailure(url)
     }
 
     fun warmImageConnections(originUrl: String) {

@@ -1,7 +1,6 @@
 package com.par9uet.jm.worker
 
 import android.content.Context
-import android.os.SystemClock
 import androidx.core.graphics.drawable.toBitmap
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -23,6 +22,8 @@ import com.par9uet.jm.database.model.UpdateComicCover
 import com.par9uet.jm.database.model.UpdateComicProgress
 import com.par9uet.jm.database.model.UpdateComicStatus
 import com.par9uet.jm.database.model.UpdateComicZipPath
+import com.par9uet.jm.image.ImageHostFailureKind
+import com.par9uet.jm.image.classifyImageHostFailure
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
@@ -36,6 +37,7 @@ import com.par9uet.jm.utils.cancelProgressNotification
 import com.par9uet.jm.utils.compressWebpCompat
 import com.par9uet.jm.utils.showProgressNotification
 import com.par9uet.jm.utils.log
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -116,7 +118,6 @@ class DownloadComicWorker(
                 remoteHost = remoteSettingManager.remoteSettingState.value.imgHost,
             )
             candidates.forEachIndexed { index, coverUrl ->
-                val startedAtMillis = SystemClock.elapsedRealtime()
                 val request = ImageRequest.Builder(appContext)
                     .data(coverUrl)
                     .memoryCacheKey(cacheKey)
@@ -126,21 +127,26 @@ class DownloadComicWorker(
 
                 when (val result = imageLoader.execute(request)) {
                     is ErrorResult -> {
-                        coverImageHostResolver.recordFailure(coverUrl)
+                        val failureKind = classifyImageHostFailure(result.throwable)
+                        // 主机/网络级失败才全局冷却 CDN；资源级失败只尝试下一个候选
+                        if (failureKind == ImageHostFailureKind.HOST_FAILURE) {
+                            coverImageHostResolver.recordHostFailure(coverUrl)
+                        }
+                        if (result.throwable is CancellationException) {
+                            throw result.throwable
+                        }
                         if (BuildConfig.DEBUG) {
                             log(
                                 "CoverImage",
                                 "download JM$coverOwnerId candidate $index failed: " +
-                                    result.throwable::class.java.simpleName,
+                                    "${result.throwable::class.java.simpleName}($failureKind)",
                             )
                         }
                     }
                     is SuccessResult -> {
                         if (result.dataSource == DataSource.NETWORK) {
-                            coverImageHostResolver.recordSuccess(
-                                coverUrl,
-                                (SystemClock.elapsedRealtime() - startedAtMillis).coerceAtLeast(1L),
-                            )
+                            // 全量下载+解码耗时不是 TTFB，只标记主机健康
+                            coverImageHostResolver.recordHealthy(coverUrl)
                         }
                         val bitmap = result.drawable.toBitmap()
                         val file = getComicCoverDownloadFile(appContext, downloadTask)

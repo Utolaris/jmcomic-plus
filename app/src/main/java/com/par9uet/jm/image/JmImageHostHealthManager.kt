@@ -54,8 +54,14 @@ internal interface JmImageHostHealth {
     val networkGeneration: StateFlow<Long>
     fun registerHost(rawHost: String?): Boolean
     fun orderedHosts(originHost: String? = null): List<String>
-    fun recordSuccess(rawHost: String?, elapsedMillis: Long)
-    fun recordFailure(rawHost: String?)
+    /** TTFB 级延迟样本（响应头到达耗时），进入延迟 EWMA 参与 Reader 排序。 */
+    fun recordLatencySample(rawHost: String?, ttfbMillis: Long)
+
+    /** 资源加载成功（如封面）：清除失败/冷却状态，但不注入延迟样本。 */
+    fun recordHealthy(rawHost: String?)
+
+    /** 主机/网络级失败：标记失败时间，进入冷却。 */
+    fun recordHostFailure(rawHost: String?)
 }
 
 /** Pure, process-wide ranking state shared by Reader and cover routing. */
@@ -127,14 +133,14 @@ internal class JmImageHostHealthStore(
     }
 
     @Synchronized
-    override fun recordSuccess(rawHost: String?, elapsedMillis: Long) {
+    override fun recordLatencySample(rawHost: String?, ttfbMillis: Long) {
         val host = normalizeJmImageHost(rawHost) ?: return
         if (host !in allHostsLocked()) return
         hostStates.getOrPut(host) { HostState() }.apply {
             failedAtMillis = 0L
             latencyMillis = jmImageHostLatencyEwma(
                 latencyMillis,
-                elapsedMillis.coerceAtLeast(1L),
+                ttfbMillis.coerceAtLeast(1L),
             )
             probedAtMillis = clockMillis()
         }
@@ -142,7 +148,16 @@ internal class JmImageHostHealthStore(
     }
 
     @Synchronized
-    override fun recordFailure(rawHost: String?) {
+    override fun recordHealthy(rawHost: String?) {
+        val host = normalizeJmImageHost(rawHost) ?: return
+        if (host !in allHostsLocked()) return
+        // 只清除失败/冷却状态；保留既有延迟测量，不注入伪延迟样本
+        hostStates.getOrPut(host) { HostState() }.failedAtMillis = 0L
+        _preferredHost.value = fastestHealthyHostLocked()
+    }
+
+    @Synchronized
+    override fun recordHostFailure(rawHost: String?) {
         val host = normalizeJmImageHost(rawHost) ?: return
         if (host !in allHostsLocked()) return
         hostStates.getOrPut(host) { HostState() }.failedAtMillis = clockMillis()
@@ -309,13 +324,18 @@ internal class JmImageHostHealthManager(
         return added
     }
 
-    override fun recordSuccess(rawHost: String?, elapsedMillis: Long) {
-        store.recordSuccess(rawHost, elapsedMillis)
+    override fun recordLatencySample(rawHost: String?, ttfbMillis: Long) {
+        store.recordLatencySample(rawHost, ttfbMillis)
         schedulePersistence()
     }
 
-    override fun recordFailure(rawHost: String?) {
-        store.recordFailure(rawHost)
+    override fun recordHealthy(rawHost: String?) {
+        store.recordHealthy(rawHost)
+        schedulePersistence()
+    }
+
+    override fun recordHostFailure(rawHost: String?) {
+        store.recordHostFailure(rawHost)
         schedulePersistence()
     }
 
@@ -378,20 +398,31 @@ internal class JmImageHostHealthManager(
             .build()
         val call = probeClient.newCall(request)
         try {
-            runInterruptible(Dispatchers.IO) {
-                call.execute().use { response ->
-                    if (!response.isSuccessful) error("HTTP ${response.code}")
-                }
+            val responseCode = runInterruptible(Dispatchers.IO) {
+                call.execute().use { response -> response.code }
             }
-            store.recordSuccess(
-                host,
-                (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(1L),
-            )
+            when {
+                responseCode in 200..299 -> store.recordLatencySample(
+                    host,
+                    (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(1L),
+                )
+                classifyHttpCodeFailure(responseCode) == ImageHostFailureKind.HOST_FAILURE ->
+                    store.recordProbeFailure(host)
+                // 404/410/其它资源级响应证明主机可达，但不代表 probe 资源存在；
+                // 清除冷却且保留旧延迟，不把它当作全局 CDN 故障。
+                else -> store.recordHealthy(host)
+            }
         } catch (error: CancellationException) {
             call.cancel()
             throw error
-        } catch (_: Exception) {
-            store.recordProbeFailure(host)
+        } catch (error: Exception) {
+            when (classifyImageHostFailure(error)) {
+                ImageHostFailureKind.HOST_FAILURE -> store.recordProbeFailure(host)
+                ImageHostFailureKind.RESOURCE_FAILURE -> store.recordHealthy(host)
+                ImageHostFailureKind.CANCELLED,
+                ImageHostFailureKind.UNKNOWN,
+                -> Unit
+            }
         }
     }
 

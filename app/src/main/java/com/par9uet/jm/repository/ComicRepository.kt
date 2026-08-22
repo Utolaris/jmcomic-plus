@@ -15,7 +15,11 @@ import com.par9uet.jm.retrofit.model.WeekResponse
 
 interface ComicRepository {
     suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse>
-    suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse>
+    /**
+     * 切换喜欢状态。内置 API（toggleAlbumLike）与网络 API（POST /like）都是切换端点：
+     * 调用一次即反转一次服务端喜欢状态，成功后可安全地把本地 isLike 取反。
+     */
+    suspend fun toggleComicLike(id: Int): NetWorkResult<LikeComicResponse>
     suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse>
     suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse>
     /**

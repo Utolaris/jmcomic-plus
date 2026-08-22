@@ -80,7 +80,7 @@ class SearchComicPagingSourceTest {
             error("getComicIdsByTag should not be used for search exclusions")
         }
 
-        override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> = unused()
+        override suspend fun toggleComicLike(id: Int): NetWorkResult<LikeComicResponse> = unused()
 
         override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> = unused()
 

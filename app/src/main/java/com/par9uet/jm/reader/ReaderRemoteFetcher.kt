@@ -42,7 +42,12 @@ internal enum class ReaderRemoteCandidate {
 
 internal interface ReaderRemoteObserver {
     fun onRequestStarted(url: String, candidate: ReaderRemoteCandidate, call: Call) = Unit
-    fun onResponseHeaders(url: String, candidate: ReaderRemoteCandidate, elapsedMillis: Long) = Unit
+    fun onResponseHeaders(
+        url: String,
+        candidate: ReaderRemoteCandidate,
+        elapsedMillis: Long,
+        httpCode: Int,
+    ) = Unit
     fun onRequestSucceeded(
         url: String,
         candidate: ReaderRemoteCandidate,
@@ -51,7 +56,12 @@ internal interface ReaderRemoteObserver {
         totalMillis: Long,
     ) = Unit
 
-    fun onRequestFailed(url: String, candidate: ReaderRemoteCandidate, totalMillis: Long) = Unit
+    fun onRequestFailed(
+        url: String,
+        candidate: ReaderRemoteCandidate,
+        totalMillis: Long,
+        error: Throwable? = null,
+    ) = Unit
     fun onRequestCanceled(
         url: String,
         candidate: ReaderRemoteCandidate,
@@ -211,8 +221,10 @@ internal class ReaderRemoteFetcher(
                 }
             }
             val headersMillis = (clockMillis() - startedAt).coerceAtLeast(0L)
-            observer.onResponseHeaders(url, candidate, headersMillis)
-            if (!response.isSuccessful) throw ReaderImageException("HTTP ${response.code}")
+            observer.onResponseHeaders(url, candidate, headersMillis, response.code)
+            if (!response.isSuccessful) {
+                throw ReaderImageException("HTTP ${response.code}", httpCode = response.code)
+            }
             val body = response.body ?: throw ReaderImageException("图片响应为空")
             val contentLength = body.contentLength()
             if (contentLength == 0L) throw ReaderImageException("图片响应为空")
@@ -252,6 +264,7 @@ internal class ReaderRemoteFetcher(
                 url,
                 candidate,
                 (clockMillis() - startedAt).coerceAtLeast(0L),
+                error,
             )
             Result.failure(error)
         } finally {
@@ -312,6 +325,7 @@ internal class ReaderRemoteFetcher(
                 opened.url,
                 opened.candidate,
                 (clockMillis() - opened.startedAtMillis).coerceAtLeast(0L),
+                error,
             )
             return Result.failure(error)
         }
@@ -385,6 +399,7 @@ internal class ReaderRemoteFetcher(
                 opened.url,
                 opened.candidate,
                 (clockMillis() - opened.startedAtMillis).coerceAtLeast(0L),
+                error,
             )
             Result.failure(error)
         } finally {

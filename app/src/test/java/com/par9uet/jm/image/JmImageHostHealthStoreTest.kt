@@ -10,9 +10,9 @@ class JmImageHostHealthStoreTest {
     fun healthyHostOutranksCoolingHost() {
         val clock = MutableClock(10_000L)
         val store = store(clock)
-        store.recordSuccess("a.example", 80L)
-        store.recordSuccess("b.example", 20L)
-        store.recordFailure("b.example")
+        store.recordLatencySample("a.example", 80L)
+        store.recordLatencySample("b.example", 20L)
+        store.recordHostFailure("b.example")
 
         assertEquals(listOf("a.example", "b.example"), store.orderedHosts())
         assertEquals(setOf("b.example"), store.snapshot().failedHosts)
@@ -62,7 +62,7 @@ class JmImageHostHealthStoreTest {
                 ),
             )
         )
-        store.recordFailure("https://a.example/media/albums/1_3x4.jpg")
+        store.recordHostFailure("https://a.example/media/albums/1_3x4.jpg")
 
         assertEquals("b.example", store.preferredHost.value)
         assertEquals(listOf("b.example", "a.example"), store.orderedHosts())
@@ -72,7 +72,7 @@ class JmImageHostHealthStoreTest {
     fun cooldownExpiryMakesHostEligibleAgain() {
         val clock = MutableClock(10_000L)
         val store = store(clock)
-        store.recordFailure("a.example")
+        store.recordHostFailure("a.example")
         assertEquals(listOf("b.example", "a.example"), store.orderedHosts("a.example"))
 
         clock.nowMillis += 1_001L
@@ -85,8 +85,8 @@ class JmImageHostHealthStoreTest {
     fun persistedPreferredAndLatencyRestoreIncludingDynamicHost() {
         val original = store(maxHosts = 4)
         original.registerHost("https://dynamic.example/")
-        original.recordSuccess("a.example", 60L)
-        original.recordSuccess("dynamic.example", 15L)
+        original.recordLatencySample("a.example", 60L)
+        original.recordLatencySample("dynamic.example", 15L)
         val persistence = original.persistence()
 
         val restored = store(maxHosts = 4)
@@ -100,8 +100,8 @@ class JmImageHostHealthStoreTest {
     @Test
     fun networkChangeClearsNetworkSpecificRankingAndCooldown() {
         val store = store()
-        store.recordSuccess("a.example", 30L)
-        store.recordFailure("b.example")
+        store.recordLatencySample("a.example", 30L)
+        store.recordHostFailure("b.example")
         val generation = store.networkGeneration.value
 
         store.onNetworkChanged()
@@ -125,5 +125,41 @@ class JmImageHostHealthStoreTest {
 
     private class MutableClock(var nowMillis: Long) {
         fun read(): Long = nowMillis
+    }
+
+    @Test
+    fun recordHealthyClearsFailureWithoutTouchingLatency() {
+        val clock = MutableClock(10_000L)
+        val store = store(clock)
+        store.recordLatencySample("a.example", 50L)
+        store.recordHostFailure("a.example")
+        assertEquals(setOf("a.example"), store.snapshot().failedHosts)
+
+        store.recordHealthy("a.example")
+
+        val snapshot = store.snapshot()
+        assertTrue(snapshot.failedHosts.isEmpty())
+        // 延迟测量保持不变，未被注入伪样本
+        assertEquals(50L, snapshot.latencyMillis["a.example"])
+    }
+
+    @Test
+    fun recordLatencySampleUpdatesEwma() {
+        val store = store()
+
+        store.recordLatencySample("a.example", 100L)
+        assertEquals(100L, store.snapshot().latencyMillis["a.example"])
+
+        store.recordLatencySample("a.example", 200L)
+        assertEquals(150L, store.snapshot().latencyMillis["a.example"])
+    }
+
+    @Test
+    fun recordHealthyDoesNotInjectLatencyForUnmeasuredHost() {
+        val store = store()
+
+        store.recordHealthy("a.example")
+
+        assertNull(store.snapshot().latencyMillis["a.example"])
     }
 }

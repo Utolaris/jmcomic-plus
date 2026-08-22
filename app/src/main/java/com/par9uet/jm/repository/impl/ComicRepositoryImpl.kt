@@ -100,11 +100,12 @@ class ComicRepositoryImpl(
         }
     }
 
-    override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> {
+    override suspend fun toggleComicLike(id: Int): NetWorkResult<LikeComicResponse> {
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
                 try {
                     withEmbeddedClient { client ->
+                        // 内置 API 本身就是切换语义
                         client.toggleAlbumLike(id.toString())
                     }
                     NetWorkResult.Success(LikeComicResponse(code = 200, msg = "success", status = "ok"))

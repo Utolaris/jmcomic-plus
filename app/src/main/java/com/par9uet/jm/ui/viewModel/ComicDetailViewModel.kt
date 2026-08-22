@@ -20,6 +20,8 @@ import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
+import com.par9uet.jm.ui.state.ComicLikeToggle
+import com.par9uet.jm.ui.state.LikeRequestGate
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -80,46 +82,75 @@ class ComicDetailViewModel(
 
     private val _likeComicState = MutableStateFlow(CommonUIState(data = null))
     val likeComicState = _likeComicState.asStateFlow()
-    fun likeComic(id: Int) {
+    private val likeRequestGate = LikeRequestGate()
+    private val _likeToggleInFlightComicIds = MutableStateFlow<Set<Int>>(emptySet())
+    val likeToggleInFlightComicIds = _likeToggleInFlightComicIds.asStateFlow()
+
+    /**
+     * 切换喜欢状态。接口为切换语义，成功后本地取反并增减计数。
+     * 同一漫画的请求在途期间，重复点击直接忽略，防止并发切换破坏服务端状态。
+     */
+    fun toggleComicLike(id: Int) {
+        if (!likeRequestGate.tryAcquire(id)) return
+        _likeToggleInFlightComicIds.update { it + id }
+        val originalIsLike = _comicDetailState.value.data
+            ?.takeIf { it.id == id }
+            ?.isLike
         viewModelScope.launch {
-            _likeComicState.update {
-                it.copy(
-                    isLoading = true,
-                    isError = false,
-                    errorMsg = ""
-                )
-            }
-            when (val data = comicRepository.likeComic(id)) {
-                is NetWorkResult.Error -> {
-                    _likeComicState.update {
-                        it.copy(
-                            isError = true,
-                            errorMsg = data.message
+            try {
+                _likeComicState.update {
+                    it.copy(
+                        isLoading = true,
+                        isError = false,
+                        errorMsg = ""
+                    )
+                }
+                when (val data = comicRepository.toggleComicLike(id)) {
+                    is NetWorkResult.Error -> {
+                        // 失败保留原有 isLike / likeCount，仅提示错误
+                        _likeComicState.update {
+                            it.copy(
+                                isError = true,
+                                errorMsg = data.message
+                            )
+                        }
+                        toastManager.showAsync(data.message)
+                    }
+
+                    is NetWorkResult.Success<LikeComicResponse> -> {
+                        _comicDetailState.update { state ->
+                            val currentData = state.data
+                            if (currentData != null && currentData.id == id) {
+                                val (newIsLike, newLikeCount) = ComicLikeToggle.applyToggleResult(
+                                    isLike = currentData.isLike,
+                                    likeCount = currentData.likeCount,
+                                    succeeded = true,
+                                )
+                                state.copy(
+                                    data = currentData.copy(
+                                        isLike = newIsLike,
+                                        likeCount = newLikeCount
+                                    )
+                                )
+                            } else {
+                                state
+                            }
+                        }
+                        toastManager.showAsync(
+                            when (originalIsLike) {
+                                true -> "已取消喜欢"
+                                false -> "喜欢成功"
+                                null -> "操作成功"
+                            }
                         )
                     }
                 }
-
-                is NetWorkResult.Success<LikeComicResponse> -> {
-                    toastManager.showAsync("喜欢成功")
-                    _comicDetailState.update { state ->
-                        val currentData = state.data
-                        if (currentData != null) {
-                            state.copy(
-                                data = currentData.copy(
-                                    isLike = true,
-                                    likeCount = currentData.likeCount + 1
-                                )
-                            )
-                        } else {
-                            state
-                        }
-                    }
+            } finally {
+                likeRequestGate.release(id)
+                _likeToggleInFlightComicIds.update { it - id }
+                _likeComicState.update {
+                    it.copy(isLoading = _likeToggleInFlightComicIds.value.isNotEmpty())
                 }
-            }
-            _likeComicState.update {
-                it.copy(
-                    isLoading = false,
-                )
             }
         }
     }

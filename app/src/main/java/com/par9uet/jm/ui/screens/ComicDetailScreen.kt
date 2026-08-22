@@ -281,6 +281,7 @@ fun ComicDetailScreen(
     val mainNavController = LocalMainNavController.current
     val scrollState = rememberScrollState()
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
+    val likeToggleInFlightComicIds by comicDetailViewModel.likeToggleInFlightComicIds.collectAsState()
     val readHistory by readHistoryManager.readHistoryState.collectAsState()
     val isLogin by userManager.isLoginState.collectAsState(false)
     var showDownloadChapterDialog by remember { mutableStateOf(false) }
@@ -374,11 +375,12 @@ fun ComicDetailScreen(
             val comic = comicDetailState.data ?: return@Scaffold
             ComicDetailBottomBar(
                 comic = comic,
+                likeEnabled = comic.id !in likeToggleInFlightComicIds,
                 readHistoryManager = readHistoryManager,
                 readHistory = readHistory,
                 onLike = {
                     requireLogin {
-                        if (!comic.isLike) comicDetailViewModel.likeComic(comic.id)
+                        comicDetailViewModel.toggleComicLike(comic.id)
                     }
                 },
                 onCollect = {
@@ -559,6 +561,7 @@ private fun FolderPickerSheet(
 @Composable
 private fun ComicDetailBottomBar(
     comic: Comic,
+    likeEnabled: Boolean,
     readHistoryManager: ReadHistoryManager,
     readHistory: Map<Int, ComicReadHistory>,
     onLike: () -> Unit,
@@ -583,7 +586,7 @@ private fun ComicDetailBottomBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row {
-                IconButton(onClick = onLike) {
+                IconButton(onClick = onLike, enabled = likeEnabled) {
                     if (comic.isLike) {
                         Icon(Icons.Default.Favorite, contentDescription = "\u5df2\u559c\u6b22", tint = MaterialTheme.colorScheme.error)
                     } else {

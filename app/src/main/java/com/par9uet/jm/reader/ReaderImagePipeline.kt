@@ -6,7 +6,9 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import com.par9uet.jm.BuildConfig
+import com.par9uet.jm.image.ImageHostFailureKind
 import com.par9uet.jm.image.JmImageHostHealthManager
+import com.par9uet.jm.image.classifyImageHostFailure
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.utils.applyTlsCompat
 import com.par9uet.jm.utils.compressWebpCompat
@@ -35,7 +37,11 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
 
-class ReaderImageException(message: String, cause: Throwable? = null) : Exception(message, cause)
+class ReaderImageException(
+    message: String,
+    cause: Throwable? = null,
+    val httpCode: Int? = null,
+) : Exception(message, cause)
 
 /** Result returned to the currently composed reader item; the LRU remains the long-lived owner. */
 data class ReaderDecodedPage(
@@ -176,11 +182,17 @@ class ReaderImagePipeline internal constructor(
                 url: String,
                 candidate: ReaderRemoteCandidate,
                 elapsedMillis: Long,
+                httpCode: Int,
             ) {
                 metrics.responseHeadersReceived(
                     elapsedMillis = elapsedMillis,
                     primary = candidate == ReaderRemoteCandidate.PRIMARY,
                 )
+                if (httpCode in 200..299) {
+                    // 成功响应头到达耗时是 Reader 排名所需的 TTFB 样本；
+                    // 不等待 body 下载、图片解码或渲染完成。
+                    imageHostManager.recordLatencySample(url, elapsedMillis)
+                }
             }
 
             override fun onRequestSucceeded(
@@ -193,17 +205,29 @@ class ReaderImagePipeline internal constructor(
                 metrics.networkFinished(success = true, elapsedMillis = totalMillis)
                 metrics.bodyDownloadFinished(bodyMillis)
                 url.toHttpUrlOrNull()?.host?.let(metrics::hostSuccess)
-                imageHostManager.recordSuccess(url, timeToHeadersMillis)
             }
 
             override fun onRequestFailed(
                 url: String,
                 candidate: ReaderRemoteCandidate,
                 totalMillis: Long,
+                error: Throwable?,
             ) {
                 metrics.networkFinished(success = false, elapsedMillis = totalMillis)
                 url.toHttpUrlOrNull()?.host?.let(metrics::hostFailure)
-                imageHostManager.recordFailure(url)
+                // 主机/网络级失败才冷却 CDN；404/内容断言只影响当前图片，
+                // 由候选回退/重试逻辑处理，不全局惩罚主机
+                val failureKind = when {
+                    error is ReaderImageException && error.httpCode == null ->
+                        ImageHostFailureKind.RESOURCE_FAILURE
+                    else -> classifyImageHostFailure(
+                        error,
+                        httpCodeHint = (error as? ReaderImageException)?.httpCode,
+                    )
+                }
+                if (failureKind == ImageHostFailureKind.HOST_FAILURE) {
+                    imageHostManager.recordHostFailure(url)
+                }
             }
 
             override fun onRequestCanceled(
