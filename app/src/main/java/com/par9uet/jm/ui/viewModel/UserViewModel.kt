@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.viewModel
 
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -38,6 +39,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicLong
 
 data class CollectComicLocalFilter(
     val searchText: String = "",
@@ -72,6 +74,8 @@ data class FavoriteSyncUiState(
     val phase: String = "",
     val errorMessage: String? = null,
 )
+
+private const val FAVORITE_AUTO_SYNC_INTERVAL_MILLIS = 60_000L
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UserViewModel(
@@ -133,6 +137,7 @@ class UserViewModel(
     val collectEditState = _collectEditState.asStateFlow()
     private val _favoriteSyncState = MutableStateFlow(FavoriteSyncUiState())
     val favoriteSyncState = _favoriteSyncState.asStateFlow()
+    private val lastFavoriteSyncAt = AtomicLong(0L)
 
     private val accountIdFlow = userManager.userState.map { it.data?.id ?: 0 }
 
@@ -141,6 +146,7 @@ class UserViewModel(
             accountIdFlow.distinctUntilChanged().collect {
                 _selectedFolderId.value = 0
                 _favoriteSyncState.value = FavoriteSyncUiState()
+                lastFavoriteSyncAt.set(0L)
             }
         }
     }
@@ -352,9 +358,30 @@ class UserViewModel(
         }
     }
 
+    fun syncFavoritesIfNeeded() {
+        val accountId = currentAccountId()
+        if (accountId <= 0) return
+
+        val now = SystemClock.elapsedRealtime()
+        val lastSyncAt = lastFavoriteSyncAt.get()
+        if (lastSyncAt != 0L && now - lastSyncAt < FAVORITE_AUTO_SYNC_INTERVAL_MILLIS) return
+        if (!lastFavoriteSyncAt.compareAndSet(lastSyncAt, now)) return
+
+        launchFavoriteSync(
+            accountId = accountId,
+            folderId = _selectedFolderId.value,
+            force = false,
+        )
+    }
+
     fun syncFavorites(folderId: Int = _selectedFolderId.value, force: Boolean = false) {
         val accountId = currentAccountId()
         if (accountId <= 0) return
+        lastFavoriteSyncAt.set(SystemClock.elapsedRealtime())
+        launchFavoriteSync(accountId, folderId, force)
+    }
+
+    private fun launchFavoriteSync(accountId: Int, folderId: Int, force: Boolean) {
         viewModelScope.launch {
             _favoriteSyncState.update {
                 FavoriteSyncUiState(isSyncing = true, isForceRefresh = force)

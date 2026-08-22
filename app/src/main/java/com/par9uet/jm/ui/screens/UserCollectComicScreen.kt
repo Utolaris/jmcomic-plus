@@ -228,7 +228,7 @@ fun UserCollectComicScreen(
     val favoritesOpenedAt = remember { SystemClock.elapsedRealtime() }
 
     LaunchedEffect(userViewModel) {
-        userViewModel.syncFavorites()
+        userViewModel.syncFavoritesIfNeeded()
     }
 
     LaunchedEffect(collectComicLazyPagingItems.itemCount, selectedFolderId) {
