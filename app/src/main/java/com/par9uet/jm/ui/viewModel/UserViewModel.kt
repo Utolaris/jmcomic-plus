@@ -1,6 +1,5 @@
 package com.par9uet.jm.ui.viewModel
 
-import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -17,10 +16,14 @@ import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
+import com.par9uet.jm.store.FavoriteAutoSyncGate
+import com.par9uet.jm.store.FavoriteSyncKind
 import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.store.shouldStartFavoriteSync
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.CollectComicPagingSource
 import com.par9uet.jm.ui.pagingSource.HistoryComicPagingSource
@@ -36,10 +39,8 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicLong
 
 data class CollectComicLocalFilter(
     val searchText: String = "",
@@ -74,8 +75,6 @@ data class FavoriteSyncUiState(
     val phase: String = "",
     val errorMessage: String? = null,
 )
-
-private const val FAVORITE_AUTO_SYNC_INTERVAL_MILLIS = 60_000L
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class UserViewModel(
@@ -137,7 +136,7 @@ class UserViewModel(
     val collectEditState = _collectEditState.asStateFlow()
     private val _favoriteSyncState = MutableStateFlow(FavoriteSyncUiState())
     val favoriteSyncState = _favoriteSyncState.asStateFlow()
-    private val lastFavoriteSyncAt = AtomicLong(0L)
+    private val favoriteAutoSyncGate = FavoriteAutoSyncGate()
 
     private val accountIdFlow = userManager.userState.map { it.data?.id ?: 0 }
 
@@ -146,7 +145,7 @@ class UserViewModel(
             accountIdFlow.distinctUntilChanged().collect {
                 _selectedFolderId.value = 0
                 _favoriteSyncState.value = FavoriteSyncUiState()
-                lastFavoriteSyncAt.set(0L)
+                favoriteAutoSyncGate.reset()
             }
         }
     }
@@ -209,7 +208,9 @@ class UserViewModel(
         _collectComicOrder.update {
             order
         }
-        syncFavorites()
+        // A display sorting change must not hit the server. Note: the local cache currently
+        // resolves COLLECT_TIME and UPDATE_TIME to the same stored order; a real UPDATE_TIME
+        // ordering would need additional synced metadata and is tracked as a known limitation.
     }
 
     fun updateCollectSearchText(value: String) {
@@ -230,7 +231,7 @@ class UserViewModel(
 
     fun changeFolder(folderId: Int) {
         _selectedFolderId.update { folderId }
-        syncFavorites(folderId)
+        requestFavoriteAutoSync(folderId)
     }
 
     fun enterCollectEdit(comicId: Int) {
@@ -309,7 +310,7 @@ class UserViewModel(
     }
 
     fun refreshFolderList() {
-        syncFavorites()
+        requestFavoriteAutoSync()
     }
 
     fun createFolder(name: String) {
@@ -317,7 +318,7 @@ class UserViewModel(
             when (val data = comicRepository.createFavoriteFolder(name)) {
                 is NetWorkResult.Error -> toastManager.showAsync(data.message)
                 is NetWorkResult.Success -> {
-                    syncFavorites()
+                    requestFavoriteAutoSync()
                     toastManager.showAsync("创建成功")
                 }
             }
@@ -334,7 +335,7 @@ class UserViewModel(
                         folderId.toIntOrNull() ?: 0,
                     )
                     _selectedFolderId.update { 0 }
-                    syncFavorites()
+                    requestFavoriteAutoSync()
                     toastManager.showAsync("删除成功")
                 }
             }
@@ -351,34 +352,47 @@ class UserViewModel(
                         folderId.toIntOrNull() ?: 0,
                         newName.trim(),
                     )
-                    syncFavorites()
+                    requestFavoriteAutoSync()
                     toastManager.showAsync("重命名成功")
                 }
             }
         }
     }
 
-    fun syncFavoritesIfNeeded() {
+    /**
+     * Background/automatic favorites synchronization, globally throttled to at most once
+     * every 30 seconds per account. Does nothing while another sync is already running.
+     */
+    fun requestFavoriteAutoSync(folderId: Int = _selectedFolderId.value) {
         val accountId = currentAccountId()
         if (accountId <= 0) return
-
-        val now = SystemClock.elapsedRealtime()
-        val lastSyncAt = lastFavoriteSyncAt.get()
-        if (lastSyncAt != 0L && now - lastSyncAt < FAVORITE_AUTO_SYNC_INTERVAL_MILLIS) return
-        if (!lastFavoriteSyncAt.compareAndSet(lastSyncAt, now)) return
-
-        launchFavoriteSync(
-            accountId = accountId,
-            folderId = _selectedFolderId.value,
-            force = false,
-        )
+        val isAutoSyncAllowed = favoriteAutoSyncGate.tryAcquire()
+        if (!shouldStartFavoriteSync(
+                kind = FavoriteSyncKind.AUTO,
+                isAutoSyncAllowed = isAutoSyncAllowed,
+                isSyncing = _favoriteSyncState.value.isSyncing,
+            )
+        ) {
+            return
+        }
+        launchFavoriteSync(accountId, folderId, force = false)
     }
 
-    fun syncFavorites(folderId: Int = _selectedFolderId.value, force: Boolean = false) {
+    /**
+     * Explicit user sync (Favorites top-right button). Bypasses the automatic 30-second gate.
+     */
+    fun requestFavoriteManualSync(folderId: Int = _selectedFolderId.value) {
         val accountId = currentAccountId()
         if (accountId <= 0) return
-        lastFavoriteSyncAt.set(SystemClock.elapsedRealtime())
-        launchFavoriteSync(accountId, folderId, force)
+        if (!shouldStartFavoriteSync(
+                kind = FavoriteSyncKind.MANUAL,
+                isAutoSyncAllowed = false,
+                isSyncing = _favoriteSyncState.value.isSyncing,
+            )
+        ) {
+            return
+        }
+        launchFavoriteSync(accountId, folderId, force = false)
     }
 
     private fun launchFavoriteSync(accountId: Int, folderId: Int, force: Boolean) {
@@ -418,7 +432,19 @@ class UserViewModel(
         }
     }
 
-    fun forceRefreshFavorites() = syncFavorites(folderId = 0, force = true)
+    fun forceRefreshFavorites() {
+        val accountId = currentAccountId()
+        if (accountId <= 0) return
+        if (!shouldStartFavoriteSync(
+                kind = FavoriteSyncKind.FORCE,
+                isAutoSyncAllowed = false,
+                isSyncing = _favoriteSyncState.value.isSyncing,
+            )
+        ) {
+            return
+        }
+        launchFavoriteSync(accountId, folderId = FAVORITE_SCOPE_ALL, force = true)
+    }
 
     private fun currentAccountId(): Int = userManager.userState.value.data?.id ?: 0
 

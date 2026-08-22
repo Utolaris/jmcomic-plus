@@ -132,6 +132,10 @@ class FavoriteStore(
         val delta = planFavoriteSync(oldScopeIds, existing, remoteById.values.toList())
         val removedIds = oldScopeIds - remoteById.keys
         val remoteOrderById = remoteById.keys.withIndex().associate { it.value to it.index }
+        // lastFavoriteOrder is the global/all-favorites order. Only an authoritative
+        // all-favorites sync (folder 0) may rewrite it; a non-zero folder sync updates
+        // membership.remoteOrder for that folder only.
+        val updateGlobalOrder = scopeFolderId == FAVORITE_SCOPE_ALL
 
         val transactionStartedAt = SystemClock.elapsedRealtime()
         database.withTransaction {
@@ -160,9 +164,14 @@ class FavoriteStore(
                 // metadata request fails, the previous filter/index state remains usable and
                 // the next sync will schedule the item again from the lightweight diff.
                 val keepFullMetadata = local?.metadataComplete == true
-                val order = remoteOrderById[item.albumId] ?: 0
+                val order = resolveGlobalOrderAfterScopeSync(
+                    scopeFolderId = scopeFolderId,
+                    scopeIndex = remoteOrderById[item.albumId] ?: 0,
+                    existingGlobalOrder = local?.lastFavoriteOrder ?: 0,
+                )
                 val lightweightChanged = local == null || !local.matchesLightweight(item)
-                val shouldUpdateComic = lightweightChanged || local?.lastFavoriteOrder != order
+                val orderChanged = updateGlobalOrder && local != null && local.lastFavoriteOrder != order
+                val shouldUpdateComic = lightweightChanged || orderChanged
                 if (shouldUpdateComic) {
                     comicDao.upsert(
                         item.toComicEntity(
@@ -362,7 +371,17 @@ class FavoriteStore(
         database.withTransaction {
             membershipDao.deleteNonDefaultForAlbum(accountId, albumId)
             membershipDao.upsertAll(
-                listOf(FavoriteFolderMembershipEntity(accountId, folderId, albumId, 0, now))
+                listOf(
+                    FavoriteFolderMembershipEntity(
+                        accountId = accountId,
+                        folderId = folderId,
+                        albumId = albumId,
+                        // Do not fake 'newest/order 0': append after the folder items we
+                        // currently know until the next server sync confirms the real order.
+                        remoteOrder = temporaryFolderOrder(membershipDao.getAlbumIds(accountId, folderId)),
+                        lastSyncedAt = now,
+                    )
+                )
             )
         }
     }
@@ -456,6 +475,23 @@ internal fun planFavoriteSync(
     )
 }
 
+/**
+ * The global all-favorites order after a scope sync: only folder 0 (the authoritative
+ * all-favorites scope) may adopt the scope index; other folders must leave it untouched.
+ */
+internal fun resolveGlobalOrderAfterScopeSync(
+    scopeFolderId: Int,
+    scopeIndex: Int,
+    existingGlobalOrder: Int,
+): Int = if (scopeFolderId == FAVORITE_SCOPE_ALL) scopeIndex else existingGlobalOrder
+
+/**
+ * Temporary membership order for a locally moved comic: append after the folder items that
+ * are currently known, instead of jumping to the 'first/newest' position before the server
+ * confirms the real order.
+ */
+internal fun temporaryFolderOrder(existingFolderAlbumIds: List<Int>): Int = existingFolderAlbumIds.size
+
 private fun buildFavoritePagingQuery(
     accountId: Int,
     order: CollectComicOrderFilter,
@@ -468,7 +504,7 @@ private fun buildFavoritePagingQuery(
 ): SupportSQLiteQuery {
     val clauses = mutableListOf("c.accountId = ?")
     val args = mutableListOf<Any>(accountId)
-    clauses += "EXISTS (SELECT 1 FROM favorite_folder_memberships m WHERE m.accountId = c.accountId AND m.albumId = c.albumId AND m.folderId = ?)"
+    clauses += "m.folderId = ?"
     args += folderId
 
     val query = searchText.trim().lowercase()
@@ -507,12 +543,14 @@ private fun buildFavoritePagingQuery(
         normalizedAuthors.forEach { args += it }
     }
 
-    val orderBy = when (order) {
-        CollectComicOrderFilter.COLLECT_TIME -> "c.lastFavoriteOrder ASC"
-        CollectComicOrderFilter.UPDATE_TIME -> "c.lastFavoriteOrder ASC"
-    }
+    // Scope-aware ordering: each folder list is ordered by its own membership.remoteOrder.
+    // COLLECT_TIME and UPDATE_TIME intentionally resolve to the same stored order today; a
+    // distinct UPDATE_TIME ordering needs extra synced metadata (known limitation).
+    val orderBy = "m.remoteOrder ASC"
     return SimpleSQLiteQuery(
-        "SELECT c.* FROM favorite_comics c WHERE ${clauses.joinToString(" AND ")} ORDER BY $orderBy, c.albumId ASC",
+        "SELECT c.* FROM favorite_comics c " +
+            "JOIN favorite_folder_memberships m ON m.accountId = c.accountId AND m.albumId = c.albumId " +
+            "WHERE ${clauses.joinToString(" AND ")} ORDER BY $orderBy, c.albumId ASC",
         args.toTypedArray(),
     )
 }

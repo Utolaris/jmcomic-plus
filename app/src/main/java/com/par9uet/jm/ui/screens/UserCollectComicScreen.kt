@@ -227,10 +227,6 @@ fun UserCollectComicScreen(
     var hasLoggedFirstLocalContent by remember { mutableStateOf(false) }
     val favoritesOpenedAt = remember { SystemClock.elapsedRealtime() }
 
-    LaunchedEffect(userViewModel) {
-        userViewModel.syncFavoritesIfNeeded()
-    }
-
     LaunchedEffect(collectComicLazyPagingItems.itemCount, selectedFolderId) {
         if (!hasLoggedFirstLocalContent && collectComicLazyPagingItems.itemCount > 0) {
             log(
@@ -413,7 +409,7 @@ fun UserCollectComicScreen(
                         FavoriteSyncIconButton(
                             isSyncing = favoriteSyncState.isSyncing,
                             hasError = favoriteSyncState.errorMessage != null,
-                            onClick = { userViewModel.syncFavorites(selectedFolderId) },
+                            onClick = { userViewModel.requestFavoriteManualSync(selectedFolderId) },
                         )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
@@ -717,7 +713,11 @@ private fun FilterDialog(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        // The filter sheet is a full-height panel with its own scrollable content; disable
+        // sheet dragging so overscroll at the content edges cannot violently move the entire
+        // sheet. Dismissal still works via the buttons, back press, and scrim click.
+        sheetGesturesEnabled = false,
     ) {
         Column(
             modifier = Modifier

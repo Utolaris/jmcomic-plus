@@ -60,7 +60,7 @@ private fun CollectTopBarComponent(
             FavoriteSyncIconButton(
                 isSyncing = favoriteSyncState.isSyncing,
                 hasError = favoriteSyncState.errorMessage != null,
-                onClick = { userViewModel.syncFavorites(selectedFolderId) },
+                onClick = { userViewModel.requestFavoriteManualSync(selectedFolderId) },
             )
         }
     )

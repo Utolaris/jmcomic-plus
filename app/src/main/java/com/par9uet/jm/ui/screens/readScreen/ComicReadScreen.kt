@@ -243,152 +243,159 @@ fun ComicReadScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-        } else if (size <= 0) {
-            Text(
-                text = comicPicState.errorMsg.orEmpty().ifBlank { "暂无可阅读图片" },
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.align(Alignment.Center)
-            )
-        } else {
-            if (localSetting.readMode == "scroll") {
-                ComicScrollRead(
-                    lazyListState = lazyListState,
-                    pagerState = pagerState,
-                    targetIndex = targetIndex,
-                    zoomState = zoomState,
-                    onUpdateSliderValue = { updateIndexFromReader(it) }
+    // The reader is a full-screen NavHost destination: keep its first frame opaque so the
+    // sliding navigation spring never shows the previous screen through the loading state.
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (size <= 0) {
+                Text(
+                    text = comicPicState.errorMsg.orEmpty().ifBlank { "暂无可阅读图片" },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.align(Alignment.Center)
                 )
             } else {
-                ComicPageRead(
-                    lazyListState = lazyListState,
-                    pagerState = pagerState,
-                    targetIndex = targetIndex,
-                    zoomState = zoomState,
-                    tapOnly = localSetting.readMode == "tap",
-                    onUpdateSliderValue = { updateIndexFromReader(it) }
-                )
-            }
-            AnimatedVisibility(
-                modifier = Modifier
-                    .align(Alignment.CenterStart)
-                    .padding(start = 10.dp),
-                visible = isShowToolbar,
-                enter = slideInHorizontally(
-                    initialOffsetX = { fullWidth -> -fullWidth },
-                    animationSpec = tween(durationMillis = 250)
-                ) + fadeIn(),
-                exit = slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> -fullWidth },
-                    animationSpec = tween(durationMillis = 250)
-                ) + fadeOut()
-            ) {
-                ReadSideBar(
-                    comic = comic,
-                    localOnly = localOnly,
-                    chapterEnabled = readableChapters.isNotEmpty(),
-                    onToggleCollect = {
-                        if (!isLogin) {
-                            mainNavController.navigate("login")
-                        } else {
-                            comic?.let { currentComic ->
-                                if (currentComic.isCollect) {
-                                    comicReadViewModel.unCollect(currentComic.id)
-                                } else {
-                                    comicReadViewModel.collect(currentComic.id)
+                if (localSetting.readMode == "scroll") {
+                    ComicScrollRead(
+                        lazyListState = lazyListState,
+                        pagerState = pagerState,
+                        targetIndex = targetIndex,
+                        zoomState = zoomState,
+                        onUpdateSliderValue = { updateIndexFromReader(it) }
+                    )
+                } else {
+                    ComicPageRead(
+                        lazyListState = lazyListState,
+                        pagerState = pagerState,
+                        targetIndex = targetIndex,
+                        zoomState = zoomState,
+                        tapOnly = localSetting.readMode == "tap",
+                        onUpdateSliderValue = { updateIndexFromReader(it) }
+                    )
+                }
+                AnimatedVisibility(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 10.dp),
+                    visible = isShowToolbar,
+                    enter = slideInHorizontally(
+                        initialOffsetX = { fullWidth -> -fullWidth },
+                        animationSpec = tween(durationMillis = 250)
+                    ) + fadeIn(),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> -fullWidth },
+                        animationSpec = tween(durationMillis = 250)
+                    ) + fadeOut()
+                ) {
+                    ReadSideBar(
+                        comic = comic,
+                        localOnly = localOnly,
+                        chapterEnabled = readableChapters.isNotEmpty(),
+                        onToggleCollect = {
+                            if (!isLogin) {
+                                mainNavController.navigate("login")
+                            } else {
+                                comic?.let { currentComic ->
+                                    if (currentComic.isCollect) {
+                                        comicReadViewModel.unCollect(currentComic.id)
+                                    } else {
+                                        comicReadViewModel.collect(currentComic.id)
+                                    }
                                 }
                             }
-                        }
-                    },
-                    onCache = {
-                        comic?.let { currentComic ->
-                            if (currentComic.comicChapterList.isEmpty()) {
-                                downloadManager.downloadComic(currentComic)
+                        },
+                        onCache = {
+                            comic?.let { currentComic ->
+                                if (currentComic.comicChapterList.isEmpty()) {
+                                    downloadManager.downloadComic(currentComic)
+                                } else {
+                                    selectedCacheChapterIds =
+                                        currentComic.comicChapterList.map { it.id }.toSet()
+                                    activeDialog = ReadPanelDialog.Cache
+                                }
+                            }
+                        },
+                        onComment = {
+                            if (!isLogin) {
+                                mainNavController.navigate("login")
                             } else {
-                                selectedCacheChapterIds =
-                                    currentComic.comicChapterList.map { it.id }.toSet()
-                                activeDialog = ReadPanelDialog.Cache
+                                mainNavController.navigate("comment/$comicId")
+                            }
+                        },
+                        onChapterJump = {
+                            if (readableChapters.isNotEmpty()) {
+                                activeDialog = ReadPanelDialog.Chapter
                             }
                         }
-                    },
-                    onComment = {
-                        if (!isLogin) {
-                            mainNavController.navigate("login")
-                        } else {
-                            mainNavController.navigate("comment/$comicId")
+                    )
+                }
+                AnimatedVisibility(
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    visible = isShowToolbar,
+                    enter = slideInVertically(
+                        initialOffsetY = { fullHeight -> fullHeight },
+                        animationSpec = tween(durationMillis = 300)
+                    ) + fadeIn(),
+                    exit = slideOutVertically(
+                        targetOffsetY = { fullHeight -> fullHeight },
+                        animationSpec = tween(durationMillis = 300)
+                    ) + fadeOut()
+                ) {
+                    ToolsBar(
+                        currentIndex = currentIndexState,
+                        pageCount = size,
+                        previousChapterEnabled = previousChapter != null,
+                        nextChapterEnabled = nextChapter != null,
+                        showResetZoom = zoomState.isZoomed,
+                        onPreviousChapter = { navigateToChapter(previousChapter) },
+                        onNextChapter = { navigateToChapter(nextChapter) },
+                        onPageSelected = { jumpToIndex(it) },
+                        onResetZoom = { zoomState.reset() }
+                    )
+                }
+                AnimatedVisibility(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = 12.dp),
+                    visible = isShowToolbar,
+                    enter = slideInHorizontally(
+                        initialOffsetX = { fullWidth -> -fullWidth },
+                        animationSpec = tween(durationMillis = 250)
+                    ) + fadeIn(),
+                    exit = slideOutHorizontally(
+                        targetOffsetX = { fullWidth -> -fullWidth },
+                        animationSpec = tween(durationMillis = 250)
+                    ) + fadeOut()
+                ) {
+                    ReaderExitButton(
+                        onClick = { mainNavController.popBackStack() }
+                    )
+                }
+                if (localSetting.showComicPageReadTip && localSetting.readMode == "page" || localSetting.showComicScrollReadTip && localSetting.readMode == "scroll") {
+                    Tip(readMode = localSetting.readMode)
+                    TipCloseButton(
+                        modifier = Modifier.align(
+                            if (localSetting.readMode == "scroll") Alignment.CenterEnd else Alignment.BottomCenter
+                        ).let {
+                            if (localSetting.readMode == "scroll") {
+                                it.padding(end = 40.dp)
+                            } else {
+                                it.padding(bottom = 40.dp)
+                            }
+                        },
+                        onClick = {
+                            if (localSetting.readMode == "scroll") {
+                                localSettingManager.closeShowComicScrollReadTip()
+                            } else {
+                                localSettingManager.closeShowComicPageReadTip()
+                            }
                         }
-                    },
-                    onChapterJump = {
-                        if (readableChapters.isNotEmpty()) {
-                            activeDialog = ReadPanelDialog.Chapter
-                        }
-                    }
-                )
-            }
-            AnimatedVisibility(
-                modifier = Modifier.align(Alignment.BottomCenter),
-                visible = isShowToolbar,
-                enter = slideInVertically(
-                    initialOffsetY = { fullHeight -> fullHeight },
-                    animationSpec = tween(durationMillis = 300)
-                ) + fadeIn(),
-                exit = slideOutVertically(
-                    targetOffsetY = { fullHeight -> fullHeight },
-                    animationSpec = tween(durationMillis = 300)
-                ) + fadeOut()
-            ) {
-                ToolsBar(
-                    currentIndex = currentIndexState,
-                    pageCount = size,
-                    previousChapterEnabled = previousChapter != null,
-                    nextChapterEnabled = nextChapter != null,
-                    showResetZoom = zoomState.isZoomed,
-                    onPreviousChapter = { navigateToChapter(previousChapter) },
-                    onNextChapter = { navigateToChapter(nextChapter) },
-                    onPageSelected = { jumpToIndex(it) },
-                    onResetZoom = { zoomState.reset() }
-                )
-            }
-            AnimatedVisibility(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(start = 12.dp, top = 12.dp),
-                visible = isShowToolbar,
-                enter = slideInHorizontally(
-                    initialOffsetX = { fullWidth -> -fullWidth },
-                    animationSpec = tween(durationMillis = 250)
-                ) + fadeIn(),
-                exit = slideOutHorizontally(
-                    targetOffsetX = { fullWidth -> -fullWidth },
-                    animationSpec = tween(durationMillis = 250)
-                ) + fadeOut()
-            ) {
-                ReaderExitButton(
-                    onClick = { mainNavController.popBackStack() }
-                )
-            }
-            if (localSetting.showComicPageReadTip && localSetting.readMode == "page" || localSetting.showComicScrollReadTip && localSetting.readMode == "scroll") {
-                Tip(readMode = localSetting.readMode)
-                TipCloseButton(
-                    modifier = Modifier.align(
-                        if (localSetting.readMode == "scroll") Alignment.CenterEnd else Alignment.BottomCenter
-                    ).let {
-                        if (localSetting.readMode == "scroll") {
-                            it.padding(end = 40.dp)
-                        } else {
-                            it.padding(bottom = 40.dp)
-                        }
-                    },
-                    onClick = {
-                        if (localSetting.readMode == "scroll") {
-                            localSettingManager.closeShowComicScrollReadTip()
-                        } else {
-                            localSettingManager.closeShowComicPageReadTip()
-                        }
-                    }
-                )
+                    )
+                }
             }
         }
     }
@@ -765,4 +772,3 @@ private fun ChapterPickerDialog(
         }
     )
 }
-
