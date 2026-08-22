@@ -10,7 +10,6 @@ import com.par9uet.jm.image.ImageHostFailureKind
 import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.image.classifyImageHostFailure
 import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.utils.applyTlsCompat
 import com.par9uet.jm.utils.compressWebpCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -152,7 +151,6 @@ class ReaderImagePipeline internal constructor(
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(40, TimeUnit.SECONDS)
         .followRedirects(true)
-        .applyTlsCompat()
         .build()
     private val imageHostManager = ReaderImageHostManager(
         httpClient = httpClient,

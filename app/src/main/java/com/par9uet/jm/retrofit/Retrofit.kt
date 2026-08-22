@@ -6,7 +6,6 @@ import com.par9uet.jm.retrofit.interceptor.BaseUrlInterceptor
 import com.par9uet.jm.retrofit.interceptor.ToastInterceptor
 import com.par9uet.jm.retrofit.interceptor.TokenInterceptor
 import com.par9uet.jm.storage.CookieStorage
-import com.par9uet.jm.utils.applyTlsCompat
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -100,7 +99,6 @@ class Retrofit(
                 level = HttpLoggingInterceptor.Level.BASIC
             })
             .cookieJar(cookieJar)
-            .applyTlsCompat()
             .build()
     }
     private val retrofit: Retrofit by lazy {

@@ -7,7 +7,6 @@ import android.net.NetworkRequest
 import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.edit
-import com.par9uet.jm.utils.applyTlsCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -255,7 +254,7 @@ internal class JmImageHostHealthManager(
     context: Context,
     private val scope: CoroutineScope,
     configuredHostFlow: Flow<String>,
-    baseHttpClient: OkHttpClient = OkHttpClient.Builder().applyTlsCompat().build(),
+    baseHttpClient: OkHttpClient = OkHttpClient.Builder().build(),
     private val store: JmImageHostHealthStore = JmImageHostHealthStore(),
 ) : JmImageHostHealth {
     private val appContext = context.applicationContext
