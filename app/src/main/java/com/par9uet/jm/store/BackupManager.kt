@@ -6,8 +6,6 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.par9uet.jm.data.models.AiChatConversation
-import com.par9uet.jm.data.models.AiPersona
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.utils.logError
 import java.security.MessageDigest
@@ -26,11 +24,9 @@ const val BACKUP_FORMAT_VERSION = 3
  */
 data class BackupContentOptions(
     val includeLocalSetting: Boolean = true,
-    val includeAiChats: Boolean = false,
-    val includePersonas: Boolean = false,
     val includeComicCache: Boolean = false,
 ) {
-    val isEmpty: Boolean get() = !includeLocalSetting && !includeAiChats && !includePersonas && !includeComicCache
+    val isEmpty: Boolean get() = !includeLocalSetting && !includeComicCache
 }
 
 /**
@@ -43,8 +39,6 @@ data class BackupMeta(
     val passwordHash: String? = null,
     val patternHash: String? = null,
     val includeLocalSetting: Boolean = true,
-    val includeAiChats: Boolean = false,
-    val includePersonas: Boolean = false,
     val includeComicCache: Boolean = false,
     val comicCacheCount: Int = 0,
 )
@@ -82,7 +76,7 @@ data class ComicCacheBackup(
 
 /**
  * 备份文件结构：meta + data。
- * v2: data 下分 localSetting / aiChats / aiPersonas 三段。
+ * v2+: data 下按内容类型分段。
  * v1（兼容旧文件）: data 直接是 LocalSetting 的 JSON。
  */
 data class BackupFile(
@@ -101,8 +95,6 @@ class BackupManager {
      */
     fun createBackup(
         localSetting: LocalSetting?,
-        aiChats: List<AiChatConversation>?,
-        personas: List<AiPersona>?,
         comicCache: ComicCacheBackup? = null,
         options: BackupContentOptions,
         protectionType: String = BACKUP_PROTECTION_NONE,
@@ -129,8 +121,6 @@ class BackupManager {
                 else -> null
             },
             includeLocalSetting = options.includeLocalSetting,
-            includeAiChats = options.includeAiChats,
-            includePersonas = options.includePersonas,
             includeComicCache = options.includeComicCache && comicCache != null,
             comicCacheCount = comicCache?.groups?.size ?: 0,
         )
@@ -142,12 +132,6 @@ class BackupManager {
                 appLockPattern = "",
             )
             data.add("localSetting", gson.toJsonTree(sanitized))
-        }
-        if (options.includeAiChats && aiChats != null) {
-            data.add("aiChats", gson.toJsonTree(aiChats))
-        }
-        if (options.includePersonas && personas != null) {
-            data.add("aiPersonas", gson.toJsonTree(personas))
         }
         if (options.includeComicCache && comicCache != null) {
             data.add("comicCache", gson.toJsonTree(comicCache))
@@ -180,26 +164,6 @@ class BackupManager {
             return runCatching { gson.fromJson(backup.data, LocalSetting::class.java) }.getOrNull()
         }
         return null
-    }
-
-    /**
-     * 从备份中提取 AI 聊天记录。
-     */
-    fun extractAiChats(backup: BackupFile): List<AiChatConversation> {
-        val arr = backup.data.getAsJsonArray("aiChats") ?: return emptyList()
-        return runCatching {
-            gson.fromJson(arr, Array<AiChatConversation>::class.java)?.toList() ?: emptyList()
-        }.getOrDefault(emptyList())
-    }
-
-    /**
-     * 从备份中提取 AI 人格面具。
-     */
-    fun extractPersonas(backup: BackupFile): List<AiPersona> {
-        val arr = backup.data.getAsJsonArray("aiPersonas") ?: return emptyList()
-        return runCatching {
-            gson.fromJson(arr, Array<AiPersona>::class.java)?.toList() ?: emptyList()
-        }.getOrDefault(emptyList())
     }
 
     /**

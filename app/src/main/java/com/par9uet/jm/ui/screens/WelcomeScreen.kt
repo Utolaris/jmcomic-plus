@@ -77,9 +77,9 @@ import org.koin.compose.viewmodel.koinActivityViewModel
  * 2. 数据源说明
  * 3. 通知权限授予
  * 4. 应用锁设置（可跳过）
- * 5. AI 开关（声明 unlimitedai，无道德审查）
- * 6. 提取编码 + 剪切板自动检测
- * 7. 登录账号（可跳过）
+ * 5. 提取编码 + 剪切板自动检测
+ * 6. 登录账号（可跳过）
+ * 7. 若已登录：自动签到开关
  * 8. 若已登录：偏好推荐开关（声明请求网络 API，可能不稳定）
  *
  * 右上角随时可跳过整个引导。
@@ -97,7 +97,6 @@ fun WelcomeScreen(
     val loginState by userViewModel.loginState.collectAsState()
 
     var step by remember { mutableStateOf(0) }
-    var preferenceStepHandled by remember { mutableStateOf(false) }
 
     // 提升到顶层的状态，供内容区和按钮区共享
     var appLockEnabled by remember { mutableStateOf(localSetting.appLockEnabled) }
@@ -180,23 +179,11 @@ fun WelcomeScreen(
                             secondaryText = "跳过",
                             onSecondary = { step = 6 }
                         )
-                        6 -> StepButtons(
-                            primaryText = "下一步",
-                            onPrimary = { step = 7 },
-                            secondaryText = "跳过",
-                            onSecondary = { step = 7 }
-                        )
-                        7 -> {
+                        6 -> {
                             if (isLogin) {
                                 StepButtons(
                                     primaryText = "下一步",
-                                    onPrimary = {
-                                        if (!preferenceStepHandled) {
-                                            step = 8
-                                        } else {
-                                            skipOnboarding()
-                                        }
-                                    }
+                                    onPrimary = { step = 7 }
                                 )
                             } else {
                                 StepButtons(
@@ -213,16 +200,13 @@ fun WelcomeScreen(
                                 )
                             }
                         }
-                        8 -> StepButtons(
+                        7 -> StepButtons(
                             primaryText = "下一步",
-                            onPrimary = { step = 9 }
+                            onPrimary = { step = 8 }
                         )
-                        9 -> StepButtons(
+                        8 -> StepButtons(
                             primaryText = "完成",
-                            onPrimary = {
-                                preferenceStepHandled = true
-                                skipOnboarding()
-                            }
+                            onPrimary = { skipOnboarding() }
                         )
                     }
                 }
@@ -298,15 +282,11 @@ fun WelcomeScreen(
                         onShowPasswordDialog = { showPasswordDialog = true },
                         onShowPatternDialog = { showPatternDialog = true }
                     )
-                    5 -> AiStepContent(
-                        enabled = localSetting.showAiEntry,
-                        onToggle = { localSettingManager.updateShowAiEntry(it) }
-                    )
-                    6 -> ExtractCodeStepContent(
+                    5 -> ExtractCodeStepContent(
                         clipboardAutoDetectEnabled = localSetting.clipboardAutoDetectEnabled,
                         onToggleClipboard = { localSettingManager.updateClipboardAutoDetectEnabled(it) }
                     )
-                    7 -> LoginStepContent(
+                    6 -> LoginStepContent(
                         isLogin = isLogin,
                         loginState = loginState,
                         username = loginUsername,
@@ -314,11 +294,11 @@ fun WelcomeScreen(
                         onUsernameChange = { loginUsername = it.filter { ch -> ch.code in 0..127 } },
                         onPasswordChange = { loginPassword = it.filter { ch -> ch.code in 0..127 } }
                     )
-                    8 -> AutoSignInStepContent(
+                    7 -> AutoSignInStepContent(
                         enabled = localSetting.autoSignInEnabled,
                         onToggle = { localSettingManager.updateAutoSignInEnabled(it) }
                     )
-                    9 -> PreferenceRecommendStepContent(
+                    8 -> PreferenceRecommendStepContent(
                         enabled = localSetting.preferenceRecommendEnabled,
                         onToggle = { localSettingManager.updatePreferenceRecommendEnabled(it) }
                     )
@@ -615,27 +595,6 @@ private fun AppLockStepContent(
                     )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun AiStepContent(
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-) {
-    StepWithControlLayout(
-        icon = Icons.Rounded.AutoAwesome,
-        title = "AI 助手（可选）",
-        description = "启用后将在主界面显示 AI 入口。本应用使用的 AI 服务为 unlimitedai，无道德审查，可自由对话与联网搜索。请遵守当地法律法规，理性使用。"
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("启用 AI 入口", style = MaterialTheme.typography.bodyLarge)
-            Switch(checked = enabled, onCheckedChange = onToggle)
         }
     }
 }

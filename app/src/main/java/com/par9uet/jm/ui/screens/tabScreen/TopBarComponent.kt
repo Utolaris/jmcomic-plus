@@ -9,14 +9,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.navigation.compose.currentBackStackEntryAsState
 import com.par9uet.jm.ui.components.FavoriteSyncIconButton
+import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun HomeTopBarComponent() {
+private fun HomeTopBarComponent(tab: MainTab) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -25,7 +25,7 @@ private fun HomeTopBarComponent() {
         ),
         title = {
             Text(
-                "禁漫天堂",
+                tab.topBarTitle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -37,6 +37,7 @@ private fun HomeTopBarComponent() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CollectTopBarComponent(
+    tab: MainTab,
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
     val favoriteSyncState by userViewModel.favoriteSyncState.collectAsState()
@@ -50,7 +51,7 @@ private fun CollectTopBarComponent(
         ),
         title = {
             Text(
-                "我的收藏",
+                tab.topBarTitle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -67,7 +68,7 @@ private fun CollectTopBarComponent(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun UserTopBarComponent() {
+private fun SettingsTopBarComponent(tab: MainTab) {
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -76,7 +77,7 @@ private fun UserTopBarComponent() {
         ),
         title = {
             Text(
-                "个人中心",
+                tab.topBarTitle,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -86,13 +87,10 @@ private fun UserTopBarComponent() {
 }
 
 @Composable
-fun TopBarComponent() {
-    val tabNavController = LocalTabNavController.current
-    val backStackEntryState by tabNavController.currentBackStackEntryAsState()
-    val currentRoute = backStackEntryState?.destination?.route
-    when (currentRoute) {
-        "home" -> HomeTopBarComponent()
-        "collect" -> CollectTopBarComponent()
-        "user" -> UserTopBarComponent()
+fun TopBarComponent(tab: MainTab) {
+    when (tab) {
+        MainTab.Home -> HomeTopBarComponent(tab)
+        MainTab.Collect -> CollectTopBarComponent(tab)
+        MainTab.Settings -> SettingsTopBarComponent(tab)
     }
 }

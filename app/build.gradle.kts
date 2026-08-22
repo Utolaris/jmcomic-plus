@@ -67,6 +67,10 @@ android {
     }
 
     buildTypes {
+        debug {
+            applicationIdSuffix = ".nagram"
+            versionNameSuffix = "-nagram"
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

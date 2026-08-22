@@ -88,9 +88,6 @@ class LocalSettingManager(
     fun updateShowComicCacheNotificationName(show: Boolean) =
         updateSetting { it.copy(showComicCacheNotificationName = show) }
 
-    fun updateShowAiEntry(show: Boolean) =
-        updateSetting { it.copy(showAiEntry = show) }
-
     fun addBlockedTag(tag: String) {
         val normalizedTag = normalizeBlockedTag(tag)
         if (normalizedTag.isBlank()) return

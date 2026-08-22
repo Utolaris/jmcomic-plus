@@ -1,112 +1,106 @@
 package com.par9uet.jm.ui.screens.tabScreen
 
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
-import androidx.navigation.compose.currentBackStackEntryAsState
-import androidx.navigation.compose.rememberNavController
-import com.par9uet.jm.ui.screens.AiChatScreen
+import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.ui.navigation.MainTab
+import com.par9uet.jm.ui.navigation.MainTabDirection
+import com.par9uet.jm.ui.navigation.NavigationMotion
 import com.par9uet.jm.ui.screens.HomeScreen
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.screens.UserCollectComicScreen
 import com.par9uet.jm.ui.screens.UserScreen
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.UserManager
+import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
 
 @Composable
 fun TabScreen(
     tabName: String,
     userManager: UserManager = getKoin().get(),
-    localSettingManager: LocalSettingManager = getKoin().get()
 ) {
-    val tabNavController = rememberNavController()
     val mainNavController = LocalMainNavController.current
-    val navBackStackEntry by tabNavController.currentBackStackEntryAsState()
-    val currentRoute = navBackStackEntry?.destination?.route
     val isLogin by userManager.isLoginState.collectAsState(false)
-    val localSetting by localSettingManager.localSettingState.collectAsState()
-    val imeVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    LaunchedEffect(localSetting.showAiEntry, currentRoute) {
-        if (!localSetting.showAiEntry && currentRoute == "ai") {
-            tabNavController.navigate("home") {
-                popUpTo("ai") {
-                    inclusive = true
-                }
-            }
-        }
-    }
-    CompositionLocalProvider(
-        LocalTabNavController provides tabNavController,
-    ) {
-        BoxWithConstraints {
-            val useNavigationRail = maxWidth >= 700.dp
-            val hideBottomNavigation = currentRoute == "ai" && imeVisible
-            Scaffold(
-                bottomBar = {
-                    if (!useNavigationRail && !hideBottomNavigation) {
-                        BottomNavigationBarComponent()
-                    }
-                },
-                topBar = {
-                    TopBarComponent()
-                }
-            ) { innerPadding ->
-                Row(
-                    modifier = Modifier
-                        .padding(innerPadding)
-                        .fillMaxSize()
-                ) {
-                    if (useNavigationRail) {
-                        NavigationRailComponent()
-                    }
-                    NavHost(
-                        modifier = Modifier.weight(1f),
-                        navController = tabNavController,
-                        startDestination = tabName
-                    ) {
-                        composable("home") {
-                            HomeScreen()
-                        }
-                        composable("user") {
-                            UserScreen()
-                        }
-                        composable("ai") {
-                            AiChatScreen()
-                        }
-                        composable("collect") {
-                            LaunchedEffect(isLogin) {
-                                if (!isLogin) {
-                                    mainNavController.navigate("login")
-                                }
-                            }
-                            if (isLogin) {
-                                UserCollectComicScreen(useScaffold = false)
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+    val initialTab = MainTab.fromRoute(tabName) ?: MainTab.Home
+    val pagerState = rememberPagerState(
+        initialPage = initialTab.index,
+        pageCount = { MainTab.ordered.size },
+    )
+    val coroutineScope = rememberCoroutineScope()
+    val selectedTab = MainTab.fromIndex(pagerState.currentPage)
 
-val LocalTabNavController = staticCompositionLocalOf<NavHostController> {
-    error("none")
+    fun selectTab(tab: MainTab) {
+        if (selectedTab.directionTo(tab) == MainTabDirection.NONE) return
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(
+                page = tab.index,
+                animationSpec = NavigationMotion.MainTabAnimationSpec,
+            )
+        }
+    }
+
+    LaunchedEffect(pagerState.settledPage, isLogin) {
+        if (pagerState.settledPage == MainTab.Collect.index && !isLogin) {
+            mainNavController.navigate("login")
+        }
+    }
+
+    BoxWithConstraints {
+        val useNavigationRail = maxWidth >= 700.dp
+        Scaffold(
+            bottomBar = {
+                if (!useNavigationRail) {
+                    BottomNavigationBarComponent(
+                        selectedTab = selectedTab,
+                        onTabSelected = ::selectTab,
+                    )
+                }
+            },
+            topBar = {
+                TopBarComponent(selectedTab)
+            },
+        ) { innerPadding ->
+            Row(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize(),
+            ) {
+                if (useNavigationRail) {
+                    NavigationRailComponent(
+                        selectedTab = selectedTab,
+                        onTabSelected = ::selectTab,
+                    )
+                }
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.weight(1f),
+                    key = { page -> MainTab.fromIndex(page).route },
+                    // There are only three primary pages; retain them to preserve scroll and
+                    // paging composition state without recreating work on every tab switch.
+                    beyondViewportPageCount = MainTab.ordered.lastIndex,
+                    // Home already owns horizontal gestures for switching comic categories.
+                    userScrollEnabled = pagerState.settledPage != MainTab.Home.index,
+                ) { page ->
+                    when (MainTab.fromIndex(page)) {
+                        MainTab.Home -> HomeScreen()
+                        MainTab.Collect -> if (isLogin) {
+                            UserCollectComicScreen(useScaffold = false)
+                        }
+                        MainTab.Settings -> UserScreen()
+                    }
+                }
+            }
+        }
+    }
 }

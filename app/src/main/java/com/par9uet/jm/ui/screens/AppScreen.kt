@@ -13,6 +13,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.par9uet.jm.ui.navigation.NavigationMotion
 import com.par9uet.jm.ui.screens.downloadScreen.DownloadScreen
 import com.par9uet.jm.ui.screens.downloadScreen.DownloadComicDetailScreen
 import com.par9uet.jm.ui.screens.readScreen.ComicReadScreen
@@ -46,6 +47,10 @@ fun AppScreen(
 //            startDestination = "comicQuickSearch/百合"
 //            startDestination = "appLocalSetting"
             startDestination = "tab/home",
+            enterTransition = { NavigationMotion.hierarchicalEnter() },
+            exitTransition = { NavigationMotion.hierarchicalExit() },
+            popEnterTransition = { NavigationMotion.hierarchicalPopEnter() },
+            popExitTransition = { NavigationMotion.hierarchicalPopExit() },
 //            startDestination = "comicRead/1044155",
 //             startDestination = "comicDetail/1044155"
 //            startDestination = "comicSearch"
@@ -59,8 +64,6 @@ fun AppScreen(
                         type = NavType.StringType; defaultValue = null; nullable = true
                     }
                 ),
-//                enterTransition = { slideInHorizontally(initialOffsetX = { width -> -width }) },
-//                exitTransition = { slideOutHorizontally(targetOffsetX = { width -> -width }) }
             ) { backStackEntry ->
                 val tabName = backStackEntry.arguments?.getString("tabName") ?: "home"
                 TabScreen(tabName = tabName)
@@ -78,7 +81,6 @@ fun AppScreen(
             composable(route = "logViewer") { LogViewerScreen() }
             composable(route = "cacheCleanup") { CacheCleanupScreen() }
             composable(route = "backupRestore") { BackupRestoreScreen() }
-            composable(route = "personaManager") { PersonaManagerScreen() }
             composable(
                 route = "comicDetail/{id}",
                 arguments = listOf(

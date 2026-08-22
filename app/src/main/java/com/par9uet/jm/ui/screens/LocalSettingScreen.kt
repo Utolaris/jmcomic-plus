@@ -36,7 +36,6 @@ import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Palette
-import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Recommend
 import androidx.compose.material.icons.rounded.Source
 import androidx.compose.material.icons.rounded.Search
@@ -180,12 +179,6 @@ fun LocalSettingScreen(
                         openSetting(SettingType.LauncherDisguise)
                     }
                     SettingsSwitchRow(
-                        icon = Icons.Rounded.Psychology,
-                        title = "\u663e\u793a AI",
-                        value = localSetting.showAiEntry,
-                        onCheckedChange = localSettingManager::updateShowAiEntry
-                    )
-                    SettingsSwitchRow(
                         icon = Icons.Rounded.ContentPaste,
                         title = "\u526a\u5207\u677f\u81ea\u52a8\u68c0\u6d4b",
                         value = localSetting.clipboardAutoDetectEnabled,
@@ -319,9 +312,6 @@ fun LocalSettingScreen(
                     }
                     SettingsRow(Icons.Rounded.CloudSync, "\u6570\u636e\u5907\u4efd", "\u5907\u4efd\u4e0e\u6062\u590d\u5e94\u7528\u8bbe\u7f6e") {
                         mainNavController.navigate("backupRestore")
-                    }
-                    SettingsRow(Icons.Rounded.Psychology, "\u4eba\u683c\u9762\u5177", "\u81ea\u5b9a\u4e49 AI \u540d\u5b57\u3001\u804c\u4e1a\u3001\u7b80\u4ecb\u7b49") {
-                        mainNavController.navigate("personaManager")
                     }
                     SettingsRow(Icons.Rounded.SystemUpdate, "\u68c0\u67e5\u66f4\u65b0", "\u67e5\u770b GitHub Release \u6700\u65b0\u7248\u672c") {
                         mainNavController.navigate("checkUpdate")

@@ -4,15 +4,12 @@ import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.Strictness
 import com.par9uet.jm.repository.RemoteSettingRepository
-import com.par9uet.jm.repository.AiChatRepository
 import com.par9uet.jm.coil.CoverImageHostResolver
 import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.repository.impl.RemoteSettingRepositoryImpl
-import com.par9uet.jm.storage.AiChatStorage
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.HistorySearchStorage
 import com.par9uet.jm.storage.LocalSettingStorage
-import com.par9uet.jm.storage.PersonaStorage
 import com.par9uet.jm.storage.ReadHistoryStorage
 import com.par9uet.jm.storage.SecureCookieStorage
 import com.par9uet.jm.storage.SecureStorage
@@ -29,8 +26,6 @@ import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.SessionReadinessHolder
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.ui.viewModel.AiChatViewModel
-import com.par9uet.jm.ui.viewModel.PersonaViewModel
 import com.par9uet.jm.utils.LauncherDisguiseApplier
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -39,7 +34,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.map
 import org.koin.core.context.GlobalContext
-import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.bind
 import org.koin.dsl.module
 
@@ -56,8 +50,6 @@ val appModule = module {
     single { LocalSettingStorage(get()) }
     single { HistorySearchStorage(get()) }
     single { ReadHistoryStorage(get()) }
-    single { AiChatStorage(get()) }
-    single { PersonaStorage(get()) }
     single { LauncherDisguiseApplier(get()) }
     single {
         JmImageHostHealthManager(
@@ -69,7 +61,6 @@ val appModule = module {
     single { CoverImageHostResolver(get<JmImageHostHealthManager>()) }
 
     single { RemoteSettingRepositoryImpl(get()) } bind RemoteSettingRepository::class
-    single { AiChatRepository(get()) }
 
     single { SessionReadinessHolder() }
     single { UserManager(get(), get(), get(), get(), get()) }
@@ -83,7 +74,4 @@ val appModule = module {
     single { AppUpdateDownloadManager(get(), get(), get()) }
 
     single<Gson> { GsonBuilder().setStrictness(Strictness.LENIENT).serializeNulls().create() }
-
-    viewModel { AiChatViewModel(get(), get(), get()) }
-    viewModel { PersonaViewModel(get()) }
 }

@@ -22,9 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Book
-import androidx.compose.material.icons.rounded.Chat
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
@@ -73,8 +71,6 @@ import com.par9uet.jm.store.ComicGroupBackup
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.RemoteSettingManager
-import com.par9uet.jm.storage.AiChatStorage
-import com.par9uet.jm.storage.PersonaStorage
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
@@ -107,8 +103,6 @@ private val protectionOptionList = listOf(
 @Composable
 fun BackupRestoreScreen(
     localSettingManager: LocalSettingManager = getKoin().get(),
-    aiChatStorage: AiChatStorage = getKoin().get(),
-    personaStorage: PersonaStorage = getKoin().get(),
     downloadComicDao: DownloadComicDao = getKoin().get(),
     downloadManager: DownloadManager = getKoin().get(),
     remoteSettingManager: RemoteSettingManager = getKoin().get(),
@@ -163,8 +157,6 @@ fun BackupRestoreScreen(
                 withContext(Dispatchers.IO) {
                     val json = backupManager.createBackup(
                         localSetting = if (opts.includeLocalSetting) localSetting else null,
-                        aiChats = if (opts.includeAiChats) aiChatStorage.get() else null,
-                        personas = if (opts.includePersonas) personaStorage.get() else null,
                         comicCache = if (opts.includeComicCache) cacheBackup else null,
                         options = opts,
                         protectionType = prot,
@@ -232,20 +224,6 @@ fun BackupRestoreScreen(
                 if (setting != null) {
                     localSettingManager.applyLocalSetting(setting)
                     applied += "本地设置"
-                }
-            }
-            if (options.includeAiChats) {
-                val chats = backupManager.extractAiChats(backup)
-                if (chats.isNotEmpty()) {
-                    aiChatStorage.set(chats)
-                    applied += "AI 聊天记录"
-                }
-            }
-            if (options.includePersonas) {
-                val personas = backupManager.extractPersonas(backup)
-                if (personas.isNotEmpty()) {
-                    personaStorage.set(personas)
-                    applied += "人格面具"
                 }
             }
             // 缓存目录在 applyComicCacheRestore 中单独处理，这里不处理
@@ -317,7 +295,7 @@ fun BackupRestoreScreen(
                 ActionCard(
                     icon = Icons.Rounded.CloudUpload,
                     title = "备份数据",
-                    description = "选择需要备份的内容（本地设置 / AI 聊天 / 人格面具 / 缓存目录），再选择是否设置密码/图案保护",
+                    description = "选择需要备份的内容（本地设置 / 缓存目录），再选择是否设置密码/图案保护",
                     onClick = {
                         resetBackupState()
                         backupStep = BackupStep.SelectContent
@@ -504,9 +482,9 @@ fun BackupRestoreScreen(
                     groups = cache.groups,
                     imgHost = remoteSetting.imgHost,
                     onConfirm = { selected ->
-                        // 先应用其他选项（localSetting/aiChats/personas），再恢复缓存
+                        // 先应用本地设置，再恢复缓存
                         val opts = restoreContentOptions
-                        if (opts.includeLocalSetting || opts.includeAiChats || opts.includePersonas) {
+                        if (opts.includeLocalSetting) {
                             applyRestore(backup, opts.copy(includeComicCache = false))
                         } else {
                             restoreBackup = null
@@ -563,20 +541,6 @@ private fun BackupContentPickerDialog(
                     onCheckedChange = { onChange(options.copy(includeLocalSetting = it)) }
                 )
                 ContentToggleRow(
-                    icon = Icons.Rounded.Chat,
-                    title = "AI 聊天记录",
-                    subtitle = "全部 AI 对话历史",
-                    checked = options.includeAiChats,
-                    onCheckedChange = { onChange(options.copy(includeAiChats = it)) }
-                )
-                ContentToggleRow(
-                    icon = Icons.Rounded.AutoAwesome,
-                    title = "人格面具",
-                    subtitle = "全部自定义人格面具",
-                    checked = options.includePersonas,
-                    onCheckedChange = { onChange(options.copy(includePersonas = it)) }
-                )
-                ContentToggleRow(
                     icon = Icons.Rounded.Book,
                     title = "缓存目录",
                     subtitle = "只备份漫画编号与章节信息，不备份图片文件",
@@ -605,8 +569,6 @@ private fun RestoreContentPickerDialog(
     onDismiss: () -> Unit,
 ) {
     var localSettingOn by remember { mutableStateOf(backup.meta.includeLocalSetting) }
-    var aiChatsOn by remember { mutableStateOf(backup.meta.includeAiChats) }
-    var personasOn by remember { mutableStateOf(backup.meta.includePersonas) }
     var comicCacheOn by remember { mutableStateOf(backup.meta.includeComicCache) }
 
     BasicAlertDialog(onDismissRequest = onDismiss) {
@@ -640,24 +602,6 @@ private fun RestoreContentPickerDialog(
                         onCheckedChange = { localSettingOn = it }
                     )
                 }
-                if (backup.meta.includeAiChats) {
-                    ContentToggleRow(
-                        icon = Icons.Rounded.Chat,
-                        title = "AI 聊天记录",
-                        subtitle = "会覆盖当前全部 AI 对话",
-                        checked = aiChatsOn,
-                        onCheckedChange = { aiChatsOn = it }
-                    )
-                }
-                if (backup.meta.includePersonas) {
-                    ContentToggleRow(
-                        icon = Icons.Rounded.AutoAwesome,
-                        title = "人格面具",
-                        subtitle = "会覆盖当前全部人格面具",
-                        checked = personasOn,
-                        onCheckedChange = { personasOn = it }
-                    )
-                }
                 if (backup.meta.includeComicCache) {
                     ContentToggleRow(
                         icon = Icons.Rounded.Book,
@@ -678,8 +622,6 @@ private fun RestoreContentPickerDialog(
                         onConfirm(
                             BackupContentOptions(
                                 includeLocalSetting = localSettingOn,
-                                includeAiChats = aiChatsOn,
-                                includePersonas = personasOn,
                                 includeComicCache = comicCacheOn,
                             )
                         )
@@ -782,7 +724,7 @@ private fun InfoCard() {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "备份时可选择：本地设置、AI 聊天记录、人格面具、缓存目录。\n" +
+                    text = "备份时可选择：本地设置、缓存目录。\n" +
                         "缓存目录只备份漫画编号与章节信息，不备份图片文件；恢复时可选择具体要重新缓存的漫画。\n" +
                         "为安全考虑，备份不会保存应用锁的密码与图案明文，且恢复时不会覆盖当前设备的应用锁状态。",
                     style = MaterialTheme.typography.bodySmall,

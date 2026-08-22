@@ -52,7 +52,6 @@ data class LocalSetting(
     val showComicPageReadTip: Boolean = true,
     val showComicCacheNotification: Boolean = true,
     val showComicCacheNotificationName: Boolean = true,
-    val showAiEntry: Boolean = false,
     val blockedTagList: List<String> = listOf(),
     val blockedTagTemplateList: List<BlockedTagTemplate> = listOf(),
     val appLockEnabled: Boolean = false,

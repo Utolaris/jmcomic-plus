@@ -25,7 +25,7 @@ class SecureStorage(
         }
     }
 
-    /** Stores small first-frame values separately from history/AI/download metadata. */
+    /** Stores small first-frame values separately from history and download metadata. */
     fun <T> setStartup(key: String, t: T) {
         val json = gson.toJson(t)
         setStartupString(key, json)
