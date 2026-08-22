@@ -718,6 +718,8 @@ private fun FilterDialog(
         // sheet dragging so overscroll at the content edges cannot violently move the entire
         // sheet. Dismissal still works via the buttons, back press, and scrim click.
         sheetGesturesEnabled = false,
+        // The sheet cannot be dragged anymore; hide the handle so it does not imply it can.
+        dragHandle = null,
     ) {
         Column(
             modifier = Modifier

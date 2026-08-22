@@ -376,9 +376,12 @@ class FavoriteStore(
                         accountId = accountId,
                         folderId = folderId,
                         albumId = albumId,
-                        // Do not fake 'newest/order 0': append after the folder items we
-                        // currently know until the next server sync confirms the real order.
-                        remoteOrder = temporaryFolderOrder(membershipDao.getAlbumIds(accountId, folderId)),
+                        // Do not fake 'newest/order 0': append after MAX(remoteOrder) of the
+                        // folder items we currently know until the next server sync confirms
+                        // the real order. Computed inside the same transaction as the insert.
+                        remoteOrder = nextTemporaryRemoteOrder(
+                            membershipDao.maxRemoteOrder(accountId, folderId)
+                        ),
                         lastSyncedAt = now,
                     )
                 )
@@ -486,11 +489,11 @@ internal fun resolveGlobalOrderAfterScopeSync(
 ): Int = if (scopeFolderId == FAVORITE_SCOPE_ALL) scopeIndex else existingGlobalOrder
 
 /**
- * Temporary membership order for a locally moved comic: append after the folder items that
- * are currently known, instead of jumping to the 'first/newest' position before the server
- * confirms the real order.
+ * Temporary membership order for a locally moved comic: MAX(remoteOrder) + 1 of the folder's
+ * known items, instead of jumping to the 'first/newest' position or relying on a dense count.
+ * -1 (empty folder) yields 0; sparse orders like 0,1,5,8 yield 9.
  */
-internal fun temporaryFolderOrder(existingFolderAlbumIds: List<Int>): Int = existingFolderAlbumIds.size
+internal fun nextTemporaryRemoteOrder(maxRemoteOrder: Int): Int = maxRemoteOrder + 1
 
 private fun buildFavoritePagingQuery(
     accountId: Int,

@@ -17,7 +17,8 @@ import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
-import com.par9uet.jm.store.FavoriteAutoSyncGate
+import com.par9uet.jm.store.FavoriteAutoRequestResult
+import com.par9uet.jm.store.FavoriteAutoSyncCoordinator
 import com.par9uet.jm.store.FavoriteSyncKind
 import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.store.LocalSettingManager
@@ -31,6 +32,8 @@ import com.par9uet.jm.ui.pagingSource.HistoryCommentPagingSource
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
@@ -136,7 +139,9 @@ class UserViewModel(
     val collectEditState = _collectEditState.asStateFlow()
     private val _favoriteSyncState = MutableStateFlow(FavoriteSyncUiState())
     val favoriteSyncState = _favoriteSyncState.asStateFlow()
-    private val favoriteAutoSyncGate = FavoriteAutoSyncGate()
+    private val autoSyncCoordinator = FavoriteAutoSyncCoordinator()
+    // Exactly one scheduled trailing automatic sync may exist at a time.
+    private var trailingAutoSyncJob: Job? = null
 
     private val accountIdFlow = userManager.userState.map { it.data?.id ?: 0 }
 
@@ -145,7 +150,9 @@ class UserViewModel(
             accountIdFlow.distinctUntilChanged().collect {
                 _selectedFolderId.value = 0
                 _favoriteSyncState.value = FavoriteSyncUiState()
-                favoriteAutoSyncGate.reset()
+                autoSyncCoordinator.reset()
+                trailingAutoSyncJob?.cancel()
+                trailingAutoSyncJob = null
             }
         }
     }
@@ -363,19 +370,35 @@ class UserViewModel(
      * Background/automatic favorites synchronization, globally throttled to at most once
      * every 30 seconds per account. Does nothing while another sync is already running.
      */
+    /**
+     * Background/automatic favorites synchronization with leading + trailing coalescing:
+     * the first eligible request starts immediately, further requests inside the rolling
+     * 30-second window are coalesced into exactly one trailing sync (latest requested folder
+     * wins), and requests during an in-flight sync are retained, never run in parallel.
+     */
     fun requestFavoriteAutoSync(folderId: Int = _selectedFolderId.value) {
         val accountId = currentAccountId()
         if (accountId <= 0) return
-        val isAutoSyncAllowed = favoriteAutoSyncGate.tryAcquire()
-        if (!shouldStartFavoriteSync(
-                kind = FavoriteSyncKind.AUTO,
-                isAutoSyncAllowed = isAutoSyncAllowed,
-                isSyncing = _favoriteSyncState.value.isSyncing,
-            )
-        ) {
-            return
+        when (val result = autoSyncCoordinator.request(folderId, _favoriteSyncState.value.isSyncing)) {
+            is FavoriteAutoRequestResult.StartNow -> {
+                launchFavoriteSync(accountId, result.folderId, force = false)
+            }
+            is FavoriteAutoRequestResult.Coalesced -> {
+                scheduleTrailingAutoSync(result.trailingDelayMs)
+            }
         }
-        launchFavoriteSync(accountId, folderId, force = false)
+    }
+
+    private fun scheduleTrailingAutoSync(delayMs: Long) {
+        if (trailingAutoSyncJob?.isActive == true) return
+        trailingAutoSyncJob = viewModelScope.launch {
+            if (delayMs > 0) delay(delayMs)
+            if (_favoriteSyncState.value.isSyncing) return@launch
+            val folderId = autoSyncCoordinator.trailingDue() ?: return@launch
+            val accountId = currentAccountId()
+            if (accountId <= 0) return@launch
+            launchFavoriteSync(accountId, folderId, force = false)
+        }
     }
 
     /**
@@ -396,10 +419,11 @@ class UserViewModel(
     }
 
     private fun launchFavoriteSync(accountId: Int, folderId: Int, force: Boolean) {
+        // Claim synchronously so a second caller cannot observe isSyncing == false twice.
+        _favoriteSyncState.update {
+            FavoriteSyncUiState(isSyncing = true, isForceRefresh = force)
+        }
         viewModelScope.launch {
-            _favoriteSyncState.update {
-                FavoriteSyncUiState(isSyncing = true, isForceRefresh = force)
-            }
             val result = userRepository.synchronizeFavorites(
                 accountId = accountId,
                 folderId = folderId,
@@ -428,6 +452,12 @@ class UserViewModel(
                 is NetWorkResult.Success -> {
                     _favoriteSyncState.value = FavoriteSyncUiState()
                 }
+            }
+            // A coalesced automatic request may have become due while this sync ran; run the
+            // single trailing sync now (it can never overlap: state was just cleared).
+            val trailingFolderId = autoSyncCoordinator.onSyncFinished()
+            if (trailingFolderId != null && !_favoriteSyncState.value.isSyncing) {
+                launchFavoriteSync(accountId, trailingFolderId, force = false)
             }
         }
     }

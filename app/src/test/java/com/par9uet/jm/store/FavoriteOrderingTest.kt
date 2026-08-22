@@ -35,10 +35,14 @@ class FavoriteOrderingTest {
     }
 
     @Test
-    fun `local move appends after known folder items instead of placing first`() {
-        // X is moved into an empty folder: it is at position 0 only because the folder is empty.
-        assertEquals(0, temporaryFolderOrder(existingFolderAlbumIds = emptyList()))
-        // X is moved into a folder that already knows [A, B, C]: it appends at the end.
-        assertEquals(3, temporaryFolderOrder(existingFolderAlbumIds = listOf(1, 2, 3)))
+    fun `local move uses MAX(remoteOrder) + 1 instead of count`() {
+        // Empty folder: max = -1 -> next = 0.
+        assertEquals(0, nextTemporaryRemoteOrder(-1))
+        // Dense orders 0,1,2 -> next = 3.
+        assertEquals(3, nextTemporaryRemoteOrder(2))
+        // Sparse orders 0,1,5,8 -> next = 9 (count would have produced 4).
+        assertEquals(9, nextTemporaryRemoteOrder(8))
+        // Sparse orders 0,1,3 -> next = 4 (count would have duplicated 3).
+        assertEquals(4, nextTemporaryRemoteOrder(3))
     }
 }

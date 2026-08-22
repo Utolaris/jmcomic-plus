@@ -23,6 +23,8 @@ import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.navigation.NavigationMotion
 import com.par9uet.jm.ui.navigation.shouldIgnoreTabSelection
+import com.par9uet.jm.ui.navigation.shouldRequestInitialFavoriteSync
+import com.par9uet.jm.ui.navigation.shouldTriggerFavoriteSyncAfterLogin
 import com.par9uet.jm.ui.navigation.shouldTriggerFavoriteEntrySync
 import com.par9uet.jm.ui.screens.HomeScreen
 import com.par9uet.jm.ui.screens.LocalMainNavController
@@ -66,8 +68,7 @@ fun TabScreen(
         val targetIndex = tab.index
         if (shouldIgnoreTabSelection(
                 settledPage = pagerState.settledPage,
-                currentPage = pagerState.currentPage,
-                targetPage = pendingTargetPage,
+                pendingTargetPage = pendingTargetPage.takeIf { it >= 0 },
                 isScrollInProgress = pagerState.isScrollInProgress,
                 requestedPage = targetIndex,
             )
@@ -114,6 +115,37 @@ fun TabScreen(
             userViewModel.requestFavoriteAutoSync()
         }
         previousSettledPage = currentlySettledPage
+    }
+
+    // Logging in while already settled on Favorites must also trigger one eligible auto sync.
+    var previousIsLogin by rememberSaveable { mutableStateOf(isLogin) }
+    var initialCollectSyncRequested by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(isLogin) {
+        if (shouldTriggerFavoriteSyncAfterLogin(
+                previousIsLogin = previousIsLogin,
+                isLogin = isLogin,
+                settledPage = pagerState.settledPage,
+                favoritesPage = MainTab.Collect.index,
+            )
+        ) {
+            initialCollectSyncRequested = true
+            userViewModel.requestFavoriteAutoSync()
+        }
+        previousIsLogin = isLogin
+    }
+
+    // Booting directly onto the Favorites route while authenticated gets one initial sync.
+    LaunchedEffect(Unit) {
+        if (shouldRequestInitialFavoriteSync(
+                initialPage = initialTab.index,
+                favoritesPage = MainTab.Collect.index,
+                isLogin = isLogin,
+                alreadyRequested = initialCollectSyncRequested,
+            )
+        ) {
+            initialCollectSyncRequested = true
+            userViewModel.requestFavoriteAutoSync()
+        }
     }
 
     BoxWithConstraints {
