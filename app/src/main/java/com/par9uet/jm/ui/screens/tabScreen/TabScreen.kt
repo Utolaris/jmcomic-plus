@@ -1,12 +1,16 @@
 package com.par9uet.jm.ui.screens.tabScreen
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -18,7 +22,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
+import com.par9uet.jm.ui.glass.GlassCaptureHost
+import com.par9uet.jm.ui.glass.GlassStyle
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.navigation.NavigationMotion
@@ -150,47 +157,84 @@ fun TabScreen(
 
     BoxWithConstraints {
         val useNavigationRail = maxWidth >= 700.dp
-        Scaffold(
-            bottomBar = {
-                if (!useNavigationRail) {
-                    BottomNavigationBarComponent(
-                        selectedTab = selectedTab,
-                        onTabSelected = ::selectTab,
-                    )
+        val glassStyle = GlassStyle.Default
+        val navigationBarInset = with(LocalDensity.current) {
+            WindowInsets.navigationBars.getBottom(this).toDp()
+        }
+        val contentBottomPadding =
+            if (useNavigationRail) {
+                0.dp
+            } else {
+                glassStyle.barHeight + glassStyle.outerMargin + navigationBarInset
+            }
+
+        val pagerContent: @Composable (Modifier) -> Unit = { pagerModifier ->
+            HorizontalPager(
+                state = pagerState,
+                modifier = pagerModifier,
+                key = { page -> MainTab.fromIndex(page).route },
+                // There are only three primary pages; retain them to preserve scroll and
+                // paging composition state without recreating work on every tab switch.
+                beyondViewportPageCount = MainTab.ordered.lastIndex,
+                // Home already owns horizontal gestures for switching comic categories.
+                userScrollEnabled = pagerState.settledPage != MainTab.Home.index,
+            ) { page ->
+                when (MainTab.fromIndex(page)) {
+                    MainTab.Home -> HomeScreen(bottomContentPadding = contentBottomPadding)
+                    MainTab.Collect -> if (isLogin) {
+                        UserCollectComicScreen(
+                            useScaffold = false,
+                            bottomContentPadding = contentBottomPadding,
+                        )
+                    }
+                    MainTab.Settings -> UserScreen(bottomContentPadding = contentBottomPadding)
                 }
+            }
+        }
+
+        Scaffold(
+            contentWindowInsets = if (useNavigationRail) {
+                ScaffoldDefaults.contentWindowInsets
+            } else {
+                WindowInsets()
             },
             topBar = {
                 TopBarComponent(selectedTab)
             },
         ) { innerPadding ->
-            Row(
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize(),
-            ) {
-                if (useNavigationRail) {
+            if (useNavigationRail) {
+                Row(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize(),
+                ) {
                     NavigationRailComponent(
                         selectedTab = selectedTab,
                         onTabSelected = ::selectTab,
                     )
+                    pagerContent(Modifier.weight(1f))
                 }
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.weight(1f),
-                    key = { page -> MainTab.fromIndex(page).route },
-                    // There are only three primary pages; retain them to preserve scroll and
-                    // paging composition state without recreating work on every tab switch.
-                    beyondViewportPageCount = MainTab.ordered.lastIndex,
-                    // Home already owns horizontal gestures for switching comic categories.
-                    userScrollEnabled = pagerState.settledPage != MainTab.Home.index,
-                ) { page ->
-                    when (MainTab.fromIndex(page)) {
-                        MainTab.Home -> HomeScreen()
-                        MainTab.Collect -> if (isLogin) {
-                            UserCollectComicScreen(useScaffold = false)
-                        }
-                        MainTab.Settings -> UserScreen()
-                    }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .padding(innerPadding)
+                        .fillMaxSize(),
+                ) {
+                    GlassCaptureHost(
+                        modifier = Modifier.fillMaxSize(),
+                        style = glassStyle,
+                        navigationBarInset = navigationBarInset,
+                        sourceContent = {
+                            pagerContent(Modifier.fillMaxSize())
+                        },
+                        overlayContent = {
+                            BottomNavigationBarComponent(
+                                selectedTab = selectedTab,
+                                onTabSelected = ::selectTab,
+                                modifier = Modifier.fillMaxSize(),
+                            )
+                        },
+                    )
                 }
             }
         }

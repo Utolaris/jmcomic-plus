@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.par9uet.jm.R
@@ -318,7 +319,8 @@ private fun MenuDivider() {
 fun UserScreen(
     userManager: UserManager = getKoin().get(),
     remoteSettingManager: RemoteSettingManager = getKoin().get(),
-    userViewModel: UserViewModel = koinActivityViewModel()
+    userViewModel: UserViewModel = koinActivityViewModel(),
+    bottomContentPadding: Dp = 0.dp,
 ) {
     val coroutineScope = rememberCoroutineScope()
     val userState by userManager.userState.collectAsState()
@@ -351,7 +353,12 @@ fun UserScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(
+                    start = 16.dp,
+                    top = 16.dp,
+                    end = 16.dp,
+                    bottom = 16.dp + bottomContentPadding,
+                ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             val user = userState.data

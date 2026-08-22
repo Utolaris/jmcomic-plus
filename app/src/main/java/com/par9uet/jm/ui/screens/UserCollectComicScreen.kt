@@ -84,6 +84,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.par9uet.jm.data.models.CollectComicOrderFilter
@@ -197,6 +198,7 @@ fun UserCollectComicScreen(
     userViewModel: UserViewModel = koinActivityViewModel(),
     useScaffold: Boolean = true,
     localSettingManager: LocalSettingManager = getKoin().get(),
+    bottomContentPadding: Dp = 0.dp,
 ) {
     val navController = LocalMainNavController.current
     val collectComicLazyPagingItems = userViewModel.collectComicPager.collectAsLazyPagingItems()
@@ -352,7 +354,12 @@ fun UserCollectComicScreen(
                 columns = adaptiveComicGridCells(localSetting.collectGridColumns),
                 verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(14.dp),
+                contentPadding = PaddingValues(
+                    start = 14.dp,
+                    top = 14.dp,
+                    end = 14.dp,
+                    bottom = 14.dp + bottomContentPadding,
+                ),
                 enablePullRefresh = false,
             ) { comic ->
                 Comic(
@@ -424,7 +431,13 @@ fun UserCollectComicScreen(
             }
         }
     } else {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(
+                    bottom = if (collectEditState.editing) bottomContentPadding else 0.dp,
+                ),
+        ) {
             Box(modifier = Modifier.weight(1f)) {
                 mainContent()
             }

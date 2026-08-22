@@ -47,6 +47,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.UserManager
@@ -75,7 +76,8 @@ private fun HomeSkeleton(
     onDownload: () -> Unit,
     onRecommend: () -> Unit,
     onExtract: () -> Unit,
-    onSign: () -> Unit
+    onSign: () -> Unit,
+    bottomContentPadding: Dp,
 ) {
     val fakeTabSize = 6
     Column(
@@ -111,6 +113,7 @@ private fun HomeSkeleton(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .padding(bottom = bottomContentPadding)
                 .verticalScroll(rememberScrollState()),
             maxItemsInEachRow = 3,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -129,7 +132,8 @@ private fun HomeSkeleton(
 fun HomeScreen(
     comicViewModel: ComicViewModel = koinActivityViewModel(),
     userManager: UserManager = getKoin().get(),
-    localSettingManager: LocalSettingManager = getKoin().get()
+    localSettingManager: LocalSettingManager = getKoin().get(),
+    bottomContentPadding: Dp = 0.dp,
 ) {
     val mainNavController = LocalMainNavController.current
     val homeState by comicViewModel.homeState.collectAsState()
@@ -161,7 +165,8 @@ fun HomeScreen(
             onDownload = onDownload,
             onRecommend = onRecommend,
             onExtract = onExtract,
-            onSign = onSign
+            onSign = onSign,
+            bottomContentPadding = bottomContentPadding,
         )
         return
     }
@@ -223,7 +228,12 @@ fun HomeScreen(
                 columns = adaptiveComicGridCells(localSetting.homeGridColumns),
                 verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Top),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 16.dp)
+                contentPadding = PaddingValues(
+                    start = 12.dp,
+                    end = 12.dp,
+                    top = 12.dp,
+                    bottom = 16.dp + bottomContentPadding,
+                )
             ) {
                 item(span = { GridItemSpan(maxLineSpan) }) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
