@@ -6,9 +6,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.navigation.compose.currentBackStackEntryAsState
+import com.par9uet.jm.ui.components.FavoriteSyncIconButton
+import com.par9uet.jm.ui.viewModel.UserViewModel
+import org.koin.compose.viewmodel.koinActivityViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -32,7 +36,12 @@ private fun HomeTopBarComponent() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CollectTopBarComponent() {
+private fun CollectTopBarComponent(
+    userViewModel: UserViewModel = koinActivityViewModel(),
+) {
+    val favoriteSyncState by userViewModel.favoriteSyncState.collectAsState()
+    val selectedFolderId by userViewModel.selectedFolderId.collectAsState()
+
     TopAppBar(
         colors = TopAppBarDefaults.topAppBarColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -46,7 +55,13 @@ private fun CollectTopBarComponent() {
                 overflow = TextOverflow.Ellipsis
             )
         },
-        actions = {}
+        actions = {
+            FavoriteSyncIconButton(
+                isSyncing = favoriteSyncState.isSyncing,
+                hasError = favoriteSyncState.errorMessage != null,
+                onClick = { userViewModel.syncFavorites(selectedFolderId) },
+            )
+        }
     )
 }
 

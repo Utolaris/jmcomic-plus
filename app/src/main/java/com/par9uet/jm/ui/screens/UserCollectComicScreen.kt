@@ -89,6 +89,7 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.ui.components.Comic
+import com.par9uet.jm.ui.components.FavoriteSyncIconButton
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
 import com.par9uet.jm.ui.viewModel.UserViewModel
@@ -226,8 +227,8 @@ fun UserCollectComicScreen(
     var hasLoggedFirstLocalContent by remember { mutableStateOf(false) }
     val favoritesOpenedAt = remember { SystemClock.elapsedRealtime() }
 
-    LaunchedEffect(userViewModel, selectedFolderId) {
-        userViewModel.syncFavorites(selectedFolderId)
+    LaunchedEffect(userViewModel) {
+        userViewModel.syncFavorites()
     }
 
     LaunchedEffect(collectComicLazyPagingItems.itemCount, selectedFolderId) {
@@ -293,37 +294,6 @@ fun UserCollectComicScreen(
                 }
             }
 
-            if (favoriteSyncState.isSyncing) {
-                Text(
-                    text = if (favoriteSyncState.isForceRefresh) {
-                        "正在重建收藏夹${favoriteSyncState.phase.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""} " +
-                            "${favoriteSyncState.completed}/${favoriteSyncState.total}"
-                    } else {
-                        "正在${favoriteSyncState.phase.takeIf { it.isNotBlank() } ?: "同步收藏夹"}"
-                    },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else if (favoriteSyncState.errorMessage != null) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = "同步失败，显示的是上次缓存",
-                        modifier = Modifier.weight(1f),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                    TextButton(onClick = { userViewModel.syncFavorites(selectedFolderId) }) {
-                        Text("重试")
-                    }
-                }
-            }
-
             // 收藏夹切换栏
             Row(
                 modifier = Modifier
@@ -386,7 +356,8 @@ fun UserCollectComicScreen(
                 columns = adaptiveComicGridCells(localSetting.collectGridColumns),
                 verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(14.dp)
+                contentPadding = PaddingValues(14.dp),
+                enablePullRefresh = false,
             ) { comic ->
                 Comic(
                     comic = comic,
@@ -437,6 +408,13 @@ fun UserCollectComicScreen(
                                 contentDescription = "返回"
                             )
                         }
+                    },
+                    actions = {
+                        FavoriteSyncIconButton(
+                            isSyncing = favoriteSyncState.isSyncing,
+                            hasError = favoriteSyncState.errorMessage != null,
+                            onClick = { userViewModel.syncFavorites(selectedFolderId) },
+                        )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer
