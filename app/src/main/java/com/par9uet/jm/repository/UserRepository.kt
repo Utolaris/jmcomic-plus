@@ -1,6 +1,9 @@
 package com.par9uet.jm.repository
 
 import com.par9uet.jm.data.models.CollectComicOrderFilter
+import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.store.FavoriteSyncProgress
+import com.par9uet.jm.store.FavoriteSyncReport
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
@@ -59,22 +62,35 @@ interface UserRepository {
     /** Clears client-side session state without performing a network logout request. */
     fun clearSession() = Unit
 
+    /** Starts or joins the application-scoped persistent Favorites synchronization. */
+    suspend fun synchronizeFavorites(
+        accountId: Int,
+        folderId: Int = 0,
+        force: Boolean = false,
+        order: CollectComicOrderFilter = CollectComicOrderFilter.COLLECT_TIME,
+        onProgress: (FavoriteSyncProgress) -> Unit = {},
+    ): NetWorkResult<FavoriteSyncReport> =
+        NetWorkResult.Error("收藏夹同步不可用")
+
+    suspend fun getCachedFavoriteFolders(accountId: Int): Map<String, String> = emptyMap()
+
+    suspend fun cacheFavoriteComic(accountId: Int, comic: Comic, folderId: Int = 0) = Unit
+
+    suspend fun removeCachedFavoriteComic(accountId: Int, albumId: Int) = Unit
+
+    suspend fun moveCachedFavoriteComic(accountId: Int, albumId: Int, folderId: Int) = Unit
+
+    suspend fun cacheFavoriteFolder(accountId: Int, folderId: Int, name: String) = Unit
+
+    suspend fun removeCachedFavoriteFolder(accountId: Int, folderId: Int) = Unit
+
+    suspend fun renameCachedFavoriteFolder(accountId: Int, folderId: Int, name: String) = Unit
+
     suspend fun getCollectComicList(
         page: Int = 1,
         order: CollectComicOrderFilter = CollectComicOrderFilter.COLLECT_TIME,
         folderId: Int = 0
     ): NetWorkResult<UserCollectComicListResponse>
-
-    /**
-     * 为收藏筛选/统计加载完整标签。这个重型路径只由明确的筛选或统计操作调用，
-     * 不参与收藏网格的首屏加载。
-     */
-    suspend fun getCollectComicListWithFullTags(
-        page: Int = 1,
-        order: CollectComicOrderFilter = CollectComicOrderFilter.COLLECT_TIME,
-        folderId: Int = 0
-    ): NetWorkResult<UserCollectComicListResponse> =
-        getCollectComicList(page, order, folderId)
 
     suspend fun getHistoryComicList(page: Int = 1): NetWorkResult<UserHistoryComicListResponse>
     suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit>

@@ -16,6 +16,7 @@ import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
@@ -23,14 +24,18 @@ import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.CollectComicPagingSource
 import com.par9uet.jm.ui.pagingSource.HistoryComicPagingSource
 import com.par9uet.jm.ui.pagingSource.HistoryCommentPagingSource
-import com.par9uet.jm.utils.filterBlockedTags
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -52,12 +57,23 @@ data class HistoryEditState(
 )
 
 private data class CollectPagerKey(
+    val accountId: Int,
     val order: CollectComicOrderFilter,
     val blockedTagList: List<String>,
     val filter: CollectComicLocalFilter,
     val folderId: Int
 )
 
+data class FavoriteSyncUiState(
+    val isSyncing: Boolean = false,
+    val isForceRefresh: Boolean = false,
+    val completed: Int = 0,
+    val total: Int = 0,
+    val phase: String = "",
+    val errorMessage: String? = null,
+)
+
+@OptIn(ExperimentalCoroutinesApi::class)
 class UserViewModel(
     private val userManager: UserManager,
     private val userRepository: UserRepository,
@@ -65,6 +81,7 @@ class UserViewModel(
     private val localSettingManager: LocalSettingManager,
     private val comicRepository: ComicRepository,
     private val downloadManager: DownloadManager,
+    private val favoriteStore: FavoriteStore,
 ) : ViewModel() {
     private val _loginState = MutableStateFlow(CommonUIState(data = null))
     val loginState = _loginState.asStateFlow()
@@ -110,51 +127,83 @@ class UserViewModel(
     val collectComicOrder = _collectComicOrder.asStateFlow()
     private val _collectComicFilter = MutableStateFlow(CollectComicLocalFilter())
     val collectComicFilter = _collectComicFilter.asStateFlow()
-    private val _collectTagCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
-    val collectTagCounts = _collectTagCounts.asStateFlow()
-    private val _collectAuthorCounts = MutableStateFlow<Map<String, Int>>(emptyMap())
-    val collectAuthorCounts = _collectAuthorCounts.asStateFlow()
     private val _selectedFolderId = MutableStateFlow(0)
     val selectedFolderId = _selectedFolderId.asStateFlow()
-    private val _folderList = MutableStateFlow<Map<String, String>>(emptyMap())
-    val folderList = _folderList.asStateFlow()
     private val _collectEditState = MutableStateFlow(CollectEditState())
     val collectEditState = _collectEditState.asStateFlow()
+    private val _favoriteSyncState = MutableStateFlow(FavoriteSyncUiState())
+    val favoriteSyncState = _favoriteSyncState.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
+    private val accountIdFlow = userManager.userState.map { it.data?.id ?: 0 }
+
+    init {
+        viewModelScope.launch {
+            accountIdFlow.distinctUntilChanged().collect {
+                _selectedFolderId.value = 0
+                _favoriteSyncState.value = FavoriteSyncUiState()
+            }
+        }
+    }
+
+    val folderList = accountIdFlow.flatMapLatest { accountId ->
+        if (accountId <= 0) kotlinx.coroutines.flow.flowOf(emptyMap())
+        else favoriteStore.observeFolders(accountId)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val collectTagCounts = combine(
+        accountIdFlow,
+        _selectedFolderId,
+    ) { accountId, folderId -> accountId to folderId }
+        .flatMapLatest { (accountId, folderId) ->
+            if (accountId <= 0) kotlinx.coroutines.flow.flowOf(emptyMap())
+            else favoriteStore.observeTagCounts(accountId, folderId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
+    val collectAuthorCounts = combine(
+        accountIdFlow,
+        _selectedFolderId,
+    ) { accountId, folderId -> accountId to folderId }
+        .flatMapLatest { (accountId, folderId) ->
+            if (accountId <= 0) kotlinx.coroutines.flow.flowOf(emptyMap())
+            else favoriteStore.observeAuthorCounts(accountId, folderId)
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
+
     val collectComicPager = combine(
         _collectComicOrder,
         localSettingManager.localSettingState,
         _collectComicFilter,
-        _selectedFolderId
-    ) { order, localSetting, filter, folderId ->
-        CollectPagerKey(order, localSetting.blockedTagList, filter, folderId)
+        _selectedFolderId,
+        accountIdFlow,
+    ) { order, localSetting, filter, folderId, accountId ->
+        CollectPagerKey(accountId, order, localSetting.blockedTagList, filter, folderId)
     }.flatMapLatest { key ->
         Pager(
             config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
             pagingSourceFactory = {
                 CollectComicPagingSource(
-                    userRepository,
-                    key.order,
-                    key.blockedTagList,
-                    key.filter.searchText,
-                    key.filter.selectedTags,
-                    key.filter.selectedAuthors,
-                    key.folderId,
-                    key.filter.tagLogic,
-                    onFolderListLoaded = { folders ->
-                        if (folders != null) _folderList.value = folders
-                    }
+                    favoriteStore.pagingSource(
+                        accountId = key.accountId,
+                        order = key.order,
+                        blockedTagList = key.blockedTagList,
+                        searchText = key.filter.searchText,
+                        selectedTags = key.filter.selectedTags,
+                        selectedAuthors = key.filter.selectedAuthors,
+                        folderId = key.folderId,
+                        tagLogic = key.filter.tagLogic,
+                    )
                 )
             }
         ).flow
     }.cachedIn(viewModelScope)
 
     fun changeCollectComicOrder(order: CollectComicOrderFilter) {
+        if (_collectComicOrder.value == order) return
         _collectComicOrder.update {
             order
         }
-        refreshCollectTagCounts()
+        syncFavorites()
     }
 
     fun updateCollectSearchText(value: String) {
@@ -175,7 +224,7 @@ class UserViewModel(
 
     fun changeFolder(folderId: Int) {
         _selectedFolderId.update { folderId }
-        refreshCollectTagCounts()
+        syncFavorites(folderId)
     }
 
     fun enterCollectEdit(comicId: Int) {
@@ -207,7 +256,10 @@ class UserViewModel(
             comics.forEach { comic ->
                 when (comicRepository.unCollectComic(comic.id)) {
                     is NetWorkResult.Error -> fail++
-                    is NetWorkResult.Success -> success++
+                    is NetWorkResult.Success -> {
+                        success++
+                        userRepository.removeCachedFavoriteComic(currentAccountId(), comic.id)
+                    }
                 }
             }
             toastManager.showAsync(
@@ -232,7 +284,14 @@ class UserViewModel(
             comics.forEach { comic ->
                 when (comicRepository.moveComicToFolder(comic.id, folderId)) {
                     is NetWorkResult.Error -> fail++
-                    is NetWorkResult.Success -> success++
+                    is NetWorkResult.Success -> {
+                        success++
+                        userRepository.moveCachedFavoriteComic(
+                            currentAccountId(),
+                            comic.id,
+                            folderId.toIntOrNull() ?: 0,
+                        )
+                    }
                 }
             }
             toastManager.showAsync(
@@ -244,18 +303,7 @@ class UserViewModel(
     }
 
     fun refreshFolderList() {
-        viewModelScope.launch {
-            val order = _collectComicOrder.value
-            when (val data = userRepository.getCollectComicList(1, order, 0)) {
-                is NetWorkResult.Error -> {
-                    // 文件夹列表为可选功能，错误时忽略
-                }
-
-                is NetWorkResult.Success -> {
-                    _folderList.value = data.data.folder_list ?: emptyMap()
-                }
-            }
-        }
+        syncFavorites()
     }
 
     fun createFolder(name: String) {
@@ -263,7 +311,7 @@ class UserViewModel(
             when (val data = comicRepository.createFavoriteFolder(name)) {
                 is NetWorkResult.Error -> toastManager.showAsync(data.message)
                 is NetWorkResult.Success -> {
-                    refreshFolderList()
+                    syncFavorites()
                     toastManager.showAsync("创建成功")
                 }
             }
@@ -275,8 +323,12 @@ class UserViewModel(
             when (val data = comicRepository.deleteFavoriteFolder(folderId)) {
                 is NetWorkResult.Error -> toastManager.showAsync(data.message)
                 is NetWorkResult.Success -> {
+                    userRepository.removeCachedFavoriteFolder(
+                        currentAccountId(),
+                        folderId.toIntOrNull() ?: 0,
+                    )
                     _selectedFolderId.update { 0 }
-                    refreshFolderList()
+                    syncFavorites()
                     toastManager.showAsync("删除成功")
                 }
             }
@@ -288,49 +340,60 @@ class UserViewModel(
             when (val data = comicRepository.renameFavoriteFolder(folderId, newName)) {
                 is NetWorkResult.Error -> toastManager.showAsync(data.message)
                 is NetWorkResult.Success -> {
-                    refreshFolderList()
+                    userRepository.renameCachedFavoriteFolder(
+                        currentAccountId(),
+                        folderId.toIntOrNull() ?: 0,
+                        newName.trim(),
+                    )
+                    syncFavorites()
                     toastManager.showAsync("重命名成功")
                 }
             }
         }
     }
 
-    fun refreshCollectTagCounts() {
+    fun syncFavorites(folderId: Int = _selectedFolderId.value, force: Boolean = false) {
+        val accountId = currentAccountId()
+        if (accountId <= 0) return
         viewModelScope.launch {
-            val blockedTagList = localSettingManager.localSettingState.value.blockedTagList
-            val order = _collectComicOrder.value
-            val folderId = _selectedFolderId.value
-            val tagCounts = mutableMapOf<String, Int>()
-            val authorCounts = mutableMapOf<String, Int>()
-            var page = 1
-            var loaded = 0
-            var total = Int.MAX_VALUE
-            while (loaded < total && page <= 100) {
-                when (val data = userRepository.getCollectComicListWithFullTags(page, order, folderId)) {
-                    is NetWorkResult.Error -> {
-                        toastManager.showAsync(data.message)
-                        return@launch
+            _favoriteSyncState.update {
+                FavoriteSyncUiState(isSyncing = true, isForceRefresh = force)
+            }
+            val result = userRepository.synchronizeFavorites(
+                accountId = accountId,
+                folderId = folderId,
+                force = force,
+                order = _collectComicOrder.value,
+                onProgress = { progress ->
+                    if (currentAccountId() == accountId) {
+                        _favoriteSyncState.update {
+                            it.copy(
+                                isSyncing = true,
+                                completed = progress.completed,
+                                total = progress.total,
+                                phase = progress.phase,
+                            )
+                        }
                     }
-
-                    is NetWorkResult.Success -> {
-                        val comics = data.data.toComicList().filterBlockedTags(blockedTagList)
-                        comics.flatMap { it.tagList }.forEach { tag ->
-                            tagCounts[tag] = (tagCounts[tag] ?: 0) + 1
-                        }
-                        comics.flatMap { it.authorList }.forEach { author ->
-                            authorCounts[author] = (authorCounts[author] ?: 0) + 1
-                        }
-                        total = data.data.total
-                        loaded += data.data.list.size
-                        if (data.data.list.isEmpty()) break
-                        page += 1
+                },
+            )
+            if (currentAccountId() != accountId) return@launch
+            when (result) {
+                is NetWorkResult.Error -> {
+                    _favoriteSyncState.update {
+                        it.copy(isSyncing = false, errorMessage = result.message)
                     }
                 }
+                is NetWorkResult.Success -> {
+                    _favoriteSyncState.value = FavoriteSyncUiState()
+                }
             }
-            _collectTagCounts.value = tagCounts.toSortedMap()
-            _collectAuthorCounts.value = authorCounts.toSortedMap()
         }
     }
+
+    fun forceRefreshFavorites() = syncFavorites(folderId = 0, force = true)
+
+    private fun currentAccountId(): Int = userManager.userState.value.data?.id ?: 0
 
     private val _historyRefreshVersion = MutableStateFlow(0)
 

@@ -91,7 +91,6 @@ class ComicViewModel(
             HomeCategoryInfo("builtin_month_hot", "本月热门"),
             HomeCategoryInfo("builtin_most_liked", "最多喜欢"),
             HomeCategoryInfo("builtin_random", "随机推荐"),
-            HomeCategoryInfo("builtin_serialization", "连载系列"),
             HomeCategoryInfo("builtin_doujin", "同人"),
             HomeCategoryInfo("builtin_single", "单本"),
             HomeCategoryInfo("builtin_short", "短篇"),

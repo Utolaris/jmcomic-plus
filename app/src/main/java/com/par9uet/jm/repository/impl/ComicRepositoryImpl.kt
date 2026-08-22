@@ -194,9 +194,6 @@ class ComicRepositoryImpl(
                         "builtin_random" ->
                             client.getRandomRecommend().orEmpty().map { it.toHomeListItem() }
 
-                        "builtin_serialization" ->
-                            client.getSerialization(1).content().orEmpty().map { it.toHomeListItem() }
-
                         "builtin_doujin" ->
                             client.getCategories(
                                 SearchQuery.Builder().category(Category.DOUJIN).page(1).build()

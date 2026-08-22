@@ -17,6 +17,6 @@ val comicModule = module {
     single { ReaderImagePipeline(get(), get(), get()) }
 
     viewModel { ComicViewModel(get(), get()) }
-    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get(), get()) }
     viewModel { ComicReadViewModel(get(), get(), get(), get(), get(), get()) }
 }

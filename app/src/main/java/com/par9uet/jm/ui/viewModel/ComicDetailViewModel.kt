@@ -18,6 +18,7 @@ import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
 import com.par9uet.jm.ui.state.ComicLikeState
@@ -37,6 +38,7 @@ class ComicDetailViewModel(
     private val remoteSettingManager: RemoteSettingManager,
     private val userRepository: UserRepository,
     private val localSettingManager: LocalSettingManager,
+    private val userManager: UserManager,
 ) : ViewModel() {
     private val _comicDetailState = MutableStateFlow<CommonUIState<Comic>>(
         CommonUIState(
@@ -175,6 +177,12 @@ class ComicDetailViewModel(
 
                 is NetWorkResult.Success<CollectComicResponse> -> {
                     toastManager.showAsync("收藏成功")
+                    _comicDetailState.value.data?.let { comic ->
+                        userRepository.cacheFavoriteComic(
+                            accountId = currentAccountId(),
+                            comic = comic,
+                        )
+                    }
                     _comicDetailState.update { state ->
                         val currentData = state.data
                         if (currentData != null) {
@@ -214,6 +222,7 @@ class ComicDetailViewModel(
 
                 is NetWorkResult.Success<CollectComicResponse> -> {
                     toastManager.showAsync("取消收藏成功")
+                    userRepository.removeCachedFavoriteComic(currentAccountId(), id)
                     _comicDetailState.update { state ->
                         val currentData = state.data
                         if (currentData != null) {
@@ -245,10 +254,13 @@ class ComicDetailViewModel(
 
     fun refreshFolderList() {
         viewModelScope.launch {
-            val order = com.par9uet.jm.data.models.CollectComicOrderFilter.COLLECT_TIME
-            when (val data = userRepository.getCollectComicList(1, order, 0)) {
-                is NetWorkResult.Success -> _folderList.value = data.data.folder_list ?: emptyMap()
-                else -> {}
+            val accountId = currentAccountId()
+            _folderList.value = userRepository.getCachedFavoriteFolders(accountId)
+            if (accountId > 0) {
+                launch {
+                    userRepository.synchronizeFavorites(accountId, folderId = 0)
+                    _folderList.value = userRepository.getCachedFavoriteFolders(accountId)
+                }
             }
         }
     }
@@ -271,6 +283,11 @@ class ComicDetailViewModel(
                     _collectComicState.update { it.copy(isError = true, errorMsg = data.message) }
                 }
                 is NetWorkResult.Success<CollectComicResponse> -> {
+                    val accountId = currentAccountId()
+                    val comic = _comicDetailState.value.data
+                    if (comic != null) {
+                        userRepository.cacheFavoriteComic(accountId, comic, folderId = 0)
+                    }
                     // 如果选择了非默认夹，再移动到目标夹
                     if (folderId != "0") {
                         when (val moveResult = comicRepository.moveComicToFolder(comicId, folderId)) {
@@ -278,6 +295,11 @@ class ComicDetailViewModel(
                                 toastManager.showAsync("已收藏但移动到收藏夹失败：${moveResult.message}")
                             }
                             is NetWorkResult.Success<Unit> -> {
+                                userRepository.moveCachedFavoriteComic(
+                                    accountId,
+                                    comicId,
+                                    folderId.toIntOrNull() ?: 0,
+                                )
                                 val folderName = _folderList.value[folderId] ?: "收藏夹"
                                 toastManager.showAsync("已收藏到 $folderName")
                             }
@@ -309,6 +331,8 @@ class ComicDetailViewModel(
             )
         }
     }
+
+    private fun currentAccountId(): Int = userManager.userState.value.data?.id ?: 0
 
     private val _commentComicIdState = MutableStateFlow(0)
     val commentComicIdState = _commentComicIdState.asStateFlow()

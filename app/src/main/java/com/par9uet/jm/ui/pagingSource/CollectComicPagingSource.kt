@@ -2,99 +2,55 @@ package com.par9uet.jm.ui.pagingSource
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.retrofit.model.UserCollectComicListResponse
-import com.par9uet.jm.utils.filterBlockedTags
+import com.par9uet.jm.database.model.FavoriteComicEntity
+import com.par9uet.jm.utils.log
 
+/**
+ * Adapts the Room-backed Favorites PagingSource to the existing Comic UI model.
+ * No network call belongs in this class; synchronization writes to Room separately.
+ */
 class CollectComicPagingSource(
-    private val userRepository: UserRepository,
-    private val order: CollectComicOrderFilter,
-    private val blockedTagList: List<String> = listOf(),
-    private val searchText: String = "",
-    private val selectedTags: Set<String> = emptySet(),
-    private val selectedAuthors: Set<String> = emptySet(),
-    private val folderId: Int = 0,
-    private val tagLogic: TagFilterLogic = TagFilterLogic.AND,
-    private val onFolderListLoaded: (Map<String, String>?) -> Unit = {},
+    private val localSource: PagingSource<Int, FavoriteComicEntity>,
 ) : PagingSource<Int, Comic>() {
-    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Comic> {
-        val currentPage = params.key ?: 1
-        val result = if (requiresFullCollectMetadata(
-                blockedTagList = blockedTagList,
-                searchText = searchText,
-                selectedTags = selectedTags,
-                selectedAuthors = selectedAuthors,
-            )
-        ) {
-            userRepository.getCollectComicListWithFullTags(currentPage, order, folderId)
-        } else {
-            userRepository.getCollectComicList(currentPage, order, folderId)
-        }
-        return when (val data =
-            result) {
-            is NetWorkResult.Error -> {
-                LoadResult.Error(Exception(data.message))
-            }
-
-            is NetWorkResult.Success<UserCollectComicListResponse> -> {
-                onFolderListLoaded(data.data.folder_list)
-                val query = searchText.trim()
-                val lowerSelectedTags = selectedTags.map { it.lowercase().trim() }.filter { it.isNotBlank() }.toSet()
-                val lowerSelectedAuthors = selectedAuthors.map { it.lowercase().trim() }.filter { it.isNotBlank() }.toSet()
-                val list = data.data.toComicList()
-                    .filterBlockedTags(blockedTagList)
-                    .filter { comic ->
-                        // 顶部搜索支持按漫画名、作者或标签匹配
-                        query.isBlank() ||
-                            comic.name.contains(query, ignoreCase = true) ||
-                            comic.authorList.any { it.contains(query, ignoreCase = true) } ||
-                            comic.tagList.any { it.contains(query, ignoreCase = true) }
-                    }
-                    .filter { comic ->
-                        if (lowerSelectedTags.isEmpty()) return@filter true
-                        val comicAllTags = (comic.tagList + comic.roleList + comic.workList)
-                            .map { it.lowercase().trim() }
-                            .filter { it.isNotBlank() }
-                            .toSet()
-                        when (tagLogic) {
-                            TagFilterLogic.AND -> lowerSelectedTags.all { it in comicAllTags }
-                            TagFilterLogic.OR -> lowerSelectedTags.any { it in comicAllTags }
-                            TagFilterLogic.NOT -> lowerSelectedTags.none { it in comicAllTags }
-                        }
-                    }
-                    .filter { comic ->
-                        if (lowerSelectedAuthors.isEmpty()) return@filter true
-                        comic.authorList.any { author ->
-                            val lowerAuthor = author.lowercase().trim()
-                            lowerAuthor in lowerSelectedAuthors
-                        }
-                    }
-                // 基于服务端返回的原始数据量判断是否最后一页，避免依赖 total 字段语义不一致
-                // （JMComic 内置 API 的 total 可能返回当前页条目数而非总条目数）
-                val rawListSize = data.data.list.size
-                val isLastPage = rawListSize < params.loadSize
-                LoadResult.Page(
-                    data = list,
-                    prevKey = if (currentPage == 1) null else currentPage - 1,
-                    nextKey = if (isLastPage) null else currentPage + 1
-                )
-            }
+    init {
+        localSource.registerInvalidatedCallback {
+            log("FavoritesPaging", "Room source invalidated")
+            invalidate()
         }
     }
+
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Comic> =
+        when (val result = localSource.load(params)) {
+            is LoadResult.Error -> LoadResult.Error(result.throwable)
+            is LoadResult.Invalid -> LoadResult.Invalid()
+            is LoadResult.Page -> LoadResult.Page(
+                data = result.data.map { it.toComic() },
+                prevKey = result.prevKey,
+                nextKey = result.nextKey,
+                itemsBefore = result.itemsBefore,
+                itemsAfter = result.itemsAfter,
+            )
+        }
 
     override fun getRefreshKey(state: PagingState<Int, Comic>): Int? = null
 }
 
-internal fun requiresFullCollectMetadata(
-    blockedTagList: List<String>,
-    searchText: String,
-    selectedTags: Set<String>,
-    selectedAuthors: Set<String>,
-): Boolean = blockedTagList.isNotEmpty() ||
-    searchText.isNotBlank() ||
-    selectedTags.isNotEmpty() ||
-    selectedAuthors.isNotEmpty()
+private fun FavoriteComicEntity.toComic(): Comic = Comic(
+    id = albumId,
+    name = title,
+    authorList = authorList,
+    description = description,
+    readCount = 0,
+    likeCount = 0,
+    commentCount = 0,
+    tagList = tagList,
+    roleList = roleList,
+    workList = workList,
+    isLike = false,
+    isCollect = true,
+    relateComicList = emptyList(),
+    comicChapterList = emptyList(),
+    price = 0,
+    isBuy = false,
+)

@@ -82,7 +82,9 @@ import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
+import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin
+import org.koin.compose.viewmodel.koinActivityViewModel
 
 private sealed class SettingType {
     object ComicApiSource : SettingType()
@@ -118,10 +120,12 @@ private fun gridColumnsText(columns: Int): String =
 
 @Composable
 fun LocalSettingScreen(
-    localSettingManager: LocalSettingManager = getKoin().get()
+    localSettingManager: LocalSettingManager = getKoin().get(),
+    userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
     val localSetting by localSettingManager.localSettingState.collectAsState()
+    val favoriteSyncState by userViewModel.favoriteSyncState.collectAsState()
     var settingType by remember { mutableStateOf<SettingType>(SettingType.Api) }
     var isOpenSettingSelectDialog by remember { mutableStateOf(false) }
     var showHomeExcludedTagsDialog by remember { mutableStateOf(false) }
@@ -295,6 +299,18 @@ fun LocalSettingScreen(
                         value = localSetting.autoSignInEnabled,
                         onCheckedChange = { localSettingManager.updateAutoSignInEnabled(it) }
                     )
+                    SettingsRow(
+                        Icons.Rounded.CloudSync,
+                        "强制刷新收藏夹",
+                        if (favoriteSyncState.isSyncing && favoriteSyncState.isForceRefresh) {
+                            "正在重建${favoriteSyncState.phase.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""} " +
+                                "${favoriteSyncState.completed}/${favoriteSyncState.total}"
+                        } else {
+                            "重新获取收藏及完整元数据"
+                        }
+                    ) {
+                        if (!favoriteSyncState.isSyncing) userViewModel.forceRefreshFavorites()
+                    }
                     SettingsRow(Icons.Rounded.BugReport, "\u67e5\u770b\u65e5\u5fd7", "\u8c03\u8bd5\u548c\u9519\u8bef\u4fe1\u606f") {
                         mainNavController.navigate("logViewer")
                     }

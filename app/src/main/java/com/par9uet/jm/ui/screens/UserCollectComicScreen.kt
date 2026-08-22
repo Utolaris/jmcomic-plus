@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.screens
 
+import android.os.SystemClock
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
@@ -68,6 +69,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -83,42 +85,17 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.ui.components.Comic
-import com.par9uet.jm.ui.components.ComicSkeleton
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.utils.log
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
-
-// 收藏列表加载中的骨架屏，2 列布局与正式网格保持一致
-@Composable
-private fun UserCollectComicSkeleton(
-    modifier: Modifier = Modifier
-) {
-    FlowRow(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(14.dp)
-            .verticalScroll(rememberScrollState()),
-        maxItemsInEachRow = 2,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top)
-    ) {
-        for (i in 0 until 8) {
-            key(i) {
-                ComicSkeleton(
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-    }
-}
 
 // 收藏夹切换 Chip
 @Composable
@@ -229,6 +206,7 @@ fun UserCollectComicScreen(
     val selectedFolderId by userViewModel.selectedFolderId.collectAsState()
     val folderList by userViewModel.folderList.collectAsState()
     val collectEditState by userViewModel.collectEditState.collectAsState()
+    val favoriteSyncState by userViewModel.favoriteSyncState.collectAsState()
     val localSetting by localSettingManager.localSettingState.collectAsState()
     var draftSelectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var draftSelectedAuthors by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -245,6 +223,24 @@ fun UserCollectComicScreen(
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showMoveFolderDialog by remember { mutableStateOf(false) }
     var showDeleteCollectConfirmDialog by remember { mutableStateOf(false) }
+    var hasLoggedFirstLocalContent by remember { mutableStateOf(false) }
+    val favoritesOpenedAt = remember { SystemClock.elapsedRealtime() }
+
+    LaunchedEffect(userViewModel, selectedFolderId) {
+        userViewModel.syncFavorites(selectedFolderId)
+    }
+
+    LaunchedEffect(collectComicLazyPagingItems.itemCount, selectedFolderId) {
+        if (!hasLoggedFirstLocalContent && collectComicLazyPagingItems.itemCount > 0) {
+            log(
+                "FavoritesUI",
+                "first local content visible folder=$selectedFolderId " +
+                    "count=${collectComicLazyPagingItems.itemCount} " +
+                    "duration=${SystemClock.elapsedRealtime() - favoritesOpenedAt}ms",
+            )
+            hasLoggedFirstLocalContent = true
+        }
+    }
 
     val folders = remember(folderList) {
         val result = linkedMapOf<String, String>()
@@ -281,8 +277,6 @@ fun UserCollectComicScreen(
                 )
                 IconButton(
                     onClick = {
-                        // 筛选面板打开时才扫描 tag/author 统计，避免进入收藏页即全量遍历。
-                        userViewModel.refreshCollectTagCounts()
                         draftSelectedTags = collectComicFilter.selectedTags
                         draftSelectedAuthors = collectComicFilter.selectedAuthors
                         draftTagLogic = collectComicFilter.tagLogic
@@ -296,6 +290,37 @@ fun UserCollectComicScreen(
                         modifier = Modifier.size(22.dp),
                         tint = if (activeFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            if (favoriteSyncState.isSyncing) {
+                Text(
+                    text = if (favoriteSyncState.isForceRefresh) {
+                        "正在重建收藏夹${favoriteSyncState.phase.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""} " +
+                            "${favoriteSyncState.completed}/${favoriteSyncState.total}"
+                    } else {
+                        "正在${favoriteSyncState.phase.takeIf { it.isNotBlank() } ?: "同步收藏夹"}"
+                    },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (favoriteSyncState.errorMessage != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = "同步失败，显示的是上次缓存",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    TextButton(onClick = { userViewModel.syncFavorites(selectedFolderId) }) {
+                        Text("重试")
+                    }
                 }
             }
 
@@ -354,36 +379,30 @@ fun UserCollectComicScreen(
             HorizontalDivider()
 
             // 漫画列表：2 列网格，间距更大
-            if (collectComicLazyPagingItems.loadState.refresh is LoadState.Loading && collectComicLazyPagingItems.itemCount == 0) {
-                UserCollectComicSkeleton(
-                    modifier = Modifier.weight(1f)
-                )
-            } else {
-                PullRefreshAndLoadMoreGrid(
-                    modifier = Modifier.weight(1f),
-                    lazyPagingItems = collectComicLazyPagingItems,
-                    key = { it.id },
-                    columns = adaptiveComicGridCells(localSetting.collectGridColumns),
-                    verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
-                    horizontalArrangement = Arrangement.spacedBy(14.dp),
-                    contentPadding = PaddingValues(14.dp)
-                ) { comic ->
-                    Comic(
-                        comic = comic,
-                        editing = collectEditState.editing,
-                        selected = comic.id in collectEditState.selectedComicIds,
-                        onLongClick = {
-                            if (collectEditState.editing) {
-                                userViewModel.toggleCollectSelected(comic.id)
-                            } else {
-                                userViewModel.enterCollectEdit(comic.id)
-                            }
-                        },
-                        onToggleSelected = {
+            PullRefreshAndLoadMoreGrid(
+                modifier = Modifier.weight(1f),
+                lazyPagingItems = collectComicLazyPagingItems,
+                key = { it.id },
+                columns = adaptiveComicGridCells(localSetting.collectGridColumns),
+                verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(14.dp)
+            ) { comic ->
+                Comic(
+                    comic = comic,
+                    editing = collectEditState.editing,
+                    selected = comic.id in collectEditState.selectedComicIds,
+                    onLongClick = {
+                        if (collectEditState.editing) {
                             userViewModel.toggleCollectSelected(comic.id)
+                        } else {
+                            userViewModel.enterCollectEdit(comic.id)
                         }
-                    )
-                }
+                    },
+                    onToggleSelected = {
+                        userViewModel.toggleCollectSelected(comic.id)
+                    }
+                )
             }
         }
     }
