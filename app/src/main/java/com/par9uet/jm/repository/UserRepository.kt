@@ -65,6 +65,17 @@ interface UserRepository {
         folderId: Int = 0
     ): NetWorkResult<UserCollectComicListResponse>
 
+    /**
+     * 为收藏筛选/统计加载完整标签。这个重型路径只由明确的筛选或统计操作调用，
+     * 不参与收藏网格的首屏加载。
+     */
+    suspend fun getCollectComicListWithFullTags(
+        page: Int = 1,
+        order: CollectComicOrderFilter = CollectComicOrderFilter.COLLECT_TIME,
+        folderId: Int = 0
+    ): NetWorkResult<UserCollectComicListResponse> =
+        getCollectComicList(page, order, folderId)
+
     suspend fun getHistoryComicList(page: Int = 1): NetWorkResult<UserHistoryComicListResponse>
     suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit>
     suspend fun getHistoryCommentList(

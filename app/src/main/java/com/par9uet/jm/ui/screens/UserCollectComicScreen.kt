@@ -68,7 +68,6 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -260,12 +259,6 @@ fun UserCollectComicScreen(
 
     // 当前激活的筛选项数量，用于在筛选按钮上展示
     val activeFilterCount = collectComicFilter.selectedTags.size + collectComicFilter.selectedAuthors.size
-
-    // 收藏夹 chips 是可见 UI，进入收藏页时加载其元数据（单页轻量请求）。
-    // tag/author 统计是重型全量扫描，只在用户打开筛选时按需加载。
-    LaunchedEffect(Unit) {
-        userViewModel.refreshFolderList()
-    }
 
     // 主体内容：搜索栏 + 收藏夹 Chip + 排序 + 漫画网格
     val mainContent: @Composable () -> Unit = {

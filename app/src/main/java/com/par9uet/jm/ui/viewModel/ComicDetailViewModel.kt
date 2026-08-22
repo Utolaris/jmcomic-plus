@@ -20,7 +20,7 @@ import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
-import com.par9uet.jm.ui.state.ComicLikeToggle
+import com.par9uet.jm.ui.state.ComicLikeState
 import com.par9uet.jm.ui.state.LikeRequestGate
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -83,19 +83,22 @@ class ComicDetailViewModel(
     private val _likeComicState = MutableStateFlow(CommonUIState(data = null))
     val likeComicState = _likeComicState.asStateFlow()
     private val likeRequestGate = LikeRequestGate()
-    private val _likeToggleInFlightComicIds = MutableStateFlow<Set<Int>>(emptySet())
-    val likeToggleInFlightComicIds = _likeToggleInFlightComicIds.asStateFlow()
+    private val _likeRequestInFlightComicIds = MutableStateFlow<Set<Int>>(emptySet())
+    val likeRequestInFlightComicIds = _likeRequestInFlightComicIds.asStateFlow()
 
     /**
-     * 切换喜欢状态。接口为切换语义，成功后本地取反并增减计数。
-     * 同一漫画的请求在途期间，重复点击直接忽略，防止并发切换破坏服务端状态。
+     * 提交单向喜欢请求。已喜欢的漫画不再请求；状态只在服务端成功后更新。
+     * 同一漫画的请求在途期间，重复点击直接忽略。
      */
-    fun toggleComicLike(id: Int) {
+    fun likeComic(id: Int) {
+        val currentData = _comicDetailState.value.data
+        if (
+            currentData == null ||
+            currentData.id != id ||
+            !ComicLikeState.canSubmitLike(currentData.isLike)
+        ) return
         if (!likeRequestGate.tryAcquire(id)) return
-        _likeToggleInFlightComicIds.update { it + id }
-        val originalIsLike = _comicDetailState.value.data
-            ?.takeIf { it.id == id }
-            ?.isLike
+        _likeRequestInFlightComicIds.update { it + id }
         viewModelScope.launch {
             try {
                 _likeComicState.update {
@@ -105,7 +108,7 @@ class ComicDetailViewModel(
                         errorMsg = ""
                     )
                 }
-                when (val data = comicRepository.toggleComicLike(id)) {
+                when (val data = comicRepository.likeComic(id)) {
                     is NetWorkResult.Error -> {
                         // 失败保留原有 isLike / likeCount，仅提示错误
                         _likeComicState.update {
@@ -121,7 +124,7 @@ class ComicDetailViewModel(
                         _comicDetailState.update { state ->
                             val currentData = state.data
                             if (currentData != null && currentData.id == id) {
-                                val (newIsLike, newLikeCount) = ComicLikeToggle.applyToggleResult(
+                                val (newIsLike, newLikeCount) = ComicLikeState.applyLikeResult(
                                     isLike = currentData.isLike,
                                     likeCount = currentData.likeCount,
                                     succeeded = true,
@@ -136,20 +139,14 @@ class ComicDetailViewModel(
                                 state
                             }
                         }
-                        toastManager.showAsync(
-                            when (originalIsLike) {
-                                true -> "已取消喜欢"
-                                false -> "喜欢成功"
-                                null -> "操作成功"
-                            }
-                        )
+                        toastManager.showAsync("喜欢成功")
                     }
                 }
             } finally {
                 likeRequestGate.release(id)
-                _likeToggleInFlightComicIds.update { it - id }
+                _likeRequestInFlightComicIds.update { it - id }
                 _likeComicState.update {
-                    it.copy(isLoading = _likeToggleInFlightComicIds.value.isNotEmpty())
+                    it.copy(isLoading = _likeRequestInFlightComicIds.value.isNotEmpty())
                 }
             }
         }

@@ -24,6 +24,8 @@ import com.par9uet.jm.database.model.UpdateComicStatus
 import com.par9uet.jm.database.model.UpdateComicZipPath
 import com.par9uet.jm.image.ImageHostFailureKind
 import com.par9uet.jm.image.classifyImageHostFailure
+import com.par9uet.jm.image.cancellationExceptionOrNull
+import com.par9uet.jm.image.isCancellation
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
@@ -37,7 +39,6 @@ import com.par9uet.jm.utils.cancelProgressNotification
 import com.par9uet.jm.utils.compressWebpCompat
 import com.par9uet.jm.utils.showProgressNotification
 import com.par9uet.jm.utils.log
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -96,6 +97,7 @@ class DownloadComicWorker(
             downloadToastAggregator.report(batchId, batchTotal, comicId, success = true)
             Result.success()
         } catch (e: Exception) {
+            e.cancellationExceptionOrNull()?.let { throw it }
             if (runAttemptCount < DOWNLOAD_MAX_ATTEMPTS - 1) {
                 Result.retry()
             } else {
@@ -132,8 +134,8 @@ class DownloadComicWorker(
                         if (failureKind == ImageHostFailureKind.HOST_FAILURE) {
                             coverImageHostResolver.recordHostFailure(coverUrl)
                         }
-                        if (result.throwable is CancellationException) {
-                            throw result.throwable
+                        if (result.throwable.isCancellation()) {
+                            throw result.throwable.cancellationExceptionOrNull() ?: result.throwable
                         }
                         if (BuildConfig.DEBUG) {
                             log(

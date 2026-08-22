@@ -39,6 +39,19 @@ internal fun classifyHttpCodeFailure(httpCode: Int): ImageHostFailureKind = when
     else -> ImageHostFailureKind.UNKNOWN
 }
 
+/** 沿 cause 链查找取消异常，避免包装后的取消被当成普通失败继续回退。 */
+internal fun Throwable.cancellationExceptionOrNull(): CancellationException? {
+    val visited = HashSet<Throwable>()
+    var current: Throwable? = this
+    while (current != null && visited.add(current)) {
+        if (current is CancellationException) return current
+        current = current.cause
+    }
+    return null
+}
+
+internal fun Throwable.isCancellation(): Boolean = cancellationExceptionOrNull() != null
+
 /**
  * 沿 cause 链分类一次图片加载失败。
  *
@@ -50,16 +63,7 @@ internal fun classifyImageHostFailure(
     httpCodeHint: Int? = null,
 ): ImageHostFailureKind {
     // 取消优先级最高：即使包装异常同时携带了 HTTP 提示，也绝不惩罚主机。
-    run {
-        val cancellationVisited = HashSet<Throwable>()
-        var cancellationCandidate = throwable
-        while (cancellationCandidate != null && cancellationVisited.add(cancellationCandidate)) {
-            if (cancellationCandidate is CancellationException) {
-                return ImageHostFailureKind.CANCELLED
-            }
-            cancellationCandidate = cancellationCandidate.cause
-        }
-    }
+    if (throwable?.isCancellation() == true) return ImageHostFailureKind.CANCELLED
     if (httpCodeHint != null) return classifyHttpCodeFailure(httpCodeHint)
     if (throwable == null) return ImageHostFailureKind.UNKNOWN
 

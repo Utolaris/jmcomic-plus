@@ -86,7 +86,7 @@ class ComicViewModelHomeLoadingTest {
         override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
             NetWorkResult.Error("stub")
 
-        override suspend fun toggleComicLike(id: Int): NetWorkResult<LikeComicResponse> =
+        override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> =
             NetWorkResult.Error("stub")
 
         override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> =

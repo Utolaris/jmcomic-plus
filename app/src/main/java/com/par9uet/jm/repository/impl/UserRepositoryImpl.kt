@@ -9,7 +9,6 @@ import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.repository.VerifiedCredentials
 import com.par9uet.jm.store.SessionReadinessHolder
 import com.par9uet.jm.store.awaitReady
-import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
 import com.par9uet.jm.retrofit.Retrofit
 import com.par9uet.jm.retrofit.CapturingCookieJar
@@ -42,6 +41,7 @@ import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
+import java.util.concurrent.ConcurrentHashMap
 
 class UserRepositoryImpl(
     private val service: UserService,
@@ -50,6 +50,13 @@ class UserRepositoryImpl(
     private val retrofit: Retrofit,
     private val sessionReadinessHolder: SessionReadinessHolder,
 ) : BaseRepository(), UserRepository {
+
+    private data class FullFavoriteMetadata(
+        val tags: List<String>,
+        val authors: List<String>,
+    )
+
+    private val fullFavoriteMetadataCache = ConcurrentHashMap<String, FullFavoriteMetadata>()
 
     override suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
         if (useEmbeddedApi()) {
@@ -195,6 +202,23 @@ class UserRepositoryImpl(
         order: CollectComicOrderFilter,
         folderId: Int
     ): NetWorkResult<UserCollectComicListResponse> {
+        return loadCollectComicList(page, order, folderId, enrichWithFullTags = false)
+    }
+
+    override suspend fun getCollectComicListWithFullTags(
+        page: Int,
+        order: CollectComicOrderFilter,
+        folderId: Int
+    ): NetWorkResult<UserCollectComicListResponse> {
+        return loadCollectComicList(page, order, folderId, enrichWithFullTags = true)
+    }
+
+    private suspend fun loadCollectComicList(
+        page: Int,
+        order: CollectComicOrderFilter,
+        folderId: Int,
+        enrichWithFullTags: Boolean,
+    ): NetWorkResult<UserCollectComicListResponse> {
         awaitAuthenticatedSessionReady()
         if (useEmbeddedApi()) {
             return withContext(Dispatchers.IO) {
@@ -206,22 +230,21 @@ class UserRepositoryImpl(
                         .build()
                     val favPage = client.getFavorites(query)
                     val metas = favPage.content().orEmpty()
-                    // 为每个收藏项获取完整 Album 以补全所有 tags（并发请求）
-                    val listWithFullTags = coroutineScope {
-                        metas.map { meta ->
-                            async {
-                                val fullTags = runCatchingCancellable {
-                                    client.getAlbum(meta.id().orEmpty()).tags().orEmpty()
-                                }.getOrDefault(meta.tags().orEmpty())
-                                meta.toListItem(fullTags)
-                            }
-                        }.map { it.await() }
+                    // 首屏只使用收藏接口返回的摘要；完整 Album 只在筛选/统计路径按需获取。
+                    val list = if (enrichWithFullTags) {
+                        coroutineScope {
+                            metas.map { meta ->
+                                async { meta.toFullMetadataListItem(client) }
+                            }.map { it.await() }
+                        }
+                    } else {
+                        metas.map { it.toListItem() }
                     }
                     NetWorkResult.Success(
                         UserCollectComicListResponse(
                             count = favPage.totalItems(),
                             folder_list = favPage.folderList(),
-                            list = listWithFullTags,
+                            list = list,
                             total = favPage.totalItems()
                         )
                     )
@@ -395,16 +418,42 @@ class UserRepositoryImpl(
         )
     }
 
-    private fun JmAlbumMeta.toListItem(fullTags: List<String> = tags().orEmpty()): UserCollectComicListResponse.ListItem {
+    private suspend fun JmAlbumMeta.toFullMetadataListItem(
+        client: JmApiClient,
+    ): UserCollectComicListResponse.ListItem {
+        val albumId = id().orEmpty()
+        if (albumId.isBlank()) return toListItem()
+
+        val cached = fullFavoriteMetadataCache[albumId]
+        if (cached != null) {
+            return toListItem(cached.tags, cached.authors)
+        }
+
+        val album = runCatchingCancellable { client.getAlbum(albumId) }.getOrNull()
+            ?: return toListItem()
+        val metadata = FullFavoriteMetadata(
+            tags = album.tags().orEmpty(),
+            authors = album.authors().orEmpty(),
+        )
+        fullFavoriteMetadataCache[albumId] = metadata
+        return toListItem(metadata.tags, metadata.authors)
+    }
+
+    private fun JmAlbumMeta.toListItem(
+        fullTags: List<String> = tags().orEmpty(),
+        fullAuthors: List<String> = authors().orEmpty(),
+    ): UserCollectComicListResponse.ListItem {
+        val resolvedAuthors = fullAuthors.ifEmpty { authors().orEmpty() }
         return UserCollectComicListResponse.ListItem(
             id = id().orEmpty(),
-            author = authors().orEmpty().firstOrNull().orEmpty(),
+            author = resolvedAuthors.firstOrNull().orEmpty(),
             description = description(),
             name = title().orEmpty(),
             image = image().orEmpty(),
             category = category().toCollectCategory(),
             category_sub = subCategory().toCollectCategory(),
-            tags = if (fullTags.isEmpty()) null else fullTags
+            tags = if (fullTags.isEmpty()) null else fullTags,
+            authors = resolvedAuthors.takeIf { it.isNotEmpty() },
         )
     }
 

@@ -141,7 +141,10 @@ class UserViewModel(
                     key.filter.selectedTags,
                     key.filter.selectedAuthors,
                     key.folderId,
-                    key.filter.tagLogic
+                    key.filter.tagLogic,
+                    onFolderListLoaded = { folders ->
+                        if (folders != null) _folderList.value = folders
+                    }
                 )
             }
         ).flow
@@ -303,7 +306,7 @@ class UserViewModel(
             var loaded = 0
             var total = Int.MAX_VALUE
             while (loaded < total && page <= 100) {
-                when (val data = userRepository.getCollectComicList(page, order, folderId)) {
+                when (val data = userRepository.getCollectComicListWithFullTags(page, order, folderId)) {
                     is NetWorkResult.Error -> {
                         toastManager.showAsync(data.message)
                         return@launch

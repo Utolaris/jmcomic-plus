@@ -5,32 +5,37 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class ComicLikeToggleTest {
+class ComicLikeStateTest {
 
     @Test
     fun unlikedSuccessMarksLikedAndIncrementsCount() {
-        val (isLike, likeCount) = ComicLikeToggle.applyToggleSuccess(isLike = false, likeCount = 41)
+        val (isLike, likeCount) = ComicLikeState.applyLikeSuccess(isLike = false, likeCount = 41)
 
         assertTrue(isLike)
         assertEquals(42, likeCount)
     }
 
     @Test
-    fun likedSuccessMarksUnlikedAndDecrementsCount() {
-        val (isLike, likeCount) = ComicLikeToggle.applyToggleSuccess(isLike = true, likeCount = 41)
+    fun likedComicCannotSubmitAnotherLike() {
+        assertFalse(ComicLikeState.canSubmitLike(isLike = true))
+    }
 
-        assertFalse(isLike)
-        assertEquals(40, likeCount)
+    @Test
+    fun successfulLikeKeepsAnAlreadyLikedComicLiked() {
+        val (isLike, likeCount) = ComicLikeState.applyLikeSuccess(isLike = true, likeCount = 41)
+
+        assertTrue(isLike)
+        assertEquals(41, likeCount)
     }
 
     @Test
     fun likeCountNeverBecomesNegative() {
-        val (isLike, likeCount) = ComicLikeToggle.applyToggleSuccess(isLike = true, likeCount = 0)
+        val (isLike, likeCount) = ComicLikeState.applyLikeSuccess(isLike = true, likeCount = 0)
 
-        assertFalse(isLike)
+        assertTrue(isLike)
         assertEquals(0, likeCount)
 
-        val (_, recoveredCount) = ComicLikeToggle.applyToggleSuccess(
+        val (_, recoveredCount) = ComicLikeState.applyLikeSuccess(
             isLike = false,
             likeCount = -5,
         )
@@ -39,7 +44,7 @@ class ComicLikeToggleTest {
 
     @Test
     fun failedRequestKeepsOriginalState() {
-        val afterFailure = ComicLikeToggle.applyToggleResult(
+        val afterFailure = ComicLikeState.applyLikeResult(
             isLike = true,
             likeCount = 41,
             succeeded = false,
@@ -50,7 +55,7 @@ class ComicLikeToggleTest {
     }
 
     @Test
-    fun gateBlocksConcurrentTogglesForSameComic() {
+    fun gateBlocksConcurrentLikesForSameComic() {
         val gate = LikeRequestGate()
 
         assertTrue(gate.tryAcquire(123))

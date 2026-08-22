@@ -17,6 +17,7 @@ data class UserCollectComicListResponse(
         val category: Category,
         val category_sub: Category,
         val tags: List<String>? = null,
+        val authors: List<String>? = null,
     ) {
         data class Category(
             val id: String?,
@@ -26,10 +27,15 @@ data class UserCollectComicListResponse(
 
     fun toComicList(): List<Comic> {
         return list.map {
+            val authors = it.authors
+                ?.filter(String::isNotBlank)
+                ?.distinct()
+                ?.takeIf { values -> values.isNotEmpty() }
+                ?: listOf(it.author).filter(String::isNotBlank)
             Comic(
                 id = it.id.toInt(),
                 name = it.name,
-                authorList = listOf(it.author),
+                authorList = authors,
                 description = it.description ?: "",
                 readCount = 0,
                 likeCount = 0,

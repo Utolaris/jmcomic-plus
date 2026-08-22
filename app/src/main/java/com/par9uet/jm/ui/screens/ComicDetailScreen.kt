@@ -281,7 +281,7 @@ fun ComicDetailScreen(
     val mainNavController = LocalMainNavController.current
     val scrollState = rememberScrollState()
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
-    val likeToggleInFlightComicIds by comicDetailViewModel.likeToggleInFlightComicIds.collectAsState()
+    val likeRequestInFlightComicIds by comicDetailViewModel.likeRequestInFlightComicIds.collectAsState()
     val readHistory by readHistoryManager.readHistoryState.collectAsState()
     val isLogin by userManager.isLoginState.collectAsState(false)
     var showDownloadChapterDialog by remember { mutableStateOf(false) }
@@ -375,12 +375,12 @@ fun ComicDetailScreen(
             val comic = comicDetailState.data ?: return@Scaffold
             ComicDetailBottomBar(
                 comic = comic,
-                likeEnabled = comic.id !in likeToggleInFlightComicIds,
+                likeEnabled = !comic.isLike && comic.id !in likeRequestInFlightComicIds,
                 readHistoryManager = readHistoryManager,
                 readHistory = readHistory,
                 onLike = {
                     requireLogin {
-                        comicDetailViewModel.toggleComicLike(comic.id)
+                        comicDetailViewModel.likeComic(comic.id)
                     }
                 },
                 onCollect = {

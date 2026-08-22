@@ -19,16 +19,29 @@ class CollectComicPagingSource(
     private val selectedAuthors: Set<String> = emptySet(),
     private val folderId: Int = 0,
     private val tagLogic: TagFilterLogic = TagFilterLogic.AND,
+    private val onFolderListLoaded: (Map<String, String>?) -> Unit = {},
 ) : PagingSource<Int, Comic>() {
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Comic> {
         val currentPage = params.key ?: 1
+        val result = if (requiresFullCollectMetadata(
+                blockedTagList = blockedTagList,
+                searchText = searchText,
+                selectedTags = selectedTags,
+                selectedAuthors = selectedAuthors,
+            )
+        ) {
+            userRepository.getCollectComicListWithFullTags(currentPage, order, folderId)
+        } else {
+            userRepository.getCollectComicList(currentPage, order, folderId)
+        }
         return when (val data =
-            userRepository.getCollectComicList(currentPage, order, folderId)) {
+            result) {
             is NetWorkResult.Error -> {
                 LoadResult.Error(Exception(data.message))
             }
 
             is NetWorkResult.Success<UserCollectComicListResponse> -> {
+                onFolderListLoaded(data.data.folder_list)
                 val query = searchText.trim()
                 val lowerSelectedTags = selectedTags.map { it.lowercase().trim() }.filter { it.isNotBlank() }.toSet()
                 val lowerSelectedAuthors = selectedAuthors.map { it.lowercase().trim() }.filter { it.isNotBlank() }.toSet()
@@ -75,3 +88,13 @@ class CollectComicPagingSource(
 
     override fun getRefreshKey(state: PagingState<Int, Comic>): Int? = null
 }
+
+internal fun requiresFullCollectMetadata(
+    blockedTagList: List<String>,
+    searchText: String,
+    selectedTags: Set<String>,
+    selectedAuthors: Set<String>,
+): Boolean = blockedTagList.isNotEmpty() ||
+    searchText.isNotBlank() ||
+    selectedTags.isNotEmpty() ||
+    selectedAuthors.isNotEmpty()

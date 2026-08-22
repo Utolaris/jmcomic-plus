@@ -2,6 +2,8 @@ package com.par9uet.jm.image
 
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.EOFException
 import java.io.IOException
@@ -134,6 +136,17 @@ class ImageHostFailureClassifierTest {
             ImageHostFailureKind.CANCELLED,
             classifyImageHostFailure(CancellationException("cancelled"), httpCodeHint = 500),
         )
+    }
+
+    @Test
+    fun directAndWrappedCancellationArePropagatable() {
+        val direct = CancellationException("direct")
+        val wrapped = IllegalStateException("wrapped", direct)
+
+        assertTrue(direct.isCancellation())
+        assertTrue(wrapped.isCancellation())
+        assertSame(direct, direct.cancellationExceptionOrNull())
+        assertSame(direct, wrapped.cancellationExceptionOrNull())
     }
 
     @Test
