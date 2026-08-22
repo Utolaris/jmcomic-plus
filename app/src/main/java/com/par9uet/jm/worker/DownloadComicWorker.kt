@@ -1,6 +1,7 @@
 package com.par9uet.jm.worker
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.core.graphics.drawable.toBitmap
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -115,6 +116,7 @@ class DownloadComicWorker(
                 remoteHost = remoteSettingManager.remoteSettingState.value.imgHost,
             )
             candidates.forEachIndexed { index, coverUrl ->
+                val startedAtMillis = SystemClock.elapsedRealtime()
                 val request = ImageRequest.Builder(appContext)
                     .data(coverUrl)
                     .memoryCacheKey(cacheKey)
@@ -135,7 +137,10 @@ class DownloadComicWorker(
                     }
                     is SuccessResult -> {
                         if (result.dataSource == DataSource.NETWORK) {
-                            coverImageHostResolver.recordSuccess(coverUrl)
+                            coverImageHostResolver.recordSuccess(
+                                coverUrl,
+                                (SystemClock.elapsedRealtime() - startedAtMillis).coerceAtLeast(1L),
+                            )
                         }
                         val bitmap = result.drawable.toBitmap()
                         val file = getComicCoverDownloadFile(appContext, downloadTask)

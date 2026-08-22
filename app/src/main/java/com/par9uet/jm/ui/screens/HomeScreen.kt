@@ -67,6 +67,7 @@ private const val TEXT_WEEKLY = "\u6bcf\u5468"
 private const val TEXT_DOWNLOAD = "\u4e0b\u8f7d"
 private const val TEXT_SIGN = "\u7b7e\u5230"
 private const val TEXT_EXTRACT = "\u63d0\u53d6"
+private const val CATEGORY_LOADING_SKELETON_COUNT = 18
 
 @Composable
 private fun HomeSkeleton(
@@ -152,8 +153,8 @@ fun HomeScreen(
 
     val selectedCategoryId = homeState.selectedCategoryId
     val selectedState = selectedCategoryId?.let { homeState.states[it] }
-    val showSkeleton = selectedCategoryId == null ||
-        (selectedState != null && selectedState.content.isEmpty() && selectedState.isLoading)
+    // Full-page skeleton is only for bootstrap, before the real category structure exists.
+    val showSkeleton = homeState.categories.isEmpty() || selectedCategoryId == null
     if (showSkeleton) {
         HomeSkeleton(
             onSearch = onSearch,
@@ -185,7 +186,7 @@ fun HomeScreen(
         val chipsScrollState = rememberScrollState()
         PullToRefreshBox(
             modifier = Modifier.fillMaxSize(),
-            isRefreshing = selectedState?.isLoading == true,
+            isRefreshing = selectedState?.isLoading == true && currentContent.isNotEmpty(),
             onRefresh = { comicViewModel.refreshSelectedHomeCategory() }
         ) {
             LazyVerticalGrid(
@@ -242,7 +243,11 @@ fun HomeScreen(
                         )
                     }
                 }
-                if (selectedState != null && selectedState.isError && comicList.isEmpty()) {
+                if (selectedState?.isLoading == true && currentContent.isEmpty()) {
+                    items(CATEGORY_LOADING_SKELETON_COUNT) {
+                        ComicSkeleton()
+                    }
+                } else if (selectedState != null && selectedState.isError && comicList.isEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Column(
                             modifier = Modifier

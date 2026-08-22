@@ -27,6 +27,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
+internal fun reorderPromoteSections(
+    input: List<HomeSwiperComicListItemResponse>,
+): List<HomeSwiperComicListItemResponse> {
+    if (input.size < 2 || !input[1].title.contains("推荐本本")) return input
+    return buildList(input.size) {
+        add(input[1])
+        add(input[0])
+        addAll(input.drop(2))
+    }
+}
+
 class ComicViewModel(
     private val comicRepository: ComicRepository,
     private val localSettingManager: AppLocalSettings,
@@ -53,18 +64,27 @@ class ComicViewModel(
     private val _homeState = MutableStateFlow(HomeUIState())
     val homeState = _homeState.asStateFlow()
 
+    private data class HomeRequestToken(
+        val topologyGeneration: Long,
+        val requestGeneration: Long,
+        val source: String,
+        val key: String,
+    )
+
+    private var homeTopologyGeneration = 0L
     private var homeRequestGeneration = 0L
     private var lastHomeSource: String? = null
     private var lastPreferenceRecommendEnabled: Boolean? = null
     private val homeCategoryCache =
         mutableMapOf<String, List<HomeSwiperComicListItemResponse.ListItem>>()
     private var networkHomeCache: List<HomeSwiperComicListItemResponse>? = null
-    private val activeCategoryLoads = mutableMapOf<String, Long>()
+    private val activeCategoryLoads = mutableMapOf<String, HomeRequestToken>()
 
     companion object {
-        const val CATEGORY_RECOMMEND = "home_recommend"
         const val CATEGORY_LATEST = "builtin_latest"
         const val CATEGORY_NETWORK_HOME = "home_network"
+        private const val NETWORK_CATEGORY_PREFIX = "net_"
+        private const val PROMOTE_LOAD_KEY = "promote_sections"
         val BUILTIN_CATEGORIES = listOf(
             HomeCategoryInfo(CATEGORY_LATEST, "最新上架"),
             HomeCategoryInfo("builtin_week_hot", "本周热门"),
@@ -85,62 +105,60 @@ class ComicViewModel(
 
     /**
      * 按“当前数据源 + 推荐开关”重建首页分类表，并只加载默认分类：
-     * - 内置/混合数据源：推荐开启时默认“推荐本本”，否则默认“最新上架”。
+     * - 内置/混合数据源：推荐开启时先加载 /promote 的真实分类，否则默认“最新上架”。
      * - 网络数据源：首页整页来自网络 API（单次请求），分类表由响应展开。
      * 其它分类保持 lazy：点击后才请求，结果按 (source, categoryId) 缓存。
      */
     fun refreshHome() {
         val setting = localSettingManager.localSettingState.value
         val source = setting.comicApiSource
-        if (source != lastHomeSource) {
-            // 数据源变化：作废在途请求、丢弃旧数据源缓存，避免错误复用。
-            homeRequestGeneration++
+        val recommendEnabled = setting.preferenceRecommendEnabled
+        val sourceChanged = source != lastHomeSource
+        val topologyChanged = sourceChanged ||
+            recommendEnabled != lastPreferenceRecommendEnabled
+        if (topologyChanged) {
+            // 分类结构变化时作废所有旧 token。阻塞式 JM 请求即使稍后返回，也不能写回新结构。
+            homeTopologyGeneration++
+            activeCategoryLoads.clear()
+            _homeState.value = HomeUIState()
+        }
+        if (sourceChanged) {
             homeCategoryCache.clear()
             networkHomeCache = null
-            lastHomeSource = source
-            _homeState.update { it.copy(states = emptyMap()) }
         }
+        lastHomeSource = source
+        lastPreferenceRecommendEnabled = recommendEnabled
+
         if (source == COMIC_API_SOURCE_NETWORK) {
             val cached = networkHomeCache
             if (cached != null) {
-                applyNetworkHome(cached)
+                applyPromoteHome(cached, includeBuiltins = false)
             } else {
-                _homeState.update {
-                    it.copy(
-                        categories = listOf(HomeCategoryInfo(CATEGORY_NETWORK_HOME, "首页")),
-                        selectedCategoryId = CATEGORY_NETWORK_HOME,
-                    )
-                }
-                ensureCategoryLoaded(CATEGORY_NETWORK_HOME)
+                loadPromoteSections(includeBuiltins = false)
+            }
+            return
+        }
+
+        if (recommendEnabled) {
+            val cached = networkHomeCache
+            if (cached != null) {
+                applyPromoteHome(cached, includeBuiltins = true)
+            } else {
+                loadPromoteSections(includeBuiltins = true)
             }
         } else {
-            val categories = buildList {
-                if (setting.preferenceRecommendEnabled) {
-                    add(HomeCategoryInfo(CATEGORY_RECOMMEND, "推荐本本"))
-                }
-                addAll(BUILTIN_CATEGORIES)
-            }
-            // 推荐开关发生切换时，默认分类跟随开关：ON → 推荐本本，OFF → 最新上架。
-            val prefEnabled = setting.preferenceRecommendEnabled
-            val prefChanged = lastPreferenceRecommendEnabled != prefEnabled
-            lastPreferenceRecommendEnabled = prefEnabled
-            val selected = when {
-                prefChanged -> if (prefEnabled) CATEGORY_RECOMMEND else CATEGORY_LATEST
-                else -> _homeState.value.selectedCategoryId
-                    ?.takeIf { id -> categories.any { it.id == id } }
-                    ?: if (prefEnabled) CATEGORY_RECOMMEND else CATEGORY_LATEST
-            }
-            _homeState.update {
-                it.copy(categories = categories, selectedCategoryId = selected)
-            }
-            ensureCategoryLoaded(selected)
+            applyBuiltinHome()
         }
     }
 
     fun selectHomeCategory(categoryId: String) {
         val current = _homeState.value
-        if (current.selectedCategoryId == categoryId) return
         if (current.categories.none { it.id == categoryId }) return
+        if (current.selectedCategoryId == categoryId) {
+            // A → B → A 或旧请求被作废后，即使 UI 已选中 A，也要保证 A 有缓存或有效请求。
+            ensureCategoryLoaded(categoryId)
+            return
+        }
         _homeState.update { it.copy(selectedCategoryId = categoryId) }
         ensureCategoryLoaded(categoryId)
     }
@@ -154,75 +172,45 @@ class ComicViewModel(
     private fun ensureCategoryLoaded(categoryId: String, force: Boolean = false) {
         val source = localSettingManager.localSettingState.value.comicApiSource
         val state = _homeState.value.states[categoryId]
-        // 同一个分类同时只允许一个 active request。
-        if (!force && activeCategoryLoads.containsKey(categoryId)) return
-        // 仅当 loading 状态对应一个仍在运行的请求时才去重；被 generation 作废的孤立
-        // loading（请求已被取消/陈旧）不得阻塞后续点击加载。
-        if (!force && state?.isLoading == true && activeCategoryLoads.containsKey(categoryId)) return
+        val active = activeCategoryLoads[categoryId]
+        if (!force && active?.topologyGeneration == homeTopologyGeneration) return
         if (!force && homeCategoryCache.containsKey(cacheKey(source, categoryId))) {
             hydrateCategory(categoryId, source)
             return
         }
-        if (!force && categoryId == CATEGORY_RECOMMEND && networkHomeCache != null) {
-            val content = networkHomeCache.orEmpty()
-                .flatMap { it.content }
-                .distinctBy { it.id }
-            homeCategoryCache[cacheKey(source, categoryId)] = content
-            updateCategoryState(categoryId, HomeCategoryLoadState(content = content))
+
+        if (categoryId == CATEGORY_NETWORK_HOME || isPromoteCategory(categoryId)) {
+            loadPromoteSections(
+                includeBuiltins = source != COMIC_API_SOURCE_NETWORK,
+                force = force,
+                refreshingCategoryId = categoryId,
+            )
             return
         }
 
-        val generation = ++homeRequestGeneration
-        activeCategoryLoads[categoryId] = generation
+        val token = newHomeRequestToken(source, categoryId)
+        activeCategoryLoads[categoryId] = token
+        updateCategoryState(
+            categoryId,
+            (state ?: HomeCategoryLoadState()).copy(
+                isLoading = true,
+                isError = false,
+                errorMsg = null,
+            )
+        )
         viewModelScope.launch {
             try {
-                if (!isCurrentHomeRequest(generation, source, categoryId)) return@launch
-                updateCategoryState(
-                    categoryId,
-                    (state ?: HomeCategoryLoadState()).copy(
-                        isLoading = true,
-                        isError = false,
-                        errorMsg = null,
-                    )
-                )
-                if (categoryId == CATEGORY_NETWORK_HOME) {
-                    // 网络数据源：整页一次请求，展开为多个分类 tab。
-                    val page = comicRepository.getNetworkHomePage()
-                    ensureActive()
-                    if (!isCurrentHomeRequest(generation, source, categoryId)) return@launch
-                    when (page) {
-                        is NetWorkResult.Error -> {
-                            updateCategoryState(
-                                categoryId,
-                                HomeCategoryLoadState(
-                                    isLoading = false,
-                                    isError = true,
-                                    errorMsg = page.message,
-                                )
-                            )
-                        }
-
-                        is NetWorkResult.Success -> {
-                            networkHomeCache = page.data
-                            applyNetworkHome(page.data)
-                        }
-                    }
-                    return@launch
-                }
-
-                val result = if (categoryId == CATEGORY_RECOMMEND) {
-                    comicRepository.getNetworkHomePage().mapPageToFlatList()
-                } else {
-                    comicRepository.getEmbeddedHomeCategory(categoryId)
-                }
+                if (!isCurrentHomeRequest(token, requireCategory = true)) return@launch
+                val result = comicRepository.getEmbeddedHomeCategory(categoryId)
                 ensureActive()
-                if (!isCurrentHomeRequest(generation, source, categoryId)) return@launch
+                if (!isCurrentHomeRequest(token, requireCategory = true)) return@launch
 
                 when (result) {
                     is NetWorkResult.Error -> {
+                        val current = _homeState.value.states[categoryId] ?: HomeCategoryLoadState()
                         updateCategoryState(
                             categoryId,
-                            HomeCategoryLoadState(
+                            current.copy(
                                 isLoading = false,
                                 isError = true,
                                 errorMsg = result.message,
@@ -236,51 +224,145 @@ class ComicViewModel(
                     }
                 }
             } finally {
-                if (activeCategoryLoads[categoryId] == generation) {
+                if (activeCategoryLoads[categoryId] == token) {
                     activeCategoryLoads.remove(categoryId)
                 }
             }
         }
     }
 
-    private fun applyNetworkHome(categories: List<HomeSwiperComicListItemResponse>) {
-        val filtered = categories.filter { it.content.isNotEmpty() }
-        if (filtered.isEmpty()) {
-            val state = _homeState.value.states[CATEGORY_NETWORK_HOME]
-                ?: HomeCategoryLoadState()
-            _homeState.update {
-                it.copy(
-                    categories = listOf(HomeCategoryInfo(CATEGORY_NETWORK_HOME, "首页")),
-                    selectedCategoryId = CATEGORY_NETWORK_HOME,
-                    states = it.states + (
-                        CATEGORY_NETWORK_HOME to state.copy(
-                            isLoading = false,
-                            isError = true,
-                            errorMsg = "暂无首页数据",
-                        )
-                    ),
-                )
-            }
-            return
-        }
+    private fun loadPromoteSections(
+        includeBuiltins: Boolean,
+        force: Boolean = false,
+        refreshingCategoryId: String? = null,
+    ) {
         val source = localSettingManager.localSettingState.value.comicApiSource
-        val infos = filtered.map { HomeCategoryInfo(networkCategoryId(it.id), it.title) }
-        val newStates = mutableMapOf<String, HomeCategoryLoadState>()
-        filtered.forEach { item ->
-            val id = networkCategoryId(item.id)
-            newStates[id] = HomeCategoryLoadState(content = item.content)
-            homeCategoryCache[cacheKey(source, id)] = item.content
-        }
-        val selected = _homeState.value.selectedCategoryId
-            ?.takeIf { id -> infos.any { it.id == id } }
-            ?: infos.first().id
-        _homeState.update {
-            it.copy(
-                categories = infos,
-                selectedCategoryId = selected,
-                states = it.states + newStates,
+        val active = activeCategoryLoads[PROMOTE_LOAD_KEY]
+        if (!force && active?.topologyGeneration == homeTopologyGeneration) return
+
+        val token = newHomeRequestToken(source, PROMOTE_LOAD_KEY)
+        activeCategoryLoads[PROMOTE_LOAD_KEY] = token
+        refreshingCategoryId?.let { categoryId ->
+            val current = _homeState.value.states[categoryId] ?: HomeCategoryLoadState()
+            updateCategoryState(
+                categoryId,
+                current.copy(isLoading = true, isError = false, errorMsg = null),
             )
         }
+        viewModelScope.launch {
+            try {
+                if (!isCurrentHomeRequest(token)) return@launch
+                val result = comicRepository.getNetworkHomePage()
+                ensureActive()
+                if (!isCurrentHomeRequest(token)) return@launch
+                when (result) {
+                    is NetWorkResult.Success -> {
+                        networkHomeCache = result.data
+                        applyPromoteHome(result.data, includeBuiltins)
+                    }
+
+                    is NetWorkResult.Error -> {
+                        when {
+                            refreshingCategoryId != null -> {
+                                val current = _homeState.value.states[refreshingCategoryId]
+                                    ?: HomeCategoryLoadState()
+                                updateCategoryState(
+                                    refreshingCategoryId,
+                                    current.copy(
+                                        isLoading = false,
+                                        isError = true,
+                                        errorMsg = result.message,
+                                    ),
+                                )
+                            }
+
+                            includeBuiltins -> applyBuiltinHome()
+                            else -> showNetworkHomeError(result.message)
+                        }
+                    }
+                }
+            } finally {
+                if (activeCategoryLoads[PROMOTE_LOAD_KEY] == token) {
+                    activeCategoryLoads.remove(PROMOTE_LOAD_KEY)
+                }
+            }
+        }
+    }
+
+    private fun applyPromoteHome(
+        categories: List<HomeSwiperComicListItemResponse>,
+        includeBuiltins: Boolean,
+    ) {
+        val promoteSections = reorderPromoteSections(categories.filter { it.content.isNotEmpty() })
+        if (promoteSections.isEmpty()) {
+            if (includeBuiltins) applyBuiltinHome() else showNetworkHomeError("暂无首页数据")
+            return
+        }
+
+        val source = localSettingManager.localSettingState.value.comicApiSource
+        val networkInfos = promoteSections.map { item ->
+            HomeCategoryInfo(networkCategoryId(item.id), item.title)
+        }
+        val allInfos = if (includeBuiltins) networkInfos + BUILTIN_CATEGORIES else networkInfos
+        val validIds = allInfos.mapTo(mutableSetOf()) { it.id }
+        val newStates = _homeState.value.states
+            .filterKeys { it in validIds }
+            .toMutableMap()
+        promoteSections.forEach { item ->
+            val id = networkCategoryId(item.id)
+            homeCategoryCache[cacheKey(source, id)] = item.content
+            newStates[id] = HomeCategoryLoadState(content = item.content)
+        }
+        if (includeBuiltins) {
+            BUILTIN_CATEGORIES.forEach { info ->
+                homeCategoryCache[cacheKey(source, info.id)]?.let { content ->
+                    newStates[info.id] = HomeCategoryLoadState(content = content)
+                }
+            }
+        }
+        val selected = _homeState.value.selectedCategoryId
+            ?.takeIf { it in validIds }
+            ?: networkInfos.first().id
+        _homeState.value = HomeUIState(
+            categories = allInfos,
+            selectedCategoryId = selected,
+            states = newStates,
+        )
+    }
+
+    private fun applyBuiltinHome() {
+        val source = localSettingManager.localSettingState.value.comicApiSource
+        val validIds = BUILTIN_CATEGORIES.mapTo(mutableSetOf()) { it.id }
+        val states = _homeState.value.states
+            .filterKeys { it in validIds }
+            .toMutableMap()
+        BUILTIN_CATEGORIES.forEach { info ->
+            homeCategoryCache[cacheKey(source, info.id)]?.let { content ->
+                states[info.id] = HomeCategoryLoadState(content = content)
+            }
+        }
+        val selected = _homeState.value.selectedCategoryId
+            ?.takeIf { it in validIds }
+            ?: CATEGORY_LATEST
+        _homeState.value = HomeUIState(
+            categories = BUILTIN_CATEGORIES,
+            selectedCategoryId = selected,
+            states = states,
+        )
+        ensureCategoryLoaded(selected)
+    }
+
+    private fun showNetworkHomeError(message: String) {
+        _homeState.value = HomeUIState(
+            categories = listOf(HomeCategoryInfo(CATEGORY_NETWORK_HOME, "首页")),
+            selectedCategoryId = CATEGORY_NETWORK_HOME,
+            states = mapOf(
+                CATEGORY_NETWORK_HOME to HomeCategoryLoadState(
+                    isError = true,
+                    errorMsg = message,
+                )
+            ),
+        )
     }
 
     private fun hydrateCategory(categoryId: String, source: String) {
@@ -299,28 +381,28 @@ class ComicViewModel(
 
     private fun cacheKey(source: String, categoryId: String): String = "$source:$categoryId"
 
-    private fun networkCategoryId(rawId: String): String = "net_$rawId"
+    private fun networkCategoryId(rawId: String): String = "$NETWORK_CATEGORY_PREFIX$rawId"
+
+    private fun isPromoteCategory(categoryId: String): Boolean =
+        categoryId.startsWith(NETWORK_CATEGORY_PREFIX)
+
+    private fun newHomeRequestToken(source: String, key: String): HomeRequestToken =
+        HomeRequestToken(
+            topologyGeneration = homeTopologyGeneration,
+            requestGeneration = ++homeRequestGeneration,
+            source = source,
+            key = key,
+        )
 
     private fun isCurrentHomeRequest(
-        generation: Long,
-        source: String,
-        categoryId: String,
+        token: HomeRequestToken,
+        requireCategory: Boolean = false,
     ): Boolean =
-        homeRequestGeneration == generation &&
-            lastHomeSource == source &&
-            localSettingManager.localSettingState.value.comicApiSource == source &&
-            _homeState.value.categories.any { it.id == categoryId }
-
-    private fun NetWorkResult<List<HomeSwiperComicListItemResponse>>
-        .mapPageToFlatList(): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> {
-        return when (this) {
-            is NetWorkResult.Success -> NetWorkResult.Success(
-                data.flatMap { it.content }.distinctBy { it.id }
-            )
-
-            is NetWorkResult.Error -> this
-        }
-    }
+        token.topologyGeneration == homeTopologyGeneration &&
+            activeCategoryLoads[token.key] == token &&
+            lastHomeSource == token.source &&
+            localSettingManager.localSettingState.value.comicApiSource == token.source &&
+            (!requireCategory || _homeState.value.categories.any { it.id == token.key })
 
     private val _searchComicFilterState = MutableStateFlow(SearchComicFilter())
     val searchComicFilterState = _searchComicFilterState.asStateFlow()

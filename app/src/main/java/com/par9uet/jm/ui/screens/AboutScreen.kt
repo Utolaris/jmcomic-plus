@@ -92,11 +92,11 @@ import java.io.File
 import kotlin.math.roundToInt
 
 private const val GITHUB_RELEASE_API =
-    "https://api.github.com/repos/HongShi2333/jmcomic-next/releases/latest"
+    "https://api.github.com/repos/Utolaris/jmcomic-plus/releases/latest"
 private const val GITHUB_RELEASE_URL =
-    "https://github.com/HongShi2333/jmcomic-next/releases"
+    "https://github.com/Utolaris/jmcomic-plus/releases"
 private const val GITHUB_REPO_URL =
-    "https://github.com/HongShi2333/jmcomic-next"
+    "https://github.com/Utolaris/jmcomic-plus"
 
 private data class GithubRelease(
     val version: String,
@@ -985,7 +985,7 @@ private suspend fun fetchLatestRelease(): Result<GithubRelease> = withContext(Di
         val request = Request.Builder()
             .url(GITHUB_RELEASE_API)
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "jmcomic-next-android")
+            .header("User-Agent", "jmcomic-plus-android")
             .build()
         OkHttpClient().newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
@@ -1001,13 +1001,14 @@ private suspend fun fetchLatestRelease(): Result<GithubRelease> = withContext(Di
                 error("未读取到 Release 版本号")
             }
             val asset = selectApkAsset(json.getAsJsonArray("assets"), version)
+                ?: error("当前 Release 未提供兼容的 APK 安装包")
             GithubRelease(
                 version = version,
                 name = name,
                 url = url.ifBlank { "$GITHUB_RELEASE_URL/tag/$tagName" },
                 body = json.stringOrEmpty("body"),
-                downloadUrl = asset?.downloadUrl.orEmpty(),
-                fileName = asset?.name.orEmpty()
+                downloadUrl = asset.downloadUrl,
+                fileName = asset.name
             )
         }
     }

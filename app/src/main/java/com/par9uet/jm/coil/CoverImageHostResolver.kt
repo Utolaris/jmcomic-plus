@@ -1,67 +1,52 @@
 package com.par9uet.jm.coil
 
 import com.par9uet.jm.image.JM_IMAGE_HOSTS
+import com.par9uet.jm.image.JM_IMAGE_HOST_COOLDOWN_MILLIS
+import com.par9uet.jm.image.JmImageHostHealth
+import com.par9uet.jm.image.JmImageHostHealthStore
 import com.par9uet.jm.image.normalizeJmImageHost
-import java.util.concurrent.ConcurrentHashMap
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 
-/** Lightweight application-wide routing state for sequential Coil cover fallback. */
+/** Sequential Coil cover fallback backed by the same ranked health state as Reader. */
 class CoverImageHostResolver internal constructor(
-    private val knownHosts: List<String> = JM_IMAGE_HOSTS,
-    private val clockMillis: () -> Long = System::currentTimeMillis,
-    private val failureCooldownMillis: Long = DEFAULT_FAILURE_COOLDOWN_MILLIS,
+    private val hostHealth: JmImageHostHealth,
     private val maxCandidates: Int = MAX_COVER_CANDIDATES,
 ) {
-    private val failedAtMillis = ConcurrentHashMap<String, Long>()
-    private val _preferredHost = MutableStateFlow<String?>(null)
+    internal constructor(
+        knownHosts: List<String> = JM_IMAGE_HOSTS,
+        clockMillis: () -> Long = System::currentTimeMillis,
+        failureCooldownMillis: Long = JM_IMAGE_HOST_COOLDOWN_MILLIS,
+        maxCandidates: Int = MAX_COVER_CANDIDATES,
+    ) : this(
+        hostHealth = JmImageHostHealthStore(
+            knownHosts = knownHosts,
+            clockMillis = clockMillis,
+            cooldownMillis = failureCooldownMillis,
+            maxHosts = maxCandidates,
+        ),
+        maxCandidates = maxCandidates,
+    )
 
-    val preferredHost = _preferredHost.asStateFlow()
+    val preferredHost = hostHealth.preferredHost
+    val networkGeneration = hostHealth.networkGeneration
 
     fun coverUrls(comicId: Int, remoteHost: String?): List<String> = candidateHosts(remoteHost)
         .map { host -> buildJmCoverUrl(host, comicId) }
 
-    @Synchronized
-    fun recordSuccess(candidateUrl: String) {
-        val host = normalizeJmImageHost(candidateUrl) ?: return
-        failedAtMillis.remove(host)
-        _preferredHost.value = host
+    fun recordSuccess(candidateUrl: String, elapsedMillis: Long) {
+        hostHealth.recordSuccess(candidateUrl, elapsedMillis)
     }
 
-    @Synchronized
     fun recordFailure(candidateUrl: String) {
-        val host = normalizeJmImageHost(candidateUrl) ?: return
-        failedAtMillis[host] = clockMillis()
-        if (_preferredHost.value == host) _preferredHost.value = null
+        hostHealth.recordFailure(candidateUrl)
     }
 
     internal fun candidateHosts(remoteHost: String?): List<String> {
-        val now = clockMillis()
-        val base = buildList {
-            _preferredHost.value?.let(::add)
-            normalizeJmImageHost(remoteHost)?.let(::add)
-            knownHosts.mapNotNullTo(this, ::normalizeJmImageHost)
-        }.distinct().take(maxCandidates.coerceAtLeast(1))
-
-        val available = ArrayList<String>(base.size)
-        val cooling = ArrayList<String>(base.size)
-        base.forEach { host ->
-            val failedAt = failedAtMillis[host]
-            if (
-                failedAt != null &&
-                now - failedAt in 0 until failureCooldownMillis
-            ) {
-                cooling += host
-            } else {
-                if (failedAt != null) failedAtMillis.remove(host, failedAt)
-                available += host
-            }
-        }
-        return available + cooling
+        hostHealth.registerHost(remoteHost)
+        return hostHealth.orderedHosts(normalizeJmImageHost(remoteHost))
+            .take(maxCandidates.coerceAtLeast(1))
     }
 
-    companion object {
-        private const val DEFAULT_FAILURE_COOLDOWN_MILLIS = 90_000L
+    private companion object {
         private const val MAX_COVER_CANDIDATES = 8
     }
 }
@@ -71,6 +56,7 @@ internal fun buildJmCoverUrl(host: String, comicId: Int): String =
 
 internal fun jmCoverCacheKey(comicId: Int): String = "jm-cover-$comicId"
 
+/** Returns one next candidate; the caller starts no parallel mirror request. */
 internal fun nextCoverCandidateUrl(
     candidates: List<String>,
     attemptedUrls: Set<String>,

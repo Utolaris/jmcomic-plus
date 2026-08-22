@@ -6,8 +6,8 @@ import android.content.Context
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import com.par9uet.jm.BuildConfig
+import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.utils.applyTlsCompat
 import com.par9uet.jm.utils.compressWebpCompat
 import kotlinx.coroutines.CancellationException
@@ -63,10 +63,10 @@ private data class ReaderSourceFile(
     val cacheFile: File,
 )
 
-class ReaderImagePipeline(
+class ReaderImagePipeline internal constructor(
     context: Context,
     private val localSettingManager: LocalSettingManager,
-    private val remoteSettingManager: RemoteSettingManager,
+    imageHostHealthManager: JmImageHostHealthManager,
 ) {
     private val appContext = context.applicationContext
     private val activityManager = appContext.getSystemService(ActivityManager::class.java)
@@ -149,10 +149,9 @@ class ReaderImagePipeline(
         .applyTlsCompat()
         .build()
     private val imageHostManager = ReaderImageHostManager(
-        context = appContext,
         httpClient = httpClient,
         scope = scope,
-        configuredHostFlow = remoteSettingManager.remoteSettingState.map { it.imgHost },
+        healthManager = imageHostHealthManager,
     )
     private val metrics = ReaderMetrics(BuildConfig.DEBUG)
     private val remoteFetcher = ReaderRemoteFetcher(

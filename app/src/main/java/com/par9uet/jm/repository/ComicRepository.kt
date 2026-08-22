@@ -24,9 +24,7 @@ interface ComicRepository {
      */
     suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>
 
-    /**
-     * 网络 API 首页整页（网络数据源首页；内置 API 模式下作为“推荐本本”分类的数据源）。
-     */
+    /** 网络 API 的 /promote 整页；响应中的每个 section 都是独立首页分类。 */
     suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>>
     suspend fun getComicPicList(id: Int, shunt: String): NetWorkResult<ComicPicListResponse>
     suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray?

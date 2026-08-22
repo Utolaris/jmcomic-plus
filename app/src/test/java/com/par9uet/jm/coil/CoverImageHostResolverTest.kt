@@ -1,5 +1,8 @@
 package com.par9uet.jm.coil
 
+import com.par9uet.jm.image.JmImageHostHealthStore
+import com.par9uet.jm.image.JmImageHostLatency
+import com.par9uet.jm.image.JmImageHostPersistence
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,7 +38,7 @@ class CoverImageHostResolverTest {
     fun successfulHostIsPromotedForTheNextCover() {
         val resolver = resolver()
         resolver.recordFailure(buildJmCoverUrl("a.example", 1))
-        resolver.recordSuccess(buildJmCoverUrl("b.example", 1))
+        resolver.recordSuccess(buildJmCoverUrl("b.example", 1), elapsedMillis = 20L)
 
         assertEquals("b.example", resolver.candidateHosts("https://a.example").first())
     }
@@ -76,14 +79,18 @@ class CoverImageHostResolverTest {
     }
 
     @Test
-    fun retrySelectionStopsAfterEveryCandidateWasAttempted() {
+    fun coverFallbackAttemptsExactlyOneCandidateAtATime() {
         val candidates = listOf("A", "B", "C")
         val visited = mutableListOf<String>()
         val attempted = mutableSetOf<String>()
+        val active = mutableSetOf<String>()
         while (true) {
             val next = nextCoverCandidateUrl(candidates, attempted) ?: break
+            active += next
+            assertEquals(1, active.size)
             visited += next
             attempted += next
+            active -= next
         }
 
         assertEquals(candidates, visited)
@@ -99,6 +106,30 @@ class CoverImageHostResolverTest {
         assertEquals("jm-cover-123", jmCoverCacheKey(123))
         assertEquals(jmCoverCacheKey(123), jmCoverCacheKey(123))
         assertNotEquals(jmCoverCacheKey(123), jmCoverCacheKey(124))
+    }
+
+    @Test
+    fun coverUsesTheSharedReaderRankingSemantics() {
+        val store = JmImageHostHealthStore(
+            knownHosts = listOf("a.example", "b.example"),
+            clockMillis = { 10_000L },
+            cooldownMillis = 1_000L,
+            maxHosts = 4,
+        )
+        store.restore(
+            JmImageHostPersistence(
+                preferredHost = "b.example",
+                latencies = mapOf(
+                    "a.example" to JmImageHostLatency(20L, 1L),
+                    "b.example" to JmImageHostLatency(80L, 1L),
+                ),
+            )
+        )
+        val resolver = CoverImageHostResolver(store, maxCandidates = 4)
+
+        assertEquals(store.orderedHosts("a.example"), resolver.candidateHosts("a.example"))
+        resolver.recordFailure(buildJmCoverUrl("b.example", 1))
+        assertEquals(listOf("a.example", "b.example"), resolver.candidateHosts("a.example"))
     }
 
     @Test

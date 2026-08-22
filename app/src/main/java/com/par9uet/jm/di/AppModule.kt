@@ -6,6 +6,7 @@ import com.google.gson.Strictness
 import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.repository.AiChatRepository
 import com.par9uet.jm.coil.CoverImageHostResolver
+import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.repository.impl.RemoteSettingRepositoryImpl
 import com.par9uet.jm.storage.AiChatStorage
 import com.par9uet.jm.storage.CookieStorage
@@ -36,6 +37,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.map
 import org.koin.core.context.GlobalContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.bind
@@ -57,7 +59,14 @@ val appModule = module {
     single { AiChatStorage(get()) }
     single { PersonaStorage(get()) }
     single { LauncherDisguiseApplier(get()) }
-    single { CoverImageHostResolver() }
+    single {
+        JmImageHostHealthManager(
+            context = get(),
+            scope = get(),
+            configuredHostFlow = get<RemoteSettingManager>().remoteSettingState.map { it.imgHost },
+        )
+    }
+    single { CoverImageHostResolver(get<JmImageHostHealthManager>()) }
 
     single { RemoteSettingRepositoryImpl(get()) } bind RemoteSettingRepository::class
     single { AiChatRepository(get()) }

@@ -36,7 +36,8 @@ import org.junit.Test
 
 /**
  * 首页分类 lazy 加载测试：
- * - 启动只请求默认分类（推荐关 = 最新上架；推荐开 = 推荐本本）
+ * - 推荐开启时 /promote 的真实分类保持独立，只交换前两个符合约定的 section
+ * - 推荐关闭时启动只请求“最新上架”
  * - 其它分类点击才请求，再次点击复用缓存
  * - force refresh 只刷新当前分类
  * - 数据源变化丢弃旧缓存，迟到的旧请求结果不得写入新状态
@@ -183,14 +184,22 @@ class ComicViewModelHomeLoadingTest {
         assertEquals(0, repo.networkPageCalls)
         assertEquals(ComicViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
         assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
-        assertNull(vm.homeState.value.states[ComicViewModel.CATEGORY_RECOMMEND])
+        assertEquals(ComicViewModel.BUILTIN_CATEGORIES, vm.homeState.value.categories)
     }
 
     @Test
-    fun recommendOnStartupRequestsOnlyRecommendTab() = runTest(scheduler) {
+    fun recommendOnPreservesPromoteSectionsAndSwapsRecommendationToFirst() = runTest(scheduler) {
         val repo = FakeComicRepository(
             embeddedHandler = { embeddedOk(it) },
-            networkHandler = { NetWorkResult.Success(listOf(page("rec", "推荐本本", listOf(item(7))))) },
+            networkHandler = {
+                NetWorkResult.Success(
+                    listOf(
+                        page("serial", "连载漫画", listOf(item(1))),
+                        page("rec", "C108推荐本本", listOf(item(2))),
+                        page("other", "其它栏目", listOf(item(3))),
+                    )
+                )
+            },
         )
         val settings = FakeSettings(LocalSetting().copy(preferenceRecommendEnabled = true))
         val vm = ComicViewModel(repo, settings)
@@ -200,10 +209,76 @@ class ComicViewModelHomeLoadingTest {
 
         assertEquals(1, repo.networkPageCalls)
         assertTrue(repo.embeddedCalls.isEmpty())
-        assertEquals(ComicViewModel.CATEGORY_RECOMMEND, vm.homeState.value.selectedCategoryId)
-        assertEquals("推荐本本", vm.homeState.value.categories.first().title)
-        assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_RECOMMEND]?.content?.size)
+        assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
+        assertEquals(
+            listOf("C108推荐本本", "连载漫画", "其它栏目", "最新上架"),
+            vm.homeState.value.categories.take(4).map { it.title },
+        )
+        assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
+        assertEquals(listOf("1"), vm.homeState.value.states["net_serial"]?.content?.map { it.id })
+        assertEquals(listOf("3"), vm.homeState.value.states["net_other"]?.content?.map { it.id })
         assertNull(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST])
+
+        vm.selectHomeCategory("net_serial")
+        advanceUntilIdle()
+        assertEquals(1, repo.networkPageCalls)
+        assertEquals(listOf("1"), vm.homeState.value.states["net_serial"]?.content?.map { it.id })
+    }
+
+    @Test
+    fun recommendationPrefixIsDynamicAndDoesNotHardcodeC108() = runTest(scheduler) {
+        val repo = FakeComicRepository(
+            networkHandler = {
+                NetWorkResult.Success(
+                    listOf(
+                        page("serial", "连载漫画", listOf(item(1))),
+                        page("rec", "C109推荐本本", listOf(item(2))),
+                        page("other", "其它栏目", listOf(item(3))),
+                    )
+                )
+            },
+        )
+        val vm = ComicViewModel(
+            repo,
+            FakeSettings(LocalSetting().copy(preferenceRecommendEnabled = true)),
+        )
+
+        vm.refreshHome()
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("C109推荐本本", "连载漫画", "其它栏目"),
+            vm.homeState.value.categories.take(3).map { it.title },
+        )
+        assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
+    }
+
+    @Test
+    fun unrelatedSecondPromoteSectionKeepsServerOrder() = runTest(scheduler) {
+        val repo = FakeComicRepository(
+            networkHandler = {
+                NetWorkResult.Success(
+                    listOf(
+                        page("first", "连载漫画", listOf(item(1))),
+                        page("second", "其它栏目 A", listOf(item(2))),
+                        page("third", "其它栏目 B", listOf(item(3))),
+                    )
+                )
+            },
+        )
+        val vm = ComicViewModel(
+            repo,
+            FakeSettings(LocalSetting().copy(preferenceRecommendEnabled = true)),
+        )
+
+        vm.refreshHome()
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("连载漫画", "其它栏目 A", "其它栏目 B"),
+            vm.homeState.value.categories.take(3).map { it.title },
+        )
+        assertEquals(listOf("1"), vm.homeState.value.states["net_first"]?.content?.map { it.id })
     }
 
     @Test
@@ -331,8 +406,8 @@ class ComicViewModelHomeLoadingTest {
             networkHandler = {
                 NetWorkResult.Success(
                     listOf(
-                        page("a", "推荐本本", listOf(item(1))),
-                        page("b", "最新上架", listOf(item(2))),
+                        page("serial", "连载漫画", listOf(item(1))),
+                        page("rec", "C108推荐本本", listOf(item(2))),
                     )
                 )
             },
@@ -350,8 +425,8 @@ class ComicViewModelHomeLoadingTest {
         vm.refreshHome()
         advanceUntilIdle()
         assertEquals(1, repo.networkPageCalls)
-        assertEquals(listOf("推荐本本", "最新上架"), vm.homeState.value.categories.map { it.title })
-        assertEquals("net_a", vm.homeState.value.selectedCategoryId)
+        assertEquals(listOf("C108推荐本本", "连载漫画"), vm.homeState.value.categories.map { it.title })
+        assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
 
         // 切回内置：旧网络缓存丢弃，重新请求默认分类。
         settings.localSettingState.update { it.copy(comicApiSource = "builtin") }
@@ -359,7 +434,7 @@ class ComicViewModelHomeLoadingTest {
         advanceUntilIdle()
         assertEquals(2, repo.embeddedCalls.size)
         assertEquals(ComicViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
-        assertTrue(vm.homeState.value.categories.none { it.id == "net_a" })
+        assertTrue(vm.homeState.value.categories.none { it.id == "net_rec" })
     }
 
     @Test
@@ -376,7 +451,12 @@ class ComicViewModelHomeLoadingTest {
                 }
             },
             networkHandler = {
-                NetWorkResult.Success(listOf(page("rec", "推荐本本", listOf(item(5)))))
+                NetWorkResult.Success(
+                    listOf(
+                        page("serial", "连载漫画", listOf(item(4))),
+                        page("rec", "C109推荐本本", listOf(item(5))),
+                    )
+                )
             },
         )
         val settings = FakeSettings()
@@ -386,11 +466,11 @@ class ComicViewModelHomeLoadingTest {
         advanceUntilIdle()
         assertTrue(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.isLoading == true)
 
-        // 最新上架加载中切换推荐开关：默认分类切到推荐本本。
+        // 最新上架加载中切换推荐开关：默认分类切到真实 /promote 推荐 section。
         settings.localSettingState.update { it.copy(preferenceRecommendEnabled = true) }
         vm.refreshHome()
         advanceUntilIdle()
-        assertEquals(ComicViewModel.CATEGORY_RECOMMEND, vm.homeState.value.selectedCategoryId)
+        assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
 
         // 迟到的“最新上架”结果被丢弃。
         gate.complete(NetWorkResult.Success(listOf(item(9))))
@@ -403,5 +483,66 @@ class ComicViewModelHomeLoadingTest {
         assertEquals(callsBefore + 1, repo.embeddedCalls.size)
         assertFalse(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.isLoading == true)
         assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
+    }
+
+    @Test
+    fun rapidAToBToAKeepsAWithAValidRequest() = runTest(scheduler) {
+        val aGate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        val repo = FakeComicRepository(
+            embeddedHandler = { categoryId ->
+                if (categoryId == "builtin_week_hot") aGate.await() else embeddedOk(categoryId)
+            },
+        )
+        val vm = ComicViewModel(repo, FakeSettings())
+        vm.refreshHome()
+        advanceUntilIdle()
+
+        vm.selectHomeCategory("builtin_week_hot")
+        advanceUntilIdle()
+        vm.selectHomeCategory("builtin_month_hot")
+        advanceUntilIdle()
+        vm.selectHomeCategory("builtin_week_hot")
+        advanceUntilIdle()
+
+        assertEquals("builtin_week_hot", vm.homeState.value.selectedCategoryId)
+        assertTrue(vm.homeState.value.states["builtin_week_hot"]?.isLoading == true)
+        assertEquals(1, repo.embeddedCalls.count { it == "builtin_week_hot" })
+
+        aGate.complete(NetWorkResult.Success(listOf(item(99))))
+        advanceUntilIdle()
+        assertFalse(vm.homeState.value.states["builtin_week_hot"]?.isLoading == true)
+        assertEquals(listOf("99"), vm.homeState.value.states["builtin_week_hot"]?.content?.map { it.id })
+    }
+
+    @Test
+    fun refreshingCachedCategoryKeepsItsContentVisible() = runTest(scheduler) {
+        val refreshGate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        var latestCalls = 0
+        val repo = FakeComicRepository(
+            embeddedHandler = { categoryId ->
+                if (categoryId == ComicViewModel.CATEGORY_LATEST && ++latestCalls == 2) {
+                    refreshGate.await()
+                } else {
+                    NetWorkResult.Success(listOf(item(1)))
+                }
+            },
+        )
+        val vm = ComicViewModel(repo, FakeSettings())
+        vm.refreshHome()
+        advanceUntilIdle()
+
+        vm.refreshSelectedHomeCategory()
+        advanceUntilIdle()
+
+        val refreshing = vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]
+        assertTrue(refreshing?.isLoading == true)
+        assertEquals(listOf("1"), refreshing?.content?.map { it.id })
+
+        refreshGate.complete(NetWorkResult.Success(listOf(item(2))))
+        advanceUntilIdle()
+        assertEquals(
+            listOf("2"),
+            vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.map { it.id },
+        )
     }
 }

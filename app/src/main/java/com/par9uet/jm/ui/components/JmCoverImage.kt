@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.components
 
+import android.os.SystemClock
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -33,12 +34,15 @@ internal fun JmCoverImage(
     resolver: CoverImageHostResolver = getKoin().get(),
 ) {
     val context = LocalContext.current
-    val preferredHost by resolver.preferredHost.collectAsState()
-    val candidateUrls = remember(comicId, remoteHost, preferredHost) {
+    val networkGeneration by resolver.networkGeneration.collectAsState()
+    val candidateUrls = remember(comicId, remoteHost, networkGeneration) {
         resolver.coverUrls(comicId, remoteHost)
     }
-    var attemptedUrls by remember(comicId, remoteHost) { mutableStateOf(emptySet<String>()) }
+    var attemptedUrls by remember(comicId, remoteHost, networkGeneration) {
+        mutableStateOf(emptySet<String>())
+    }
     val candidateUrl = nextCoverCandidateUrl(candidateUrls, attemptedUrls)
+    val requestStartedAtMillis = remember(candidateUrl) { SystemClock.elapsedRealtime() }
     val cacheKey = remember(comicId) { jmCoverCacheKey(comicId) }
     val request = remember(context, candidateUrl, cacheKey) {
         candidateUrl?.let { url ->
@@ -59,7 +63,10 @@ internal fun JmCoverImage(
         onSuccess = { state ->
             val loadedUrl = candidateUrl ?: return@AsyncImage
             if (state.result.dataSource == DataSource.NETWORK) {
-                resolver.recordSuccess(loadedUrl)
+                resolver.recordSuccess(
+                    loadedUrl,
+                    (SystemClock.elapsedRealtime() - requestStartedAtMillis).coerceAtLeast(1L),
+                )
             }
             if (BuildConfig.DEBUG) {
                 log(

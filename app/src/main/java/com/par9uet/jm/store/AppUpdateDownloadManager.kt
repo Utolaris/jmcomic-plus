@@ -126,7 +126,7 @@ class AppUpdateDownloadManager(
         runCatching {
             val httpRequest = Request.Builder()
                 .url(request.downloadUrl)
-                .header("User-Agent", "jmcomic-next-android")
+                .header("User-Agent", "jmcomic-plus-android")
                 .build()
             client.newCall(httpRequest).execute().use { response ->
                 if (!response.isSuccessful) {
