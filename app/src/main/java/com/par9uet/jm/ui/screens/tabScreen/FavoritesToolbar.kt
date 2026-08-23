@@ -69,8 +69,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.components.FavoriteSyncIconButton
+import com.par9uet.jm.ui.glass.GlassAnchoredMenuState
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
+import com.par9uet.jm.ui.glass.glassMenuAnchor
 import com.par9uet.jm.ui.viewModel.UserViewModel
 
 internal object FavoritesToolbarDefaults {
@@ -159,7 +161,7 @@ private fun FavoritesSearchField(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FavoritesFolderTitle(
+private fun FavoritesMaterialFolderTitle(
     title: String,
     selectedFolderId: Int,
     folderList: Map<String, String>,
@@ -234,10 +236,41 @@ private fun FavoritesFolderTitle(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FavoritesGlassFolderTitle(
+    title: String,
+    menuState: GlassAnchoredMenuState,
+    modifier: Modifier = Modifier,
+) {
+    val hapticFeedback = LocalHapticFeedback.current
+    Box(
+        modifier = modifier
+            .glassMenuAnchor(menuState)
+            .combinedClickable(
+                onClick = {},
+                onLongClick = {
+                    hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                    menuState.open()
+                },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = title,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 @Composable
 internal fun FavoritesVariableGlassTopBar(
     statusBarInset: Dp,
     controller: FavoritesUiController,
+    folderMenuState: GlassAnchoredMenuState,
     userViewModel: UserViewModel,
     modifier: Modifier = Modifier,
 ) {
@@ -263,6 +296,7 @@ internal fun FavoritesVariableGlassTopBar(
     }
     LaunchedEffect(mode) {
         if (mode != FavoritesToolbarMode.SEARCH) keyboardController?.hide()
+        if (mode != FavoritesToolbarMode.NORMAL) folderMenuState.dismiss()
     }
     BackHandler(enabled = mode != FavoritesToolbarMode.NORMAL) {
         when (mode) {
@@ -308,21 +342,20 @@ internal fun FavoritesVariableGlassTopBar(
             when (targetMode) {
                 FavoritesToolbarMode.NORMAL -> FavoritesNormalGlassContent(
                     title = title,
-                    selectedFolderId = selectedFolderId,
-                    folderList = folderList,
                     isSyncing = syncState.isSyncing,
                     hasSyncError = syncState.errorMessage != null,
                     activeFilterCount = activeFilterCount,
                     surfaceAlpha = normalSurfaceAlpha,
+                    folderMenuState = folderMenuState,
                     onSync = { userViewModel.requestFavoriteManualSync(selectedFolderId) },
-                    onSearch = controller::enterSearch,
-                    onFilter = controller::showFilterDialog,
-                    onFolderSelected = { folderId ->
-                        userViewModel.clearCollectSelection()
-                        exitSearch()
-                        userViewModel.changeFolder(folderId)
+                    onSearch = {
+                        folderMenuState.dismiss()
+                        controller.enterSearch()
                     },
-                    onManageFolders = controller::showFolderManagement,
+                    onFilter = {
+                        folderMenuState.dismiss()
+                        controller.showFilterDialog()
+                    },
                 )
 
                 FavoritesToolbarMode.SEARCH -> FavoritesSearchGlassContent(
@@ -349,17 +382,14 @@ internal fun FavoritesVariableGlassTopBar(
 @Composable
 private fun FavoritesNormalGlassContent(
     title: String,
-    selectedFolderId: Int,
-    folderList: Map<String, String>,
     isSyncing: Boolean,
     hasSyncError: Boolean,
     activeFilterCount: Int,
     surfaceAlpha: Float,
+    folderMenuState: GlassAnchoredMenuState,
     onSync: () -> Unit,
     onSearch: () -> Unit,
     onFilter: () -> Unit,
-    onFolderSelected: (Int) -> Unit,
-    onManageFolders: () -> Unit,
 ) {
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val trailingWidth = 104.dp
@@ -391,12 +421,9 @@ private fun FavoritesNormalGlassContent(
             style = GlassSurfaceStyle(cornerRadius = 25.dp),
             surfaceAlpha = surfaceAlpha,
         ) {
-            FavoritesFolderTitle(
+            FavoritesGlassFolderTitle(
                 title = title,
-                selectedFolderId = selectedFolderId,
-                folderList = folderList,
-                onFolderSelected = onFolderSelected,
-                onManageFolders = onManageFolders,
+                menuState = folderMenuState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(horizontal = 12.dp),
@@ -594,7 +621,7 @@ internal fun FavoritesMaterialTopBar(
         },
         title = {
             when (mode) {
-                FavoritesToolbarMode.NORMAL -> FavoritesFolderTitle(
+                FavoritesToolbarMode.NORMAL -> FavoritesMaterialFolderTitle(
                     title = resolveFavoriteFolderTitle(selectedFolderId, folderList),
                     selectedFolderId = selectedFolderId,
                     folderList = folderList,

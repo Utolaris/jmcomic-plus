@@ -55,9 +55,11 @@ import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.Comic
 import com.par9uet.jm.ui.components.ComicSkeleton
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
-import com.par9uet.jm.ui.glass.GlassSurface
-import com.par9uet.jm.ui.glass.GlassSurfaceStyle
+import com.par9uet.jm.ui.glass.AppGlassTopBar
+import com.par9uet.jm.ui.glass.GlassAnchoredMenuState
+import com.par9uet.jm.ui.glass.glassMenuAnchor
 import com.par9uet.jm.ui.interaction.pullDownToAction
+import com.par9uet.jm.ui.interaction.PullDownActionState
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.utils.filterBlockedTags
@@ -71,10 +73,6 @@ private const val TEXT_SIGN = "\u7b7e\u5230"
 private const val TEXT_EXTRACT = "\u63d0\u53d6"
 private const val CATEGORY_LOADING_SKELETON_COUNT = 18
 
-internal object HomeGlassTopBarDefaults {
-    val toolbarHeight = 60.dp
-}
-
 internal fun resolveHomeCategoryTitle(
     categories: List<ComicViewModel.HomeCategoryInfo>,
     selectedCategoryId: String?,
@@ -84,7 +82,7 @@ internal fun resolveHomeCategoryTitle(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-internal fun HomeCategoryTitleSelector(
+internal fun HomeMaterialCategoryTitleSelector(
     title: String,
     categories: List<ComicViewModel.HomeCategoryInfo>,
     selectedCategoryId: String?,
@@ -165,17 +163,18 @@ private fun HomeSkeleton(
 }
 
 @Composable
-fun HomeScreen(
+internal fun HomeScreen(
     comicViewModel: ComicViewModel = koinActivityViewModel(),
     localSettingManager: LocalSettingManager = getKoin().get(),
     topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
+    pullDownState: PullDownActionState = rememberPullDownActionState(),
     onPullDownSearch: () -> Unit = {},
 ) {
     val homeState by comicViewModel.homeState.collectAsState()
     val localSetting by localSettingManager.localSettingState.collectAsState()
+    val pullRevealPadding = 36.dp * pullDownState.progress
     val gridState = rememberLazyGridState()
-    val pullDownState = rememberPullDownActionState()
     val pullDownModifier = Modifier.pullDownToAction(
         state = pullDownState,
         isAtTop = { !gridState.canScrollBackward },
@@ -193,7 +192,7 @@ fun HomeScreen(
     if (showSkeleton) {
         HomeSkeleton(
             gridColumns = localSetting.homeGridColumns,
-            topContentPadding = topContentPadding,
+            topContentPadding = topContentPadding + pullRevealPadding,
             bottomContentPadding = bottomContentPadding,
             gridState = gridState,
             modifier = pullDownModifier,
@@ -217,7 +216,7 @@ fun HomeScreen(
         contentPadding = PaddingValues(
             start = 12.dp,
             end = 12.dp,
-            top = topContentPadding,
+            top = topContentPadding + pullRevealPadding,
             bottom = 16.dp + bottomContentPadding,
         )
     ) {
@@ -290,7 +289,7 @@ fun HomeScreen(
 }
 
 @Composable
-internal fun HomeTopBarActions(
+internal fun HomeMaterialTopBarActions(
     onSearch: () -> Unit,
     onDownload: () -> Unit,
     onWeekly: () -> Unit,
@@ -343,44 +342,59 @@ internal fun HomeTopBarActions(
 @Composable
 internal fun HomeGlassTopBar(
     title: String,
-    categories: List<ComicViewModel.HomeCategoryInfo>,
-    selectedCategoryId: String?,
     statusBarInset: Dp,
+    categoryMenuState: GlassAnchoredMenuState,
+    moreMenuState: GlassAnchoredMenuState,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
     onDownload: () -> Unit,
-    onWeekly: () -> Unit,
-    onExtract: () -> Unit,
-    onSign: () -> Unit,
-    onCategorySelected: (String) -> Unit,
 ) {
-    GlassSurface(
+    val hapticFeedback = LocalHapticFeedback.current
+    AppGlassTopBar(
         surfaceId = "primary-home-top-bar",
-        modifier = modifier
-            .fillMaxWidth()
-            .height(statusBarInset + HomeGlassTopBarDefaults.toolbarHeight),
-        style = GlassSurfaceStyle(cornerRadius = 0.dp),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = statusBarInset, start = 8.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            HomeCategoryTitleSelector(
-                modifier = Modifier.weight(1f),
-                title = title,
-                categories = categories,
-                selectedCategoryId = selectedCategoryId,
-                onCategorySelected = onCategorySelected,
-            )
-            HomeTopBarActions(
-                onSearch = onSearch,
-                onDownload = onDownload,
-                onWeekly = onWeekly,
-                onExtract = onExtract,
-                onSign = onSign,
-            )
-        }
-    }
+        statusBarInset = statusBarInset,
+        modifier = modifier,
+        title = {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .glassMenuAnchor(categoryMenuState)
+                    .combinedClickable(
+                        onClick = {},
+                        onLongClick = {
+                            hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                            moreMenuState.dismiss()
+                            categoryMenuState.open()
+                        },
+                    ),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Text(
+                    text = title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+        },
+        actions = {
+            IconButton(onClick = onSearch) {
+                Icon(Icons.Rounded.Search, contentDescription = TEXT_SEARCH)
+            }
+            IconButton(onClick = onDownload) {
+                Icon(Icons.Rounded.Download, contentDescription = TEXT_DOWNLOAD)
+            }
+            IconButton(
+                onClick = {
+                    categoryMenuState.dismiss()
+                    moreMenuState.open()
+                },
+                modifier = Modifier.glassMenuAnchor(moreMenuState),
+            ) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "更多")
+            }
+        },
+    )
 }

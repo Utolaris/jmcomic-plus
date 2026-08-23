@@ -73,6 +73,7 @@ import com.par9uet.jm.ui.components.Comic
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
 import com.par9uet.jm.ui.interaction.pullDownToAction
+import com.par9uet.jm.ui.interaction.PullDownActionState
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.ui.screens.tabScreen.FavoritesMaterialTopBar
 import com.par9uet.jm.ui.screens.tabScreen.FavoritesUiController
@@ -90,6 +91,7 @@ internal fun UserCollectComicScreen(
     useScaffold: Boolean = true,
     localSettingManager: LocalSettingManager = getKoin().get(),
     uiController: FavoritesUiController? = null,
+    pullDownState: PullDownActionState = rememberPullDownActionState(),
     topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
 ) {
@@ -147,7 +149,7 @@ internal fun UserCollectComicScreen(
     }
 
     val gridState = rememberLazyGridState()
-    val pullDownState = rememberPullDownActionState()
+    val pullRevealPadding = 36.dp * pullDownState.progress
     val gridModifier = Modifier
         .fillMaxSize()
         .pullDownToAction(
@@ -178,7 +180,7 @@ internal fun UserCollectComicScreen(
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             contentPadding = PaddingValues(
                 start = 14.dp,
-                top = topContentPadding + 14.dp,
+                top = topContentPadding + pullRevealPadding + 14.dp,
                 end = 14.dp,
                 bottom = 14.dp + bottomContentPadding,
             ),

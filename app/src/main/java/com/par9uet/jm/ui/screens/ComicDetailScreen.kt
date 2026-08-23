@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,11 +45,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
@@ -66,7 +64,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -83,6 +80,8 @@ import com.par9uet.jm.ui.components.ComicContentTag
 import com.par9uet.jm.ui.components.ComicCoverImage
 import com.par9uet.jm.ui.components.ComicRoleTag
 import com.par9uet.jm.ui.components.ComicWorkTag
+import com.par9uet.jm.ui.glass.AppGlassTopBar
+import com.par9uet.jm.ui.glass.AppGlassTopBarDefaults
 import com.par9uet.jm.ui.glass.GlassCaptureHost
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
@@ -130,41 +129,39 @@ private fun ComicInfoListItem(
 }
 
 @Composable
-private fun ComicDetailSkeleton() {
+private fun ComicDetailSkeleton(topContentPadding: Dp) {
     val scrollState = rememberScrollState()
-    Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-        Column(
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(scrollState)
+            .padding(top = topContentPadding),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(scrollState),
+                .fillMaxWidth()
+                .aspectRatio(0.75f)
+                .shimmer()
+        )
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .aspectRatio(0.75f)
+                    .fillMaxWidth(0.8f)
+                    .height(36.dp)
+                    .clip(MaterialTheme.shapes.extraSmall)
                     .shimmer()
             )
-            Column(
-                modifier = Modifier.padding(horizontal = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.8f)
-                        .height(36.dp)
-                        .clip(MaterialTheme.shapes.extraSmall)
-                        .shimmer()
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.4f)
-                        .height(34.dp)
-                        .clip(MaterialTheme.shapes.extraSmall)
-                        .shimmer()
-                )
-            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(0.4f)
+                    .height(34.dp)
+                    .clip(MaterialTheme.shapes.extraSmall)
+                    .shimmer()
+            )
         }
     }
 }
@@ -304,48 +301,13 @@ fun ComicDetailScreen(
             comicDetailViewModel.getComicDetail(id)
         }
     }
-
-    // Error state: no data and error occurred
-    if (comicDetailState.isError && comicDetailState.data == null) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            topBar = {
-                TopAppBar(
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                    ),
-                    navigationIcon = {
-                        IconButton(onClick = { mainNavController.popBackStack() }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "\u8fd4\u56de"
-                            )
-                        }
-                    },
-                    title = {}
-                )
-            }
-        ) { innerPadding ->
-            ComicDetailErrorPage(
-                errorMessage = comicDetailState.errorMsg,
-                onRetry = { comicDetailViewModel.getComicDetail(id) },
-                onBack = { mainNavController.popBackStack() },
-                modifier = Modifier.padding(innerPadding)
-            )
-        }
-        return
-    }
-
-    // Loading skeleton
-    if (comicDetailState.isLoading && comicDetailState.data == null) {
-        ComicDetailSkeleton()
-        return
-    }
-
-    val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
     val navigationBarInset = with(LocalDensity.current) {
         WindowInsets.navigationBars.getBottom(this).toDp()
     }
+    val statusBarInset = with(LocalDensity.current) {
+        WindowInsets.statusBars.getTop(this).toDp()
+    }
+    val detailTopContentPadding = statusBarInset + AppGlassTopBarDefaults.ContentHeight
     val detailBarHeight = 64.dp
     val detailBarBottomPadding = 8.dp + navigationBarInset
     val detailContentBottomPadding = detailBarHeight + detailBarBottomPadding
@@ -353,192 +315,205 @@ fun ComicDetailScreen(
     GlassCaptureHost(
         modifier = Modifier.fillMaxSize(),
         sourceContent = {
-            Scaffold(
-                contentWindowInsets = WindowInsets(),
-                modifier = Modifier
-                    .fillMaxSize()
-                    .nestedScroll(scrollBehavior.nestedScrollConnection),
-                topBar = {
-                    val comicTitle = comicDetailState.data?.name ?: ""
-                    TopAppBar(
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                            scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                        ),
-                        navigationIcon = {
-                            IconButton(onClick = { mainNavController.popBackStack() }) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "\u8fd4\u56de"
-                                )
-                            }
-                        },
-                        title = {
-                            Text(
-                                text = comicTitle,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        },
-                        scrollBehavior = scrollBehavior
+            when {
+                comicDetailState.isError && comicDetailState.data == null -> {
+                    ComicDetailErrorPage(
+                        errorMessage = comicDetailState.errorMsg,
+                        onRetry = { comicDetailViewModel.getComicDetail(id) },
+                        onBack = { mainNavController.popBackStack() },
+                        modifier = Modifier.padding(top = detailTopContentPadding),
                     )
-                },
-            ) { innerPadding ->
-                val comic = comicDetailState.data ?: return@Scaffold
-
-        if (showDownloadChapterDialog) {
-            ChapterMultiSelectDialog(
-                title = "\u9009\u62e9\u7f13\u5b58\u7ae0\u8282",
-                chapters = comic.comicChapterList,
-                selectedChapterIds = selectedChapterIds,
-                onSelectedChange = { selectedChapterIds = it },
-                onDismiss = { showDownloadChapterDialog = false },
-                confirmText = "\u5f00\u59cb\u7f13\u5b58",
-                onConfirm = {
-                    val selectedChapters = comic.comicChapterList.filter { it.id in selectedChapterIds }
-                    downloadManager.downloadChapters(comic, selectedChapters)
-                    showDownloadChapterDialog = false
                 }
-            )
-        }
-
-        PullToRefreshBox(
-            isRefreshing = comicDetailState.isLoading,
-            state = rememberPullToRefreshState(),
-            onRefresh = { comicDetailViewModel.getComicDetail(id) },
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-        ) {
-            BoxWithConstraints(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                val isTabletLayout = maxWidth >= 700.dp
-                val viewportHeight = maxHeight
-                if (isTabletLayout) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(18.dp)
-                    ) {
-                        ComicCoverImage(
-                            comic = comic,
-                            modifier = Modifier
-                                .widthIn(max = 320.dp)
-                                .weight(0.42f),
-                            showIdChip = true
-                        )
-                        Column(
-                            modifier = Modifier
-                                .weight(0.58f)
-                                .verticalScroll(scrollState)
-                                .padding(bottom = detailContentBottomPadding),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            ComicMetadataContent(comic, ::searchTag)
-                            ComicCommentArea(
-                                comicId = comic.id,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(viewportHeight)
+                comicDetailState.isLoading && comicDetailState.data == null -> {
+                    ComicDetailSkeleton(topContentPadding = detailTopContentPadding)
+                }
+                else -> {
+                    val comic = comicDetailState.data
+                    if (comic != null) {
+                        if (showDownloadChapterDialog) {
+                            ChapterMultiSelectDialog(
+                                title = "\u9009\u62e9\u7f13\u5b58\u7ae0\u8282",
+                                chapters = comic.comicChapterList,
+                                selectedChapterIds = selectedChapterIds,
+                                onSelectedChange = { selectedChapterIds = it },
+                                onDismiss = { showDownloadChapterDialog = false },
+                                confirmText = "\u5f00\u59cb\u7f13\u5b58",
+                                onConfirm = {
+                                    val selectedChapters = comic.comicChapterList.filter {
+                                        it.id in selectedChapterIds
+                                    }
+                                    downloadManager.downloadChapters(comic, selectedChapters)
+                                    showDownloadChapterDialog = false
+                                },
                             )
                         }
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(scrollState)
-                            .padding(bottom = detailContentBottomPadding),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        ComicCoverImage(comic = comic, showIdChip = true)
-                        Column(
-                            modifier = Modifier.padding(horizontal = 10.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp)
+
+                        PullToRefreshBox(
+                            isRefreshing = comicDetailState.isLoading,
+                            state = rememberPullToRefreshState(),
+                            onRefresh = { comicDetailViewModel.getComicDetail(id) },
+                            modifier = Modifier.fillMaxSize(),
                         ) {
-                            ComicMetadataContent(comic, ::searchTag)
+                            BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+                                val isTabletLayout = maxWidth >= 700.dp
+                                val viewportHeight = maxHeight
+                                if (isTabletLayout) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(
+                                                start = 16.dp,
+                                                top = detailTopContentPadding + 16.dp,
+                                                end = 16.dp,
+                                                bottom = 16.dp,
+                                            ),
+                                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                                    ) {
+                                        ComicCoverImage(
+                                            comic = comic,
+                                            modifier = Modifier
+                                                .widthIn(max = 320.dp)
+                                                .weight(0.42f),
+                                            showIdChip = true,
+                                        )
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(0.58f)
+                                                .verticalScroll(scrollState)
+                                                .padding(bottom = detailContentBottomPadding),
+                                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                                        ) {
+                                            ComicMetadataContent(comic, ::searchTag)
+                                            ComicCommentArea(
+                                                comicId = comic.id,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(viewportHeight),
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .verticalScroll(scrollState)
+                                            .padding(
+                                                top = detailTopContentPadding,
+                                                bottom = detailContentBottomPadding,
+                                            ),
+                                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                                    ) {
+                                        ComicCoverImage(comic = comic, showIdChip = true)
+                                        Column(
+                                            modifier = Modifier.padding(horizontal = 10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(16.dp),
+                                        ) {
+                                            ComicMetadataContent(comic, ::searchTag)
+                                        }
+                                        ComicCommentArea(
+                                            comicId = comic.id,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(viewportHeight),
+                                        )
+                                    }
+                                }
+                            }
                         }
-                        ComicCommentArea(
-                            comicId = comic.id,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(viewportHeight)
-                        )
+
+                        val showFolderPicker by comicDetailViewModel.showFolderPicker.collectAsState()
+                        val folderList by comicDetailViewModel.folderList.collectAsState()
+                        if (showFolderPicker) {
+                            FolderPickerSheet(
+                                comicId = comic.id,
+                                folderList = folderList,
+                                onSelect = { folderId ->
+                                    comicDetailViewModel.collectWithFolder(comic.id, folderId)
+                                },
+                                onDismiss = comicDetailViewModel::hideFolderPicker,
+                            )
+                        }
                     }
                 }
             }
-        }
-
-        // 收藏夹选择弹窗（内置/混合数据源）
-        val showFolderPicker by comicDetailViewModel.showFolderPicker.collectAsState()
-        val folderList by comicDetailViewModel.folderList.collectAsState()
-        if (showFolderPicker) {
-            FolderPickerSheet(
-                comicId = comic.id,
-                folderList = folderList,
-                onSelect = { folderId -> comicDetailViewModel.collectWithFolder(comic.id, folderId) },
-                onDismiss = { comicDetailViewModel.hideFolderPicker() }
-            )
-        }
-        }
         },
         overlayContent = {
             val comic = comicDetailState.data
-            if (comic != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(bottom = detailBarBottomPadding),
-                ) {
-                    ComicDetailBottomBar(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .widthIn(max = 600.dp)
-                            .height(detailBarHeight),
-                        comic = comic,
-                        likeEnabled = !comic.isLike && comic.id !in likeRequestInFlightComicIds,
-                        readHistoryManager = readHistoryManager,
-                        readHistory = readHistory,
-                        onLike = {
-                            requireLogin {
-                                comicDetailViewModel.likeComic(comic.id)
-                            }
-                        },
-                        onCollect = {
-                            requireLogin {
-                                if (comic.isCollect) {
-                                    comicDetailViewModel.unCollect(comic.id)
-                                } else if (comicDetailViewModel.shouldShowFolderPicker()) {
-                                    comicDetailViewModel.refreshFolderList()
-                                    comicDetailViewModel.showFolderPicker()
-                                } else {
-                                    comicDetailViewModel.collect(comic.id)
-                                }
-                            }
-                        },
-                        onRelated = { mainNavController.navigate("comicRelate") },
-                        onDownload = {
-                            if (comic.comicChapterList.isEmpty()) {
-                                downloadManager.downloadComic(comic)
-                            } else {
-                                selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
-                                showDownloadChapterDialog = true
-                            }
-                        },
-                        onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
-                        onChapters = {
-                            val currentChapterId =
-                                readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
-                            mainNavController.navigate(
-                                "comicChapter?currentChapterId=$currentChapterId"
+            Box(modifier = Modifier.fillMaxSize()) {
+                AppGlassTopBar(
+                    surfaceId = "comic-detail-top-bar",
+                    statusBarInset = statusBarInset,
+                    modifier = Modifier.align(Alignment.TopCenter),
+                    navigationIcon = {
+                        IconButton(onClick = { mainNavController.popBackStack() }) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "\u8fd4\u56de",
                             )
                         }
-                    )
+                    },
+                    title = {
+                        Text(
+                            text = comic?.name.orEmpty(),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    },
+                )
+                if (comic != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = detailBarBottomPadding),
+                    ) {
+                        ComicDetailBottomBar(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .widthIn(max = 600.dp)
+                                .height(detailBarHeight),
+                            comic = comic,
+                            likeEnabled = !comic.isLike && comic.id !in likeRequestInFlightComicIds,
+                            readHistoryManager = readHistoryManager,
+                            readHistory = readHistory,
+                            onLike = {
+                                requireLogin {
+                                    comicDetailViewModel.likeComic(comic.id)
+                                }
+                            },
+                            onCollect = {
+                                requireLogin {
+                                    if (comic.isCollect) {
+                                        comicDetailViewModel.unCollect(comic.id)
+                                    } else if (comicDetailViewModel.shouldShowFolderPicker()) {
+                                        comicDetailViewModel.refreshFolderList()
+                                        comicDetailViewModel.showFolderPicker()
+                                    } else {
+                                        comicDetailViewModel.collect(comic.id)
+                                    }
+                                }
+                            },
+                            onRelated = { mainNavController.navigate("comicRelate") },
+                            onDownload = {
+                                if (comic.comicChapterList.isEmpty()) {
+                                    downloadManager.downloadComic(comic)
+                                } else {
+                                    selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
+                                    showDownloadChapterDialog = true
+                                }
+                            },
+                            onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
+                            onChapters = {
+                                val currentChapterId =
+                                    readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
+                                mainNavController.navigate(
+                                    "comicChapter?currentChapterId=$currentChapterId"
+                                )
+                            },
+                        )
+                    }
                 }
             }
         },

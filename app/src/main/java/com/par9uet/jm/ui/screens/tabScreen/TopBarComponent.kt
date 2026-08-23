@@ -8,8 +8,8 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.style.TextOverflow
 import com.par9uet.jm.ui.navigation.MainTab
-import com.par9uet.jm.ui.screens.HomeCategoryTitleSelector
-import com.par9uet.jm.ui.screens.HomeTopBarActions
+import com.par9uet.jm.ui.screens.HomeMaterialCategoryTitleSelector
+import com.par9uet.jm.ui.screens.HomeMaterialTopBarActions
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
@@ -34,7 +34,7 @@ private fun HomeTopBarComponent(
             titleContentColor = MaterialTheme.colorScheme.onSurface,
         ),
         title = {
-            HomeCategoryTitleSelector(
+            HomeMaterialCategoryTitleSelector(
                 title = title,
                 categories = categories,
                 selectedCategoryId = selectedCategoryId,
@@ -42,7 +42,7 @@ private fun HomeTopBarComponent(
             )
         },
         actions = {
-            HomeTopBarActions(
+            HomeMaterialTopBarActions(
                 onSearch = onSearch,
                 onDownload = onDownload,
                 onWeekly = onWeekly,
