@@ -64,11 +64,12 @@ data class HistoryEditState(
 
 private data class CollectPagerKey(
     val accountId: Int,
-    val order: CollectComicOrderFilter,
     val blockedTagList: List<String>,
     val filter: CollectComicLocalFilter,
     val folderId: Int
 )
+
+internal val FAVORITE_CANONICAL_ORDER = CollectComicOrderFilter.COLLECT_TIME
 
 data class FavoriteSyncUiState(
     val isSyncing: Boolean = false,
@@ -129,8 +130,6 @@ class UserViewModel(
         }
     }
 
-    private val _collectComicOrder = MutableStateFlow(CollectComicOrderFilter.COLLECT_TIME)
-    val collectComicOrder = _collectComicOrder.asStateFlow()
     private val _collectComicFilter = MutableStateFlow(CollectComicLocalFilter())
     val collectComicFilter = _collectComicFilter.asStateFlow()
     private val _selectedFolderId = MutableStateFlow(0)
@@ -183,13 +182,12 @@ class UserViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
 
     val collectComicPager = combine(
-        _collectComicOrder,
         localSettingManager.localSettingState,
         _collectComicFilter,
         _selectedFolderId,
         accountIdFlow,
-    ) { order, localSetting, filter, folderId, accountId ->
-        CollectPagerKey(accountId, order, localSetting.blockedTagList, filter, folderId)
+    ) { localSetting, filter, folderId, accountId ->
+        CollectPagerKey(accountId, localSetting.blockedTagList, filter, folderId)
     }.flatMapLatest { key ->
         Pager(
             config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
@@ -197,7 +195,6 @@ class UserViewModel(
                 CollectComicPagingSource(
                     favoriteStore.pagingSource(
                         accountId = key.accountId,
-                        order = key.order,
                         blockedTagList = key.blockedTagList,
                         searchText = key.filter.searchText,
                         selectedTags = key.filter.selectedTags,
@@ -209,16 +206,6 @@ class UserViewModel(
             }
         ).flow
     }.cachedIn(viewModelScope)
-
-    fun changeCollectComicOrder(order: CollectComicOrderFilter) {
-        if (_collectComicOrder.value == order) return
-        _collectComicOrder.update {
-            order
-        }
-        // A display sorting change must not hit the server. Note: the local cache currently
-        // resolves COLLECT_TIME and UPDATE_TIME to the same stored order; a real UPDATE_TIME
-        // ordering would need additional synced metadata and is tracked as a known limitation.
-    }
 
     fun updateCollectSearchText(value: String) {
         _collectComicFilter.update { it.copy(searchText = value) }
@@ -237,6 +224,7 @@ class UserViewModel(
     }
 
     fun changeFolder(folderId: Int) {
+        clearCollectSelection()
         _selectedFolderId.update { folderId }
         requestFavoriteAutoSync(folderId)
     }
@@ -428,7 +416,7 @@ class UserViewModel(
                 accountId = accountId,
                 folderId = folderId,
                 force = force,
-                order = _collectComicOrder.value,
+                order = FAVORITE_CANONICAL_ORDER,
                 onProgress = { progress ->
                     if (currentAccountId() == accountId) {
                         _favoriteSyncState.update {

@@ -1,7 +1,7 @@
 package com.par9uet.jm.ui.screens
 
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -10,17 +10,21 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Password
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.rounded.Download
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.DropdownMenu
@@ -30,7 +34,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -40,7 +43,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -52,11 +57,12 @@ import com.par9uet.jm.ui.components.ComicSkeleton
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
+import com.par9uet.jm.ui.interaction.pullDownToAction
+import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.utils.filterBlockedTags
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
-import kotlin.math.abs
 
 private const val TEXT_SEARCH = "\u641c\u7d22"
 private const val TEXT_WEEKLY = "\u6bcf\u5468"
@@ -76,15 +82,72 @@ internal fun resolveHomeCategoryTitle(
     return categories.firstOrNull { it.id == selectedCategoryId }?.title ?: "首页"
 }
 
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun HomeCategoryTitleSelector(
+    title: String,
+    categories: List<ComicViewModel.HomeCategoryInfo>,
+    selectedCategoryId: String?,
+    onCategorySelected: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    val hapticFeedback = LocalHapticFeedback.current
+    val menuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
+
+    Box(
+        modifier = modifier.combinedClickable(
+            onClick = {},
+            onLongClick = {
+                hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                menuExpanded = true
+            },
+        ),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        Text(
+            text = title,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            fontSize = 18.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+        DropdownMenu(
+            expanded = menuExpanded,
+            onDismissRequest = { menuExpanded = false },
+            modifier = Modifier.heightIn(max = menuMaxHeight),
+        ) {
+            categories.forEach { category ->
+                val selected = category.id == selectedCategoryId
+                DropdownMenuItem(
+                    text = { Text(category.title) },
+                    leadingIcon = if (selected) {
+                        { Icon(Icons.Rounded.Check, contentDescription = null) }
+                    } else {
+                        null
+                    },
+                    onClick = {
+                        menuExpanded = false
+                        onCategorySelected(category.id)
+                    },
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeSkeleton(
     gridColumns: Int,
     topContentPadding: Dp,
     bottomContentPadding: Dp,
+    gridState: LazyGridState,
+    modifier: Modifier = Modifier,
 ) {
     LazyVerticalGrid(
-        modifier = Modifier
-            .fillMaxSize(),
+        modifier = modifier.fillMaxSize(),
+        state = gridState,
         columns = adaptiveComicGridCells(gridColumns),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Top),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -107,9 +170,17 @@ fun HomeScreen(
     localSettingManager: LocalSettingManager = getKoin().get(),
     topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
+    onPullDownSearch: () -> Unit = {},
 ) {
     val homeState by comicViewModel.homeState.collectAsState()
     val localSetting by localSettingManager.localSettingState.collectAsState()
+    val gridState = rememberLazyGridState()
+    val pullDownState = rememberPullDownActionState()
+    val pullDownModifier = Modifier.pullDownToAction(
+        state = pullDownState,
+        isAtTop = { !gridState.canScrollBackward },
+        onTrigger = onPullDownSearch,
+    )
 
     LaunchedEffect(localSetting.comicApiSource, localSetting.preferenceRecommendEnabled) {
         comicViewModel.refreshHome()
@@ -124,17 +195,10 @@ fun HomeScreen(
             gridColumns = localSetting.homeGridColumns,
             topContentPadding = topContentPadding,
             bottomContentPadding = bottomContentPadding,
+            gridState = gridState,
+            modifier = pullDownModifier,
         )
         return
-    }
-
-    val selectedIndex = homeState.categories
-        .indexOfFirst { it.id == selectedCategoryId }
-        .coerceAtLeast(0)
-    val onTabClick: (index: Int) -> Unit = {
-        homeState.categories.getOrNull(it)?.let { category ->
-            comicViewModel.selectHomeCategory(category.id)
-        }
     }
 
     val currentContent = selectedState?.content.orEmpty()
@@ -144,49 +208,19 @@ fun HomeScreen(
     val comicList = remember(currentContent, allExcludedTags) {
         currentContent.map { it.toComic() }.filterBlockedTags(allExcludedTags)
     }
-    PullToRefreshBox(
-        modifier = Modifier.fillMaxSize(),
-        isRefreshing = selectedState?.isLoading == true && currentContent.isNotEmpty(),
-        onRefresh = { comicViewModel.refreshSelectedHomeCategory() }
+    LazyVerticalGrid(
+        modifier = pullDownModifier.fillMaxSize(),
+        state = gridState,
+        columns = adaptiveComicGridCells(localSetting.homeGridColumns),
+        verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Top),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            end = 12.dp,
+            top = topContentPadding,
+            bottom = 16.dp + bottomContentPadding,
+        )
     ) {
-        LazyVerticalGrid(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(selectedIndex, homeState.categories.size) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown(requireUnconsumed = false)
-                        var totalX = 0f
-                        var totalY = 0f
-                        do {
-                            val event = awaitPointerEvent()
-                            val change = event.changes.firstOrNull { it.id == down.id }
-                            if (change == null) break
-                            totalX += change.position.x - change.previousPosition.x
-                            totalY += change.position.y - change.previousPosition.y
-                        } while (event.changes.any { it.pressed })
-
-                        if (
-                            abs(totalX) > 72.dp.toPx() &&
-                            abs(totalX) > abs(totalY) * 1.2f
-                        ) {
-                            if (totalX < 0) {
-                                onTabClick(selectedIndex + 1)
-                            } else {
-                                onTabClick(selectedIndex - 1)
-                            }
-                        }
-                    }
-                },
-            columns = adaptiveComicGridCells(localSetting.homeGridColumns),
-            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Top),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(
-                start = 12.dp,
-                end = 12.dp,
-                top = topContentPadding,
-                bottom = 16.dp + bottomContentPadding,
-            )
-        ) {
             if (selectedState?.isLoading == true && currentContent.isEmpty()) {
                 items(CATEGORY_LOADING_SKELETON_COUNT) {
                     ComicSkeleton()
@@ -253,7 +287,6 @@ fun HomeScreen(
                 }
             }
         }
-    }
 }
 
 @Composable
@@ -310,6 +343,8 @@ internal fun HomeTopBarActions(
 @Composable
 internal fun HomeGlassTopBar(
     title: String,
+    categories: List<ComicViewModel.HomeCategoryInfo>,
+    selectedCategoryId: String?,
     statusBarInset: Dp,
     modifier: Modifier = Modifier,
     onSearch: () -> Unit,
@@ -317,6 +352,7 @@ internal fun HomeGlassTopBar(
     onWeekly: () -> Unit,
     onExtract: () -> Unit,
     onSign: () -> Unit,
+    onCategorySelected: (String) -> Unit,
 ) {
     GlassSurface(
         surfaceId = "primary-home-top-bar",
@@ -331,14 +367,12 @@ internal fun HomeGlassTopBar(
                 .padding(top = statusBarInset, start = 8.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
+            HomeCategoryTitleSelector(
                 modifier = Modifier.weight(1f),
-                text = title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
+                title = title,
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = onCategorySelected,
             )
             HomeTopBarActions(
                 onSearch = onSearch,

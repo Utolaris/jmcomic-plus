@@ -319,6 +319,7 @@ fun UserScreen(
     userManager: UserManager = getKoin().get(),
     remoteSettingManager: RemoteSettingManager = getKoin().get(),
     userViewModel: UserViewModel = koinActivityViewModel(),
+    topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -354,7 +355,7 @@ fun UserScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = 16.dp,
-                    top = 16.dp,
+                    top = 16.dp + topContentPadding,
                     end = 16.dp,
                     bottom = 16.dp + bottomContentPadding,
                 ),

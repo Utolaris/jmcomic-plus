@@ -6,7 +6,6 @@ import androidx.room.withTransaction
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.database.dao.FavoriteComicDao
@@ -71,7 +70,6 @@ class FavoriteStore(
 ) {
     fun pagingSource(
         accountId: Int,
-        order: CollectComicOrderFilter,
         blockedTagList: List<String>,
         searchText: String,
         selectedTags: Set<String>,
@@ -81,7 +79,6 @@ class FavoriteStore(
     ): PagingSource<Int, FavoriteComicEntity> = comicDao.pagingSource(
         buildFavoritePagingQuery(
             accountId = accountId,
-            order = order,
             blockedTagList = blockedTagList,
             searchText = searchText,
             selectedTags = selectedTags,
@@ -497,7 +494,6 @@ internal fun nextTemporaryRemoteOrder(maxRemoteOrder: Int): Int = maxRemoteOrder
 
 private fun buildFavoritePagingQuery(
     accountId: Int,
-    order: CollectComicOrderFilter,
     blockedTagList: List<String>,
     searchText: String,
     selectedTags: Set<String>,
@@ -546,9 +542,7 @@ private fun buildFavoritePagingQuery(
         normalizedAuthors.forEach { args += it }
     }
 
-    // Scope-aware ordering: each folder list is ordered by its own membership.remoteOrder.
-    // COLLECT_TIME and UPDATE_TIME intentionally resolve to the same stored order today; a
-    // distinct UPDATE_TIME ordering needs extra synced metadata (known limitation).
+    // Scope-aware ordering: each folder list follows its own synchronized membership order.
     val orderBy = "m.remoteOrder ASC"
     return SimpleSQLiteQuery(
         "SELECT c.* FROM favorite_comics c " +

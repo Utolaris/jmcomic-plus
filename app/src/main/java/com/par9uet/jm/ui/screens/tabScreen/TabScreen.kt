@@ -25,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.glass.GlassCaptureHost
 import com.par9uet.jm.ui.glass.GlassStyle
@@ -77,6 +78,8 @@ fun TabScreen(
         pageCount = { MainTab.ordered.size },
     )
     val coroutineScope = rememberCoroutineScope()
+    val favoritesController = rememberFavoritesUiController()
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     // Only one programmatic pager animation may run at a time; the last click wins.
     var tabNavigationJob by remember { mutableStateOf<Job?>(null) }
@@ -144,6 +147,14 @@ fun TabScreen(
         previousSettledPage = currentlySettledPage
     }
 
+    LaunchedEffect(pagerState.settledPage) {
+        if (pagerState.settledPage != MainTab.Collect.index && favoritesController.searchActive) {
+            favoritesController.exitSearch()
+            userViewModel.updateCollectSearchText("")
+            keyboardController?.hide()
+        }
+    }
+
     // Logging in while already settled on Favorites must also trigger one eligible auto sync.
     var previousIsLogin by rememberSaveable { mutableStateOf(isLogin) }
     var initialCollectSyncRequested by rememberSaveable { mutableStateOf(false) }
@@ -189,6 +200,17 @@ fun TabScreen(
         } else {
             statusBarInset + HomeGlassTopBarDefaults.toolbarHeight + 12.dp
         }
+        val favoritesTopContentPadding = if (useNavigationRail) {
+            0.dp
+        } else {
+            statusBarInset + FavoritesToolbarDefaults.toolbarHeight +
+                FavoritesToolbarDefaults.outerMargin * 2
+        }
+        val settingsTopContentPadding = if (useNavigationRail) {
+            0.dp
+        } else {
+            statusBarInset + 64.dp
+        }
         val contentBottomPadding =
             if (useNavigationRail) {
                 0.dp
@@ -204,21 +226,26 @@ fun TabScreen(
                 // There are only three primary pages; retain them to preserve scroll and
                 // paging composition state without recreating work on every tab switch.
                 beyondViewportPageCount = MainTab.ordered.lastIndex,
-                // Home already owns horizontal gestures for switching comic categories.
-                userScrollEnabled = pagerState.settledPage != MainTab.Home.index,
+                userScrollEnabled = true,
             ) { page ->
                 when (MainTab.fromIndex(page)) {
                     MainTab.Home -> HomeScreen(
                         topContentPadding = homeTopContentPadding,
                         bottomContentPadding = contentBottomPadding,
+                        onPullDownSearch = onHomeSearch,
                     )
                     MainTab.Collect -> if (isLogin) {
                         UserCollectComicScreen(
                             useScaffold = false,
+                            uiController = favoritesController,
+                            topContentPadding = favoritesTopContentPadding,
                             bottomContentPadding = contentBottomPadding,
                         )
                     }
-                    MainTab.Settings -> UserScreen(bottomContentPadding = contentBottomPadding)
+                    MainTab.Settings -> UserScreen(
+                        topContentPadding = settingsTopContentPadding,
+                        bottomContentPadding = contentBottomPadding,
+                    )
                 }
             }
         }
@@ -230,10 +257,14 @@ fun TabScreen(
                 WindowInsets()
             },
             topBar = {
-                if (useNavigationRail || selectedTab != MainTab.Home) {
+                if (useNavigationRail) {
                     TopBarComponent(
                         tab = selectedTab,
                         homeTitle = homeTitle,
+                        homeCategories = homeState.categories,
+                        selectedHomeCategoryId = homeState.selectedCategoryId,
+                        onHomeCategorySelected = comicViewModel::selectHomeCategory,
+                        favoritesController = favoritesController,
                         onHomeSearch = onHomeSearch,
                         onHomeDownload = onHomeDownload,
                         onHomeWeekly = onHomeWeekly,
@@ -271,6 +302,8 @@ fun TabScreen(
                                 if (selectedTab == MainTab.Home) {
                                     HomeGlassTopBar(
                                         title = homeTitle,
+                                        categories = homeState.categories,
+                                        selectedCategoryId = homeState.selectedCategoryId,
                                         statusBarInset = statusBarInset,
                                         modifier = Modifier.align(Alignment.TopCenter),
                                         onSearch = onHomeSearch,
@@ -278,6 +311,18 @@ fun TabScreen(
                                         onWeekly = onHomeWeekly,
                                         onExtract = onHomeExtract,
                                         onSign = onHomeSign,
+                                        onCategorySelected = comicViewModel::selectHomeCategory,
+                                    )
+                                } else if (selectedTab == MainTab.Collect && isLogin) {
+                                    FavoritesVariableGlassTopBar(
+                                        statusBarInset = statusBarInset,
+                                        controller = favoritesController,
+                                        userViewModel = userViewModel,
+                                        modifier = Modifier.align(Alignment.TopCenter),
+                                    )
+                                } else if (selectedTab == MainTab.Settings) {
+                                    TopBarComponent(
+                                        tab = MainTab.Settings,
                                     )
                                 }
                                 BottomNavigationBarComponent(

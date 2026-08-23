@@ -162,7 +162,7 @@ class ComicViewModel(
         ensureCategoryLoaded(categoryId)
     }
 
-    /** 下拉刷新：只刷新当前分类。 */
+    /** Explicit retry for the currently selected category after a load failure. */
     fun refreshSelectedHomeCategory() {
         val selected = _homeState.value.selectedCategoryId ?: return
         ensureCategoryLoaded(selected, force = true)

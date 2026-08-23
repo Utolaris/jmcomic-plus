@@ -1,11 +1,8 @@
 package com.par9uet.jm.ui.screens
 
 import android.os.SystemClock
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,31 +20,22 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.rounded.DriveFileMove
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Bookmarks
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
-import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Edit
-import androidx.compose.material.icons.rounded.FilterList
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.BottomAppBar
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,174 +46,74 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.paging.compose.collectAsLazyPagingItems
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.ui.components.Comic
-import com.par9uet.jm.ui.components.FavoriteSyncIconButton
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
+import com.par9uet.jm.ui.interaction.pullDownToAction
+import com.par9uet.jm.ui.interaction.rememberPullDownActionState
+import com.par9uet.jm.ui.screens.tabScreen.FavoritesMaterialTopBar
+import com.par9uet.jm.ui.screens.tabScreen.FavoritesUiController
+import com.par9uet.jm.ui.screens.tabScreen.rememberFavoritesUiController
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.utils.log
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 
-// 收藏夹切换 Chip
-@Composable
-private fun FolderChip(
-    folderName: String,
-    isSelected: Boolean,
-    isAll: Boolean = false,
-    onClick: () -> Unit,
-) {
-    FilterChip(
-        selected = isSelected,
-        onClick = onClick,
-        label = { Text(folderName) },
-        leadingIcon = {
-            Icon(
-                imageVector = if (isAll) Icons.Rounded.Bookmarks else Icons.Rounded.Folder,
-                contentDescription = null,
-                modifier = Modifier.size(18.dp)
-            )
-        }
-    )
-}
-
-@Composable
-private fun FavoritesSearchField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onClear: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val shape = MaterialTheme.shapes.large
-    var isFocused by remember { mutableStateOf(false) }
-
-    Surface(
-        modifier = modifier
-            .height(50.dp)
-            .onFocusChanged { isFocused = it.isFocused },
-        shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = if (isFocused) {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
-        } else {
-            null
-        }
-    ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.fillMaxSize(),
-            singleLine = true,
-            maxLines = 1,
-            textStyle = MaterialTheme.typography.bodyLarge.copy(
-                color = MaterialTheme.colorScheme.onSurface
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-            decorationBox = { innerTextField ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Rounded.Search, contentDescription = null)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight(),
-                        contentAlignment = Alignment.CenterStart
-                    ) {
-                        if (value.isEmpty()) {
-                            Text(
-                                text = "搜索漫画名 / 作者 / 标签",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        }
-                        innerTextField()
-                    }
-                    if (value.isNotEmpty()) {
-                        IconButton(
-                            onClick = onClear,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(Icons.Rounded.Close, contentDescription = "清除")
-                        }
-                    }
-                }
-            }
-        )
-    }
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UserCollectComicScreen(
+internal fun UserCollectComicScreen(
     userViewModel: UserViewModel = koinActivityViewModel(),
     useScaffold: Boolean = true,
     localSettingManager: LocalSettingManager = getKoin().get(),
+    uiController: FavoritesUiController? = null,
+    topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
 ) {
+    val controller = uiController ?: rememberFavoritesUiController()
     val navController = LocalMainNavController.current
     val collectComicLazyPagingItems = userViewModel.collectComicPager.collectAsLazyPagingItems()
-    val order by userViewModel.collectComicOrder.collectAsState()
     val collectComicFilter by userViewModel.collectComicFilter.collectAsState()
     val tagCountMap by userViewModel.collectTagCounts.collectAsState()
     val authorCountMap by userViewModel.collectAuthorCounts.collectAsState()
     val selectedFolderId by userViewModel.selectedFolderId.collectAsState()
     val folderList by userViewModel.folderList.collectAsState()
     val collectEditState by userViewModel.collectEditState.collectAsState()
-    val favoriteSyncState by userViewModel.favoriteSyncState.collectAsState()
     val localSetting by localSettingManager.localSettingState.collectAsState()
     var draftSelectedTags by remember { mutableStateOf<Set<String>>(emptySet()) }
     var draftSelectedAuthors by remember { mutableStateOf<Set<String>>(emptySet()) }
     var draftTagLogic by remember { mutableStateOf(TagFilterLogic.AND) }
-    var showFilterDialog by remember { mutableStateOf(false) }
 
     var showCreateFolderDialog by remember { mutableStateOf(false) }
     var newFolderName by remember { mutableStateOf("") }
     var actionFolderId by remember { mutableStateOf<String?>(null) }
     var actionFolderName by remember { mutableStateOf("") }
-    var showFolderManageSheet by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameFolderName by remember { mutableStateOf("") }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var showMoveFolderDialog by remember { mutableStateOf(false) }
-    var showDeleteCollectConfirmDialog by remember { mutableStateOf(false) }
     var hasLoggedFirstLocalContent by remember { mutableStateOf(false) }
     val favoritesOpenedAt = remember { SystemClock.elapsedRealtime() }
 
@@ -251,145 +139,69 @@ fun UserCollectComicScreen(
     val selectedComics: List<com.par9uet.jm.data.models.Comic> = remember(collectComicLazyPagingItems.itemSnapshotList, collectEditState.selectedComicIds) {
         collectComicLazyPagingItems.itemSnapshotList.filterNotNull().filter { it.id in collectEditState.selectedComicIds }
     }
+    val currentSelectedComics = rememberUpdatedState(selectedComics)
+    val selectedComicsProvider = remember { { currentSelectedComics.value } }
+    DisposableEffect(controller, selectedComicsProvider) {
+        controller.bindSelectedComics(selectedComicsProvider)
+        onDispose { controller.unbindSelectedComics(selectedComicsProvider) }
+    }
 
-    // 当前激活的筛选项数量，用于在筛选按钮上展示
-    val activeFilterCount = collectComicFilter.selectedTags.size + collectComicFilter.selectedAuthors.size
+    val gridState = rememberLazyGridState()
+    val pullDownState = rememberPullDownActionState()
+    val gridModifier = Modifier
+        .fillMaxSize()
+        .pullDownToAction(
+            state = pullDownState,
+            enabled = !collectEditState.editing && !controller.searchActive,
+            isAtTop = { !gridState.canScrollBackward },
+            onTrigger = controller::enterSearch,
+        )
 
-    // 主体内容：搜索栏 + 收藏夹 Chip + 排序 + 漫画网格
-    val mainContent: @Composable () -> Unit = {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // 顶部搜索栏 + 筛选按钮
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                FavoritesSearchField(
-                    modifier = Modifier.weight(1f),
-                    value = collectComicFilter.searchText,
-                    onValueChange = { userViewModel.updateCollectSearchText(it) },
-                    onClear = { userViewModel.updateCollectSearchText("") }
-                )
-                IconButton(
-                    onClick = {
-                        draftSelectedTags = collectComicFilter.selectedTags
-                        draftSelectedAuthors = collectComicFilter.selectedAuthors
-                        draftTagLogic = collectComicFilter.tagLogic
-                        showFilterDialog = true
-                    },
-                    modifier = Modifier.size(48.dp)
-                ) {
-                    Icon(
-                        Icons.Rounded.FilterList,
-                        contentDescription = "筛选",
-                        modifier = Modifier.size(22.dp),
-                        tint = if (activeFilterCount > 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // 收藏夹切换栏
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                folders.forEach { (folderId, folderName) ->
-                    key(folderId) {
-                        FolderChip(
-                            folderName = folderName,
-                            isSelected = selectedFolderId == folderId.toIntOrNull(),
-                            isAll = folderId == "0",
-                            onClick = {
-                                userViewModel.changeFolder(folderId.toIntOrNull() ?: 0)
-                            }
-                        )
-                    }
-                }
-                IconButton(onClick = {
-                    newFolderName = ""
-                    showCreateFolderDialog = true
-                }) {
-                    Icon(Icons.Rounded.Add, contentDescription = "新建收藏夹", modifier = Modifier.size(20.dp))
-                }
-                IconButton(onClick = { showFolderManageSheet = true }) {
-                    Icon(Icons.Rounded.Folder, contentDescription = "管理收藏夹", modifier = Modifier.size(20.dp))
-                }
-            }
-
-            // 排序：Material 3 单选 SegmentedButton
-            SingleChoiceSegmentedButtonRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 2.dp)
-            ) {
-                CollectComicOrderFilter.entries.forEachIndexed { index, item ->
-                    SegmentedButton(
-                        selected = item == order,
-                        onClick = { userViewModel.changeCollectComicOrder(item) },
-                        shape = SegmentedButtonDefaults.itemShape(
-                            index,
-                            CollectComicOrderFilter.entries.size
-                        )
-                    ) {
-                        Text(item.label)
-                    }
-                }
-            }
-
-            HorizontalDivider()
-
-            // 漫画列表：2 列网格，间距更大
-            PullRefreshAndLoadMoreGrid(
-                modifier = Modifier.weight(1f),
-                lazyPagingItems = collectComicLazyPagingItems,
-                key = { it.id },
-                columns = adaptiveComicGridCells(localSetting.collectGridColumns),
-                verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-                contentPadding = PaddingValues(
-                    start = 14.dp,
-                    top = 14.dp,
-                    end = 14.dp,
-                    bottom = 14.dp + bottomContentPadding,
-                ),
-                enablePullRefresh = false,
-            ) { comic ->
-                Comic(
-                    comic = comic,
-                    editing = collectEditState.editing,
-                    selected = comic.id in collectEditState.selectedComicIds,
-                    onLongClick = {
-                        if (collectEditState.editing) {
-                            userViewModel.toggleCollectSelected(comic.id)
-                        } else {
-                            userViewModel.enterCollectEdit(comic.id)
-                        }
-                    },
-                    onToggleSelected = {
-                        userViewModel.toggleCollectSelected(comic.id)
-                    }
-                )
-            }
+    LaunchedEffect(controller.filterDialogVisible) {
+        if (controller.filterDialogVisible) {
+            draftSelectedTags = collectComicFilter.selectedTags
+            draftSelectedAuthors = collectComicFilter.selectedAuthors
+            draftTagLogic = collectComicFilter.tagLogic
         }
     }
 
-    // 编辑模式下的底部工具栏
-    val editBar: @Composable () -> Unit = {
-        if (collectEditState.editing) {
-            CollectEditBottomAppBar(
-                selectedCount = collectEditState.selectedComicIds.size,
-                onClose = userViewModel::clearCollectSelection,
-                onCache = { userViewModel.cacheCollectedComics(selectedComics) },
-                onDelete = { showDeleteCollectConfirmDialog = true },
-                onMove = { showMoveFolderDialog = true }
+    // The source composition owns only the paging grid and transient dialogs. All persistent
+    // phone controls live in the GlassCaptureHost overlay.
+    val mainContent: @Composable () -> Unit = {
+        PullRefreshAndLoadMoreGrid(
+            modifier = gridModifier,
+            lazyPagingItems = collectComicLazyPagingItems,
+            key = { it.id },
+            columns = adaptiveComicGridCells(localSetting.collectGridColumns),
+            gridState = gridState,
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            contentPadding = PaddingValues(
+                start = 14.dp,
+                top = topContentPadding + 14.dp,
+                end = 14.dp,
+                bottom = 14.dp + bottomContentPadding,
+            ),
+            enablePullRefresh = false,
+        ) { comic ->
+            Comic(
+                comic = comic,
+                editing = collectEditState.editing,
+                selected = comic.id in collectEditState.selectedComicIds,
+                onLongClick = {
+                    if (controller.searchActive) {
+                        controller.exitSearch()
+                        userViewModel.updateCollectSearchText("")
+                    }
+                    if (collectEditState.editing) {
+                        userViewModel.toggleCollectSelected(comic.id)
+                    } else {
+                        userViewModel.enterCollectEdit(comic.id)
+                    }
+                },
+                onToggleSelected = {
+                    userViewModel.toggleCollectSelected(comic.id)
+                },
             )
         }
     }
@@ -397,55 +209,26 @@ fun UserCollectComicScreen(
     if (useScaffold) {
         Scaffold(
             topBar = {
-                TopAppBar(
-                    title = {
-                        Text(
-                            text = "我的收藏",
-                            fontWeight = FontWeight.Bold
-                        )
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = { navController.popBackStack() }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "返回"
-                            )
-                        }
-                    },
-                    actions = {
-                        FavoriteSyncIconButton(
-                            isSyncing = favoriteSyncState.isSyncing,
-                            hasError = favoriteSyncState.errorMessage != null,
-                            onClick = { userViewModel.requestFavoriteManualSync(selectedFolderId) },
-                        )
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    )
+                FavoritesMaterialTopBar(
+                    controller = controller,
+                    userViewModel = userViewModel,
+                    onNavigateBack = navController::popBackStack,
                 )
             },
-            bottomBar = { editBar() }
         ) { innerPadding ->
-            Box(modifier = Modifier.padding(innerPadding)) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding),
+            ) {
                 mainContent()
             }
         }
     } else {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(
-                    bottom = if (collectEditState.editing) bottomContentPadding else 0.dp,
-                ),
-        ) {
-            Box(modifier = Modifier.weight(1f)) {
-                mainContent()
-            }
-            editBar()
-        }
+        Box(modifier = Modifier.fillMaxSize()) { mainContent() }
     }
 
-    if (showFilterDialog) {
+    if (controller.filterDialogVisible) {
         FilterDialog(
             tagCountMap = tagCountMap,
             authorCountMap = authorCountMap,
@@ -471,7 +254,7 @@ fun UserCollectComicScreen(
                 userViewModel.updateCollectSelectedTags(draftSelectedTags)
                 userViewModel.updateCollectSelectedAuthors(draftSelectedAuthors)
                 userViewModel.updateCollectTagLogic(draftTagLogic)
-                showFilterDialog = false
+                controller.dismissFilterDialog()
             },
             onClear = {
                 draftSelectedTags = emptySet()
@@ -480,9 +263,9 @@ fun UserCollectComicScreen(
                 userViewModel.updateCollectSelectedTags(emptySet())
                 userViewModel.updateCollectSelectedAuthors(emptySet())
                 userViewModel.updateCollectTagLogic(TagFilterLogic.AND)
-                showFilterDialog = false
+                controller.dismissFilterDialog()
             },
-            onDismiss = { showFilterDialog = false }
+            onDismiss = controller::dismissFilterDialog,
         )
     }
 
@@ -519,10 +302,10 @@ fun UserCollectComicScreen(
         )
     }
 
-    if (showFolderManageSheet) {
+    if (controller.folderManagementVisible) {
         val manageSheetState = rememberModalBottomSheetState()
         ModalBottomSheet(
-            onDismissRequest = { showFolderManageSheet = false },
+            onDismissRequest = controller::dismissFolderManagement,
             sheetState = manageSheetState
         ) {
             Column(
@@ -555,7 +338,7 @@ fun UserCollectComicScreen(
                             else androidx.compose.ui.graphics.Color.Transparent,
                             onClick = {
                                 userViewModel.changeFolder(folderId.toIntOrNull() ?: 0)
-                                showFolderManageSheet = false
+                                controller.dismissFolderManagement()
                             }
                         ) {
                             Row(
@@ -660,32 +443,32 @@ fun UserCollectComicScreen(
         )
     }
 
-    if (showDeleteCollectConfirmDialog) {
+    if (controller.deleteDialogVisible) {
         AlertDialog(
-            onDismissRequest = { showDeleteCollectConfirmDialog = false },
+            onDismissRequest = controller::dismissDeleteDialog,
             title = { Text("取消收藏") },
             text = { Text("确定取消收藏 ${collectEditState.selectedComicIds.size} 部漫画吗？") },
             confirmButton = {
                 TextButton(onClick = {
                     userViewModel.deleteCollectedComics(selectedComics)
-                    showDeleteCollectConfirmDialog = false
+                    controller.dismissDeleteDialog()
                 }) { Text("取消收藏") }
             },
             dismissButton = {
-                TextButton(onClick = { showDeleteCollectConfirmDialog = false }) { Text("取消") }
+                TextButton(onClick = controller::dismissDeleteDialog) { Text("取消") }
             }
         )
     }
 
-    if (showMoveFolderDialog) {
+    if (controller.moveDialogVisible) {
         MoveFolderSheet(
             folders = folders,
             currentFolderId = selectedFolderId,
             onMove = { folderId ->
                 userViewModel.moveCollectedToFolder(selectedComics, folderId)
-                showMoveFolderDialog = false
+                controller.dismissMoveDialog()
             },
-            onDismiss = { showMoveFolderDialog = false }
+            onDismiss = controller::dismissMoveDialog,
         )
     }
 }
@@ -1003,37 +786,4 @@ private fun MoveFolderSheet(
             }
         }
     }
-}
-
-// 编辑模式底部工具栏：Material 3 BottomAppBar
-@Composable
-private fun CollectEditBottomAppBar(
-    selectedCount: Int,
-    onClose: () -> Unit,
-    onCache: () -> Unit,
-    onDelete: () -> Unit,
-    onMove: () -> Unit
-) {
-    BottomAppBar(
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
-        actions = {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Rounded.Close, contentDescription = "退出编辑")
-            }
-            Text(
-                text = "已选择 $selectedCount 项",
-                modifier = Modifier.padding(start = 4.dp)
-            )
-            Spacer(modifier = Modifier.weight(1f))
-            IconButton(onClick = onCache) {
-                Icon(Icons.Rounded.Download, contentDescription = "缓存")
-            }
-            IconButton(onClick = onMove) {
-                Icon(Icons.AutoMirrored.Rounded.DriveFileMove, contentDescription = "移动")
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Rounded.Delete, contentDescription = "取消收藏")
-            }
-        }
-    )
 }

@@ -6,12 +6,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.text.style.TextOverflow
-import com.par9uet.jm.ui.components.FavoriteSyncIconButton
 import com.par9uet.jm.ui.navigation.MainTab
+import com.par9uet.jm.ui.screens.HomeCategoryTitleSelector
 import com.par9uet.jm.ui.screens.HomeTopBarActions
+import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
 
@@ -19,6 +18,9 @@ import org.koin.compose.viewmodel.koinActivityViewModel
 @Composable
 private fun HomeTopBarComponent(
     title: String,
+    categories: List<ComicViewModel.HomeCategoryInfo>,
+    selectedCategoryId: String?,
+    onCategorySelected: (String) -> Unit,
     onSearch: () -> Unit,
     onDownload: () -> Unit,
     onWeekly: () -> Unit,
@@ -32,10 +34,11 @@ private fun HomeTopBarComponent(
             titleContentColor = MaterialTheme.colorScheme.onSurface,
         ),
         title = {
-            Text(
-                title,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+            HomeCategoryTitleSelector(
+                title = title,
+                categories = categories,
+                selectedCategoryId = selectedCategoryId,
+                onCategorySelected = onCategorySelected,
             )
         },
         actions = {
@@ -53,32 +56,12 @@ private fun HomeTopBarComponent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CollectTopBarComponent(
-    tab: MainTab,
+    controller: FavoritesUiController,
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
-    val favoriteSyncState by userViewModel.favoriteSyncState.collectAsState()
-    val selectedFolderId by userViewModel.selectedFolderId.collectAsState()
-
-    TopAppBar(
-        colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-            actionIconContentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-            titleContentColor = MaterialTheme.colorScheme.onSurface,
-        ),
-        title = {
-            Text(
-                tab.topBarTitle,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        },
-        actions = {
-            FavoriteSyncIconButton(
-                isSyncing = favoriteSyncState.isSyncing,
-                hasError = favoriteSyncState.errorMessage != null,
-                onClick = { userViewModel.requestFavoriteManualSync(selectedFolderId) },
-            )
-        }
+    FavoritesMaterialTopBar(
+        controller = controller,
+        userViewModel = userViewModel,
     )
 }
 
@@ -103,9 +86,13 @@ private fun SettingsTopBarComponent(tab: MainTab) {
 }
 
 @Composable
-fun TopBarComponent(
+internal fun TopBarComponent(
     tab: MainTab,
     homeTitle: String = MainTab.Home.topBarTitle,
+    homeCategories: List<ComicViewModel.HomeCategoryInfo> = emptyList(),
+    selectedHomeCategoryId: String? = null,
+    onHomeCategorySelected: (String) -> Unit = {},
+    favoritesController: FavoritesUiController? = null,
     onHomeSearch: () -> Unit = {},
     onHomeDownload: () -> Unit = {},
     onHomeWeekly: () -> Unit = {},
@@ -115,13 +102,18 @@ fun TopBarComponent(
     when (tab) {
         MainTab.Home -> HomeTopBarComponent(
             title = homeTitle,
+            categories = homeCategories,
+            selectedCategoryId = selectedHomeCategoryId,
+            onCategorySelected = onHomeCategorySelected,
             onSearch = onHomeSearch,
             onDownload = onHomeDownload,
             onWeekly = onHomeWeekly,
             onExtract = onHomeExtract,
             onSign = onHomeSign,
         )
-        MainTab.Collect -> CollectTopBarComponent(tab)
+        MainTab.Collect -> CollectTopBarComponent(
+            controller = favoritesController ?: rememberFavoritesUiController(),
+        )
         MainTab.Settings -> SettingsTopBarComponent(tab)
     }
 }
