@@ -72,9 +72,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_BUILTIN
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_MIXED
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_NETWORK
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.store.LocalSettingManager
@@ -86,11 +83,9 @@ import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 
 private sealed class SettingType {
-    object ComicApiSource : SettingType()
     object Api : SettingType()
     object Theme : SettingType()
     object LauncherDisguise : SettingType()
-    object Shunt : SettingType()
     object PrefetchCount : SettingType()
     object ReadMode : SettingType()
     object NotificationManagement : SettingType()
@@ -106,12 +101,6 @@ private val themeTextMap = mapOf(
     "auto" to "\u8ddf\u968f\u7cfb\u7edf",
     "light" to "\u65e5\u95f4\u6a21\u5f0f",
     "dark" to "\u591c\u95f4\u6a21\u5f0f",
-)
-
-private val comicApiSourceTextMap = mapOf(
-    COMIC_API_SOURCE_BUILTIN to "\u5185\u7f6e API",
-    COMIC_API_SOURCE_NETWORK to "\u7f51\u7edc API",
-    COMIC_API_SOURCE_MIXED to "\u6df7\u5408 API",
 )
 
 private fun gridColumnsText(columns: Int): String =
@@ -209,40 +198,30 @@ fun LocalSettingScreen(
                     SettingsRow(
                         Icons.Rounded.Api,
                         "\u6570\u636e\u6e90",
-                        comicApiSourceTextMap[localSetting.comicApiSource].orEmpty()
+                        localSetting.api
                     ) {
-                        openSetting(SettingType.ComicApiSource)
+                        openSetting(SettingType.Api)
                     }
-                    if (localSetting.comicApiSource == COMIC_API_SOURCE_NETWORK || localSetting.comicApiSource == COMIC_API_SOURCE_MIXED) {
-                        SettingsRow(Icons.Rounded.Api, "API", localSetting.api) {
-                            openSetting(SettingType.Api)
-                        }
-                        SettingsRow(Icons.Rounded.Image, "\u56fe\u7247\u7ebf\u8def", "\u7ebf\u8def ${localSetting.shunt}") {
-                            openSetting(SettingType.Shunt)
-                        }
-                    }
-                    if (localSetting.comicApiSource == COMIC_API_SOURCE_BUILTIN || localSetting.comicApiSource == COMIC_API_SOURCE_MIXED) {
-                        SettingsSwitchRow(
-                            icon = Icons.Rounded.Recommend,
-                            title = "\u504f\u597d\u63a8\u8350",
-                            value = localSetting.preferenceRecommendEnabled,
-                            onCheckedChange = { localSettingManager.updatePreferenceRecommendEnabled(it) }
+                    SettingsSwitchRow(
+                        icon = Icons.Rounded.Recommend,
+                        title = "\u504f\u597d\u63a8\u8350",
+                        value = localSetting.preferenceRecommendEnabled,
+                        onCheckedChange = { localSettingManager.updatePreferenceRecommendEnabled(it) }
+                    )
+                    if (localSetting.preferenceRecommendEnabled) {
+                        Text(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                            text = "\u5f00\u542f\u540e\u9996\u9875\u9ed8\u8ba4\u5c55\u793a\u57fa\u4e8e\u767b\u5f55\u8d26\u53f7\u7684\u4e2a\u6027\u5316\u63a8\u8350\uff0c\u53ef\u80fd\u4e0d\u7a33\u5b9a",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        if (localSetting.preferenceRecommendEnabled) {
-                            Text(
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
-                                text = "\u5f00\u542f\u540e\u9996\u9875\u9ed8\u8ba4\u5c55\u793a\u57fa\u4e8e\u767b\u5f55\u8d26\u53f7\u7684\u4e2a\u6027\u5316\u63a8\u8350\uff0c\u53ef\u80fd\u4e0d\u7a33\u5b9a",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        SettingsRow(
-                            icon = Icons.Rounded.Block,
-                            title = "\u9996\u9875\u6807\u7b7e\u6392\u9664",
-                            value = if (localSetting.homeExcludedTags.isEmpty()) "\u672a\u8bbe\u7f6e" else "${localSetting.homeExcludedTags.size} \u4e2a\u6807\u7b7e"
-                        ) {
-                            showHomeExcludedTagsDialog = true
-                        }
+                    }
+                    SettingsRow(
+                        icon = Icons.Rounded.Block,
+                        title = "\u9996\u9875\u6807\u7b7e\u6392\u9664",
+                        value = if (localSetting.homeExcludedTags.isEmpty()) "\u672a\u8bbe\u7f6e" else "${localSetting.homeExcludedTags.size} \u4e2a\u6807\u7b7e"
+                    ) {
+                        showHomeExcludedTagsDialog = true
                     }
                 }
             }
@@ -374,21 +353,11 @@ private fun SettingSelectDialogContent(
     val apiSelectOptionList by remember(localSetting.apiList) {
         derivedStateOf { localSetting.apiList.map { SelectOption(it.removePrefix("https://"), it) } }
     }
-    val comicApiSourceOptionList by remember(localSetting.comicApiSourceList) {
-        derivedStateOf {
-            localSetting.comicApiSourceList.map {
-                SelectOption(comicApiSourceTextMap[it].orEmpty(), it)
-            }
-        }
-    }
     val themeSelectOptionList by remember(localSetting.themeList) {
         derivedStateOf { localSetting.themeList.map { SelectOption(themeTextMap[it].orEmpty(), it) } }
     }
     val launcherDisguiseOptionList by remember {
         derivedStateOf { LauncherDisguise.entries.map { SelectOption(it.label, it.id) } }
-    }
-    val shuntOptionList by remember(localSetting.shuntList) {
-        derivedStateOf { localSetting.shuntList.map { SelectOption("\u7ebf\u8def $it", it) } }
     }
     val prefetchCountOptionList by remember {
         derivedStateOf {
@@ -435,11 +404,9 @@ private fun SettingSelectDialogContent(
         title = settingTitle(settingType),
         value = settingValue(settingType, localSetting),
         selectOptionList = when (settingType) {
-            is SettingType.ComicApiSource -> comicApiSourceOptionList
             is SettingType.Api -> apiSelectOptionList
             is SettingType.Theme -> themeSelectOptionList
             is SettingType.LauncherDisguise -> launcherDisguiseOptionList
-            is SettingType.Shunt -> shuntOptionList
             is SettingType.PrefetchCount -> prefetchCountOptionList
             is SettingType.ReadMode -> readModeOptionList
             is SettingType.NotificationManagement -> notificationOptionList
@@ -447,11 +414,9 @@ private fun SettingSelectDialogContent(
         },
         onSelect = {
             when (settingType) {
-                is SettingType.ComicApiSource -> localSettingManager.updateComicApiSource(it)
                 is SettingType.Api -> localSettingManager.updateApi(it)
                 is SettingType.Theme -> localSettingManager.updateTheme(it)
                 is SettingType.LauncherDisguise -> localSettingManager.updateLauncherDisguise(it)
-                is SettingType.Shunt -> localSettingManager.updateShunt(it)
                 is SettingType.PrefetchCount -> localSettingManager.updatePrefetchCount(it)
                 is SettingType.ReadMode -> localSettingManager.updateReadMode(it)
                 is SettingType.NotificationManagement -> {
@@ -765,11 +730,9 @@ private fun notificationText(localSetting: LocalSetting): String {
 
 private fun settingTitle(type: SettingType): String {
     return when (type) {
-        is SettingType.ComicApiSource -> "\u6570\u636e\u6e90"
-        is SettingType.Api -> "API"
+        is SettingType.Api -> "\u6570\u636e\u6e90"
         is SettingType.Theme -> "\u4e3b\u9898"
         is SettingType.LauncherDisguise -> "\u56fe\u6807\u4f2a\u88c5"
-        is SettingType.Shunt -> "\u56fe\u7247\u7ebf\u8def"
         is SettingType.PrefetchCount -> "\u56fe\u7247\u9884\u52a0\u8f7d"
         is SettingType.ReadMode -> "\u9605\u8bfb\u6a21\u5f0f"
         is SettingType.NotificationManagement -> "\u901a\u77e5\u7ba1\u7406"
@@ -780,11 +743,9 @@ private fun settingTitle(type: SettingType): String {
 
 private fun settingValue(type: SettingType, localSetting: LocalSetting): String {
     return when (type) {
-        is SettingType.ComicApiSource -> localSetting.comicApiSource
         is SettingType.Api -> localSetting.api
         is SettingType.Theme -> localSetting.theme
         is SettingType.LauncherDisguise -> LauncherDisguise.fromId(localSetting.launcherDisguise).id
-        is SettingType.Shunt -> localSetting.shunt
         is SettingType.PrefetchCount -> "${localSetting.prefetchCount}"
         is SettingType.ReadMode -> localSetting.readMode
         is SettingType.NotificationManagement -> when {

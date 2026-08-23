@@ -29,10 +29,11 @@ class LocalSettingStorage(
     val state = _state.asStateFlow()
 
     fun set(localSetting: LocalSetting) {
+        val normalizedSetting = localSetting.copy(comicApiSource = COMIC_API_SOURCE_MIXED)
         _state.update {
-            localSetting
+            normalizedSetting
         }
-        secureStorage.setStartup(STORAGE_KEY, localSetting)
+        secureStorage.setStartup(STORAGE_KEY, normalizedSetting)
     }
 
     fun get(): LocalSetting {
@@ -76,13 +77,9 @@ class LocalSettingStorage(
                         COMIC_API_SOURCE_NETWORK,
                         COMIC_API_SOURCE_MIXED
                     ),
-                    comicApiSource = if (savedJson.hasField("comicApiSource")) {
-                        listOf(COMIC_API_SOURCE_BUILTIN, COMIC_API_SOURCE_NETWORK, COMIC_API_SOURCE_MIXED)
-                            .firstOrNull { it == saved.comicApiSource }
-                            ?: COMIC_API_SOURCE_BUILTIN
-                    } else {
-                        COMIC_API_SOURCE_BUILTIN
-                    },
+                    // The app now always uses the mixed API path. Keep accepting the legacy
+                    // field above for JSON compatibility, but migrate every existing install.
+                    comicApiSource = COMIC_API_SOURCE_MIXED,
                     showComicCacheNotification = if (savedJson.hasField("showComicCacheNotification")) {
                         saved.showComicCacheNotification
                     } else {
@@ -149,7 +146,7 @@ class LocalSettingStorage(
 
     fun remove() {
         _state.update {
-            LocalSetting()
+            LocalSetting().copy(comicApiSource = COMIC_API_SOURCE_MIXED)
         }
         secureStorage.remove(STORAGE_KEY)
         secureStorage.removeStartup(STORAGE_KEY)

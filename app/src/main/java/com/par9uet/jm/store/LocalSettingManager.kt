@@ -1,6 +1,7 @@
 package com.par9uet.jm.store
 
 import com.par9uet.jm.data.models.BlockedTagTemplate
+import com.par9uet.jm.data.models.COMIC_API_SOURCE_MIXED
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.storage.LocalSettingStorage
@@ -23,7 +24,9 @@ class LocalSettingManager(
     private val localSettingStorage: LocalSettingStorage,
     private val launcherDisguiseApplier: LauncherDisguiseApplier,
 ) : AppLocalSettings {
-    private val _localSettingState = MutableStateFlow(LocalSetting())
+    private val _localSettingState = MutableStateFlow(
+        LocalSetting().copy(comicApiSource = COMIC_API_SOURCE_MIXED)
+    )
     override val localSettingState = _localSettingState.asStateFlow()
     private val loadLock = Any()
 
@@ -36,8 +39,8 @@ class LocalSettingManager(
         ensureLoaded()
     }
 
-    fun updateComicApiSource(comicApiSource: String) =
-        updateSetting { it.copy(comicApiSource = comicApiSource) }
+    fun updateComicApiSource(@Suppress("UNUSED_PARAMETER") comicApiSource: String) =
+        updateSetting { it.copy(comicApiSource = COMIC_API_SOURCE_MIXED) }
 
     fun updatePreferenceRecommendEnabled(enabled: Boolean) =
         updateSetting { it.copy(preferenceRecommendEnabled = enabled) }
@@ -210,6 +213,7 @@ class LocalSettingManager(
         val previousLauncherDisguise = _localSettingState.value.launcherDisguise
         updateSetting { current ->
             setting.copy(
+                comicApiSource = COMIC_API_SOURCE_MIXED,
                 appLockEnabled = current.appLockEnabled,
                 appLockPassword = current.appLockPassword,
                 appLockPasswordLength = current.appLockPasswordLength,
@@ -225,7 +229,9 @@ class LocalSettingManager(
 
     private fun updateSetting(update: (LocalSetting) -> LocalSetting) {
         ensureLoaded()
-        _localSettingState.update(update)
+        _localSettingState.update {
+            update(it).copy(comicApiSource = COMIC_API_SOURCE_MIXED)
+        }
         localSettingStorage.set(_localSettingState.value)
     }
 
@@ -253,7 +259,7 @@ class LocalSettingManager(
             val setting = runCatching { localSettingStorage.get() }
                 .getOrElse {
                     log("加载本地设置失败：${it.message}")
-                    LocalSetting()
+                    LocalSetting().copy(comicApiSource = COMIC_API_SOURCE_MIXED)
                 }
             _localSettingState.value = setting
             loaded = true

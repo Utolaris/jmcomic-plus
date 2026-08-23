@@ -10,7 +10,7 @@ enum class MainTab(
         index = 0,
         route = "home",
         navigationLabel = "首页",
-        topBarTitle = "禁漫天堂",
+        topBarTitle = "首页",
     ),
     Collect(
         index = 1,

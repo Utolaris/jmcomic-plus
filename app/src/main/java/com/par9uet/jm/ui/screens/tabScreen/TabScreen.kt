@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.Scaffold
@@ -21,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -34,9 +36,13 @@ import com.par9uet.jm.ui.navigation.shouldRequestInitialFavoriteSync
 import com.par9uet.jm.ui.navigation.shouldTriggerFavoriteSyncAfterLogin
 import com.par9uet.jm.ui.navigation.shouldTriggerFavoriteEntrySync
 import com.par9uet.jm.ui.screens.HomeScreen
+import com.par9uet.jm.ui.screens.HomeGlassTopBar
+import com.par9uet.jm.ui.screens.HomeGlassTopBarDefaults
 import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.screens.resolveHomeCategoryTitle
 import com.par9uet.jm.ui.screens.UserCollectComicScreen
 import com.par9uet.jm.ui.screens.UserScreen
+import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -47,10 +53,24 @@ import org.koin.compose.viewmodel.koinActivityViewModel
 fun TabScreen(
     tabName: String,
     userManager: UserManager = getKoin().get(),
+    comicViewModel: ComicViewModel = koinActivityViewModel(),
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
     val isLogin by userManager.isLoginState.collectAsState(false)
+    val homeState by comicViewModel.homeState.collectAsState()
+    val homeTitle = resolveHomeCategoryTitle(homeState.categories, homeState.selectedCategoryId)
+    val onHomeSearch = { mainNavController.navigate("comicSearch") }
+    val onHomeDownload = { mainNavController.navigate("download") }
+    val onHomeWeekly = { mainNavController.navigate("comicRecommend") }
+    val onHomeExtract = { mainNavController.navigate("extractCode") }
+    val onHomeSign = {
+        if (isLogin) {
+            mainNavController.navigate("sign")
+        } else {
+            mainNavController.navigate("login")
+        }
+    }
     val initialTab = MainTab.fromRoute(tabName) ?: MainTab.Home
     val pagerState = rememberPagerState(
         initialPage = initialTab.index,
@@ -161,6 +181,14 @@ fun TabScreen(
         val navigationBarInset = with(LocalDensity.current) {
             WindowInsets.navigationBars.getBottom(this).toDp()
         }
+        val statusBarInset = with(LocalDensity.current) {
+            WindowInsets.statusBars.getTop(this).toDp()
+        }
+        val homeTopContentPadding = if (useNavigationRail) {
+            0.dp
+        } else {
+            statusBarInset + HomeGlassTopBarDefaults.toolbarHeight + 12.dp
+        }
         val contentBottomPadding =
             if (useNavigationRail) {
                 0.dp
@@ -180,7 +208,10 @@ fun TabScreen(
                 userScrollEnabled = pagerState.settledPage != MainTab.Home.index,
             ) { page ->
                 when (MainTab.fromIndex(page)) {
-                    MainTab.Home -> HomeScreen(bottomContentPadding = contentBottomPadding)
+                    MainTab.Home -> HomeScreen(
+                        topContentPadding = homeTopContentPadding,
+                        bottomContentPadding = contentBottomPadding,
+                    )
                     MainTab.Collect -> if (isLogin) {
                         UserCollectComicScreen(
                             useScaffold = false,
@@ -199,7 +230,17 @@ fun TabScreen(
                 WindowInsets()
             },
             topBar = {
-                TopBarComponent(selectedTab)
+                if (useNavigationRail || selectedTab != MainTab.Home) {
+                    TopBarComponent(
+                        tab = selectedTab,
+                        homeTitle = homeTitle,
+                        onHomeSearch = onHomeSearch,
+                        onHomeDownload = onHomeDownload,
+                        onHomeWeekly = onHomeWeekly,
+                        onHomeExtract = onHomeExtract,
+                        onHomeSign = onHomeSign,
+                    )
+                }
             },
         ) { innerPadding ->
             if (useNavigationRail) {
@@ -226,12 +267,26 @@ fun TabScreen(
                             pagerContent(Modifier.fillMaxSize())
                         },
                         overlayContent = {
-                            BottomNavigationBarComponent(
-                                selectedTab = selectedTab,
-                                onTabSelected = ::selectTab,
-                                modifier = Modifier.fillMaxSize(),
-                                navigationBarInset = navigationBarInset,
-                            )
+                            Box(Modifier.fillMaxSize()) {
+                                if (selectedTab == MainTab.Home) {
+                                    HomeGlassTopBar(
+                                        title = homeTitle,
+                                        statusBarInset = statusBarInset,
+                                        modifier = Modifier.align(Alignment.TopCenter),
+                                        onSearch = onHomeSearch,
+                                        onDownload = onHomeDownload,
+                                        onWeekly = onHomeWeekly,
+                                        onExtract = onHomeExtract,
+                                        onSign = onHomeSign,
+                                    )
+                                }
+                                BottomNavigationBarComponent(
+                                    selectedTab = selectedTab,
+                                    onTabSelected = ::selectTab,
+                                    modifier = Modifier.fillMaxSize(),
+                                    navigationBarInset = navigationBarInset,
+                                )
+                            }
                         },
                     )
                 }

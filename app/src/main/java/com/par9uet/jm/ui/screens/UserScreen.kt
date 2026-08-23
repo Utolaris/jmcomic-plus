@@ -18,7 +18,6 @@ import androidx.compose.material.icons.automirrored.filled.Comment
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Bookmarks
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.History
@@ -378,14 +377,6 @@ fun UserScreen(
                     icon = Icons.Default.Download,
                     label = "下载中心",
                     onClick = { mainNavController.navigate("download") }
-                )
-                MenuDivider()
-                MenuItem(
-                    icon = Icons.Default.Bookmarks,
-                    label = "我的收藏",
-                    onClick = {
-                        checkLoginThenDo { mainNavController.navigate("userCollectComic") }
-                    }
                 )
                 MenuDivider()
                 MenuItem(

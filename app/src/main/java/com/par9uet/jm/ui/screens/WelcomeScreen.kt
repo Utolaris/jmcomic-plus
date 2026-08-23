@@ -80,7 +80,7 @@ import org.koin.compose.viewmodel.koinActivityViewModel
  * 5. 提取编码 + 剪切板自动检测
  * 6. 登录账号（可跳过）
  * 7. 若已登录：自动签到开关
- * 8. 若已登录：偏好推荐开关（声明请求网络 API，可能不稳定）
+ * 8. 若已登录：偏好推荐开关（可能不稳定）
  *
  * 右上角随时可跳过整个引导。
  */
@@ -456,7 +456,7 @@ private fun DataSourceStepContent() {
     StepHeader(
         icon = Icons.Rounded.Storage,
         title = "数据源说明",
-        description = "本应用支持两种数据源：\n\n内置 API：稳定可靠，无需额外配置，但无个性化推荐。\n\n网络 API：可配置自定义域名，支持基于登录账号的个性化推荐，但需要手动配置且可能不稳定。\n\n默认使用内置 API，你稍后可在设置中切换。"
+        description = "本应用固定使用混合 API，基础内容和个性化推荐会按功能自动选择合适的接口。\n\n你可以在设置中修改数据源地址；图片线路由智能路由自动处理，无需手动选择。"
     )
 }
 

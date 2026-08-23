@@ -273,6 +273,8 @@ internal class GlassCaptureHostView(context: Context) :
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         sourceCapture.markDirty()
+        backdropViews.values.forEach { it.markSurfacePositionChanged() }
+        scheduleSurfaceSync()
         invalidate()
     }
 
@@ -301,13 +303,10 @@ internal class GlassCaptureHostView(context: Context) :
     }
 
     private fun syncSurfaceViews() {
-        val invalidIds = registeredSurfaces
-            .filterValues { registration ->
-                val bounds = registration.bounds
-                bounds == null || bounds.width <= 0f || bounds.height <= 0f
-            }
-            .keys
-        val activeIds = registeredSurfaces.keys - invalidIds
+        // A surface can report an invalid/zero-size bound briefly while its Compose parent is
+        // being remeasured. Keep the last native backdrop until GlassSurface explicitly removes
+        // the surface; otherwise a later layout pass may not re-register an identical bound.
+        val activeIds = registeredSurfaces.keys
 
         backdropViews.keys
             .filter { it !in activeIds }
