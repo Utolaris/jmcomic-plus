@@ -12,12 +12,8 @@ data class BlockedTagTemplate(
 )
 
 data class LocalSetting(
-    val comicApiSourceList: List<String> = listOf(
-        COMIC_API_SOURCE_BUILTIN,
-        COMIC_API_SOURCE_NETWORK,
-        COMIC_API_SOURCE_MIXED,
-    ),
-    val comicApiSource: String = COMIC_API_SOURCE_BUILTIN,
+    // Kept for persisted-setting compatibility. LocalSettingManager normalizes this to mixed.
+    val comicApiSource: String = COMIC_API_SOURCE_MIXED,
     // 偏好推荐开关：开启后将请求网络 API 获取基于登录账号的个性化推荐，可能不稳定
     val preferenceRecommendEnabled: Boolean = false,
     val apiList: List<String> = listOf(
@@ -35,12 +31,6 @@ data class LocalSetting(
     ),
     val theme: String = "auto",
     val shunt: String = "1",
-    val shuntList: List<String> = listOf(
-        "1",
-        "2",
-        "3",
-        "4",
-    ),
     // 阅读页预先加载的图片张数
     val prefetchCount: Int = 3,
     // scroll || page || tap
@@ -70,8 +60,6 @@ data class LocalSetting(
     val clipboardAutoDetectEnabled: Boolean = false,
     // 自动签到：应用启动时若已登录且今日未签到则自动签到，默认关闭
     val autoSignInEnabled: Boolean = false,
-    // 推荐源："builtin"（内置 API 推荐）或 "network"（网络 API 推荐）
-    val recommendSource: String = "builtin",
     // 调色板预设 ID："default" 表示用主题默认配色，其余为内置预设方案 ID
     val colorPalettePreset: String = COLOR_PALETTE_PRESET_DEFAULT,
     // 自定义四色（ARGB hex 字符串，形如 "#FF4F5F7F"）；null 表示跟随预设

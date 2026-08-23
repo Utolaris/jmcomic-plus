@@ -473,7 +473,7 @@ fun ComicDetailScreen(
             }
         }
 
-        // 收藏夹选择弹窗（仅内置 API 模式）
+        // 收藏夹选择弹窗（内置/混合数据源）
         val showFolderPicker by comicDetailViewModel.showFolderPicker.collectAsState()
         val folderList by comicDetailViewModel.folderList.collectAsState()
         if (showFolderPicker) {
@@ -521,7 +521,7 @@ fun ComicDetailScreen(
                                 }
                             }
                         },
-                        onRelated = { mainNavController.navigate("comicRelate/${comic.id}") },
+                        onRelated = { mainNavController.navigate("comicRelate") },
                         onDownload = {
                             if (comic.comicChapterList.isEmpty()) {
                                 downloadManager.downloadComic(comic)
@@ -535,7 +535,7 @@ fun ComicDetailScreen(
                             val currentChapterId =
                                 readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
                             mainNavController.navigate(
-                                "comicChapter/${comic.id}?currentChapterId=$currentChapterId"
+                                "comicChapter?currentChapterId=$currentChapterId"
                             )
                         }
                     )

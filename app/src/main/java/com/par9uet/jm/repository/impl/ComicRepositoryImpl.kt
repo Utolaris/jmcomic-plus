@@ -1,15 +1,14 @@
 package com.par9uet.jm.repository.impl
 
+import com.par9uet.jm.data.comic.ComicEmbeddedDataSource
+import com.par9uet.jm.data.comic.ComicNetworkDataSource
 import com.par9uet.jm.data.models.COMIC_API_SOURCE_BUILTIN
 import com.par9uet.jm.data.models.COMIC_API_SOURCE_MIXED
 import com.par9uet.jm.data.models.COMIC_API_SOURCE_NETWORK
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
-import com.par9uet.jm.repository.BaseRepository
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.CollectComicResponse
-import com.par9uet.jm.retrofit.model.ComicDetailRelatedListItemResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.ComicDetailSeriesListItemResponse
 import com.par9uet.jm.retrofit.model.ComicListResponse
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
@@ -19,802 +18,134 @@ import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
-import com.par9uet.jm.retrofit.parseHtml
-import com.par9uet.jm.retrofit.parseRange
-import com.par9uet.jm.retrofit.parseSpeed
-import com.par9uet.jm.retrofit.service.ComicService
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.utils.log
-import com.par9uet.jm.utils.logError
-import io.github.jukomu.jmcomic.api.enums.Category
-import io.github.jukomu.jmcomic.api.enums.FavoriteFolderType
-import io.github.jukomu.jmcomic.api.enums.ForumMode
-import io.github.jukomu.jmcomic.api.enums.OrderBy
-import io.github.jukomu.jmcomic.api.enums.SearchMainTag
-import io.github.jukomu.jmcomic.api.enums.TimeOption
-import io.github.jukomu.jmcomic.api.model.ForumQuery
-import io.github.jukomu.jmcomic.api.model.JmAlbum
-import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
-import io.github.jukomu.jmcomic.api.model.JmCategoryMeta
-import io.github.jukomu.jmcomic.api.model.JmComment
-import io.github.jukomu.jmcomic.api.model.JmCommentList
-import io.github.jukomu.jmcomic.api.model.JmImage
-import io.github.jukomu.jmcomic.api.model.JmSearchPage
-import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksDetail
-import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksCategory
-import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksList
-import io.github.jukomu.jmcomic.api.model.JmWeeklyPicksType
-import io.github.jukomu.jmcomic.api.model.SearchQuery
-import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.util.concurrent.TimeUnit
+import com.par9uet.jm.store.AppLocalSettings
 
+/**
+ * Routes comic operations while keeping API-specific implementations in dedicated data sources.
+ * Mixed mode intentionally uses the embedded API for metadata and actions, and the network API
+ * for image-list HTML, matching the behavior of the previous repository implementation.
+ */
 class ComicRepositoryImpl(
-    private val service: ComicService,
-    private val localSettingManager: LocalSettingManager,
-    private val embeddedClientManager: EmbeddedClientManager,
-) : BaseRepository(), ComicRepository {
+    private val networkDataSource: ComicNetworkDataSource,
+    private val embeddedDataSource: ComicEmbeddedDataSource,
+    private val localSettings: AppLocalSettings,
+) : ComicRepository {
+    override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.getComicDetail(id)
+        else networkDataSource.getComicDetail(id)
 
-    companion object {
-        private val imageCache = mutableMapOf<Int, List<JmImage>>()
-        private val cleanHttpClient: OkHttpClient by lazy {
-            OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .build()
-        }
-    }
+    override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.likeComic(id)
+        else networkDataSource.likeComic(id)
 
-    private fun fixImageUrl(url: String): String {
-        // 库的 buildImageList 会将域名前缀拼接到 filename 前。
-        // 但 API 有时返回的 image 字段本身就是完整 URL，导致双重拼接：
-        // https://cdn-msp.jmapiproxy1.cc/media/photos/1452549/https://tencent.jmdanjonproxy.xyz/media/photos/1452549/00004.webp?t=...
-        // 正确的 URL 应该从第二个 https:// 开始
-        val secondHttps = url.indexOf("https://", 8)
-        return if (secondHttps > 0) url.substring(secondHttps) else url
-    }
+    override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.collectComic(id)
+        else networkDataSource.collectComic(id)
 
-    private fun buildImageRequest(url: String): Request {
-        return Request.Builder()
-            .url(url)
-            .get()
-            .header("User-Agent", "Mozilla/5.0 (Linux; Android 9; V1938CT Build/PQ3A.190705.11211812; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/91.0.4472.114 Safari/537.36")
-            .header("Referer", "https://18comic.vip")
-            .build()
-    }
-
-    override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> {
-        if (useEmbeddedApi()) {
-            return getComicDetailFromEmbeddedApi(id)
-        }
-        return safeApiCall {
-            service.getComicDetail(id)
-        }
-    }
-
-    override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        // JMComic-Api-Java 的 toggleAlbumLike 实际调用单向 POST /like。
-                        client.toggleAlbumLike(id.toString())
-                    }
-                    NetWorkResult.Success(LikeComicResponse(code = 200, msg = "success", status = "ok"))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    NetWorkResult.Error("内置 API 点赞失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return safeApiCall {
-            service.likeComic(id)
-        }
-    }
-
-    override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        client.toggleAlbumFavorite(id.toString(), "0")
-                    }
-                    NetWorkResult.Success(CollectComicResponse(msg = "success", status = "ok", type = "collect"))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    NetWorkResult.Error("内置 API 收藏失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return safeApiCall {
-            service.collectComic(id)
-        }
-    }
-
-    override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        client.toggleAlbumFavorite(id.toString(), "0")
-                    }
-                    NetWorkResult.Success(CollectComicResponse(msg = "success", status = "ok", type = "uncollect"))
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    NetWorkResult.Error("内置 API 取消收藏失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return safeApiCall {
-            service.collectComic(id)
-        }
-    }
+    override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.unCollectComic(id)
+        else networkDataSource.unCollectComic(id)
 
     override suspend fun getEmbeddedHomeCategory(
         categoryId: String,
     ): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> {
         if (!useEmbeddedApi()) return NetWorkResult.Error("内置 API 分类仅在内置数据源可用")
-        return withContext(Dispatchers.IO) {
-            try {
-                val client = getEmbeddedClient()
-                val items = runCatchingCancellable {
-                    when (categoryId) {
-                        "builtin_latest" ->
-                            client.getLatest(1).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_week_hot" ->
-                            client.getCategories(
-                                SearchQuery.Builder()
-                                    .orderBy(OrderBy.MOST_VIEWED).time(TimeOption.WEEK).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_month_hot" ->
-                            client.getCategories(
-                                SearchQuery.Builder()
-                                    .orderBy(OrderBy.MOST_VIEWED).time(TimeOption.MONTH).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_most_liked" ->
-                            client.getCategories(
-                                SearchQuery.Builder()
-                                    .orderBy(OrderBy.MOST_LIKED).time(TimeOption.ALL).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_random" ->
-                            client.getRandomRecommend().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_doujin" ->
-                            client.getCategories(
-                                SearchQuery.Builder().category(Category.DOUJIN).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_single" ->
-                            client.getCategories(
-                                SearchQuery.Builder().category(Category.SINGLE).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_short" ->
-                            client.getCategories(
-                                SearchQuery.Builder().category(Category.SHORT).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_korean" ->
-                            client.getCategories(
-                                SearchQuery.Builder().category(Category.KOREAN).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_american" ->
-                            client.getCategories(
-                                SearchQuery.Builder().category(Category.AMERICAN).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_cosplay" ->
-                            client.getCategories(
-                                SearchQuery.Builder().category(Category.COSPLAY).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_3d" ->
-                            client.getCategories(
-                                SearchQuery.Builder().category(Category.IMAGE_3D).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        "builtin_most_images" ->
-                            client.getCategories(
-                                SearchQuery.Builder()
-                                    .orderBy(OrderBy.MOST_IMAGES).time(TimeOption.ALL).page(1).build()
-                            ).content().orEmpty().map { it.toHomeListItem() }
-
-                        else -> throw IllegalArgumentException("未知首页分类: " + categoryId)
-                    }
-                }.getOrElse { throw it }
-                NetWorkResult.Success(items)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置 API 获取首页分类失败：" + (e.message ?: "未知错误"))
-            }
-        }
+        return embeddedDataSource.getHomeCategory(categoryId)
     }
 
     override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> =
-        safeApiCall { service.getHomeSwiperComicList() }
+        networkDataSource.getHomePage()
 
-    override suspend fun getComicPicList(id: Int, shunt: String): NetWorkResult<ComicPicListResponse> {
+    override suspend fun getComicPicList(
+        id: Int,
+        shunt: String,
+    ): NetWorkResult<ComicPicListResponse> =
         if (useEmbeddedApi() && !useNetworkApiForImages()) {
-            return getComicPicListFromEmbeddedApi(id)
+            embeddedDataSource.getComicPicList(id)
+        } else {
+            networkDataSource.getComicPicList(id, shunt)
         }
-        return when (val res = safeStringCall {
-            service.getComicPicList(id, shunt)
-        }) {
-            is NetWorkResult.Success<String> -> {
-                val htmlStr = res.data
-                val pair = parseRange(htmlStr)
-                NetWorkResult.Success(
-                    ComicPicListResponse(
-                        list = parseHtml(htmlStr),
-                        __aId = pair.first,
-                        __scrambleId = pair.second,
-                        __speed = parseSpeed(htmlStr)
-                    )
-                )
-            }
 
-            else -> {
-                NetWorkResult.Error("从 HTML 解析图片列表失败")
-            }
-        }
-    }
+    override suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray? =
+        embeddedDataSource.downloadImageBytes(comicId, imageIndex)
 
     override suspend fun getComicList(
         page: Int,
         order: ComicSearchOrderFilter,
         searchContent: String,
-    ): NetWorkResult<ComicListResponse> {
-        if (useEmbeddedApi()) {
-            return getComicListFromEmbeddedApi(page, order, searchContent)
-        }
-        return safeApiCall {
-            service.getComicList(page, order.value, searchContent)
-        }
-    }
+    ): NetWorkResult<ComicListResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.getComicList(page, order, searchContent)
+        else networkDataSource.getComicList(page, order, searchContent)
 
-    override suspend fun getWeekData(): NetWorkResult<WeekResponse> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    NetWorkResult.Success(withEmbeddedClient { client ->
-                        val picks = client.getWeeklyPicksList()
-                        WeekResponse(
-                            categories = picks.categories.map { category ->
-                                WeekResponse.CategoryItem(
-                                    id = category.id(),
-                                    time = category.time(),
-                                    title = category.title()
-                                )
-                            },
-                            type = picks.type.map { type ->
-                                WeekResponse.TypeItem(
-                                    id = type.id(),
-                                    title = type.title()
-                                )
-                            }
-                        )
-                    })
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    NetWorkResult.Error("内置 API 获取周刊数据失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return safeApiCall {
-            service.getWeekData()
-        }
-    }
+    override suspend fun getWeekData(): NetWorkResult<WeekResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.getWeekData()
+        else networkDataSource.getWeekData()
 
     override suspend fun getWeekRecommendComicList(
         page: Int,
         categoryId: String,
         typeId: String,
-    ): NetWorkResult<WeekRecommendComicResponse> {
+    ): NetWorkResult<WeekRecommendComicResponse> =
         if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    NetWorkResult.Success(withEmbeddedClient { client ->
-                        val detail = client.getWeeklyPicksDetail(categoryId)
-                        WeekRecommendComicResponse(
-                            total = detail.list.size,
-                            list = detail.list.map { albumMeta ->
-                                WeekRecommendComicResponse.ListItem(
-                                    id = albumMeta.id(),
-                                    author = albumMeta.authors().joinToString(", "),
-                                    description = albumMeta.description(),
-                                    name = albumMeta.title(),
-                                    image = albumMeta.image() ?: "",
-                                    category = WeekRecommendComicResponse.ListItem.Category(
-                                        id = albumMeta.category()?.id(),
-                                        title = albumMeta.category()?.title()
-                                    ),
-                                    category_sub = WeekRecommendComicResponse.ListItem.Category(
-                                        id = albumMeta.subCategory()?.id(),
-                                        title = albumMeta.subCategory()?.title()
-                                    ),
-                                    liked = false,
-                                    is_favorite = false,
-                                    update_at = 0
-                                )
-                            }
-                        )
-                    })
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    NetWorkResult.Error("内置 API 获取周刊详情失败：${e.message ?: "未知错误"}")
-                }
-            }
+            embeddedDataSource.getWeekRecommendComicList(page, categoryId, typeId)
+        } else {
+            networkDataSource.getWeekRecommendComicList(page, categoryId, typeId)
         }
-        return safeApiCall {
-            service.getWeekRecommendComicList(
-                page,
-                categoryId,
-                typeId
-            )
-        }
-    }
 
     override suspend fun getCommentList(
         page: Int,
-        comicId: Int
-    ): NetWorkResult<CommentListResponse> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    NetWorkResult.Success(withEmbeddedClient { client ->
-                        val query = ForumQuery.album(comicId.toString())
-                            .mode(ForumMode.ALL)
-                            .page(page)
-                            .build()
-                        val commentList = client.getComments(query)
-                        CommentListResponse(
-                            list = commentList.list.map { it.toCommentListItem() },
-                            total = commentList.total.toString()
-                        )
-                    })
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    NetWorkResult.Error("内置 API 获取评论列表失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return safeApiCall {
-            service.getCommentList(
-                page,
-                comicId,
-                "manhua"
-            )
-        }
-    }
+        comicId: Int,
+    ): NetWorkResult<CommentListResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.getCommentList(page, comicId)
+        else networkDataSource.getCommentList(page, comicId)
 
     override suspend fun comment(
         content: String,
         comicId: Int,
-        commentId: Int?
-    ): NetWorkResult<CommentComicResponse> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        if (commentId != null) {
-                            client.replyToComment(comicId.toString(), content, commentId.toString())
-                        } else {
-                            client.postComment(comicId.toString(), content)
-                        }
-                    }
-                    NetWorkResult.Success(
-                        CommentComicResponse(
-                            msg = "success",
-                            status = "ok",
-                            aid = comicId,
-                            cid = 0,
-                            spoiler = "0"
-                        )
-                    )
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    NetWorkResult.Error("内置 API 评论失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return safeApiCall {
-            service.comment(
-                content,
-                comicId,
-                commentId ?: 0,
-            )
-        }
-    }
+        commentId: Int?,
+    ): NetWorkResult<CommentComicResponse> =
+        if (useEmbeddedApi()) embeddedDataSource.comment(content, comicId, commentId)
+        else networkDataSource.comment(content, comicId, commentId)
 
-    override suspend fun likeComment(commentId: Int): NetWorkResult<CommentComicResponse> {
-        return safeApiCall {
-            service.likeComment(commentId)
-        }
-    }
+    override suspend fun likeComment(commentId: Int): NetWorkResult<CommentComicResponse> =
+        networkDataSource.likeComment(commentId)
 
     override suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        client.manageFavoriteFolder(FavoriteFolderType.ADD, "0", name, "")
-                    }
-                    NetWorkResult.Success(Unit)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logError("ComicRepositoryImpl", "创建收藏夹失败：${e.message}")
-                    NetWorkResult.Error("内置API创建收藏夹失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+        if (!useEmbeddedApi()) return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+        return embeddedDataSource.createFavoriteFolder(name)
     }
 
     override suspend fun deleteFavoriteFolder(folderId: String): NetWorkResult<Unit> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        client.manageFavoriteFolder(FavoriteFolderType.DELETE, folderId, "", "")
-                    }
-                    NetWorkResult.Success(Unit)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logError("ComicRepositoryImpl", "删除收藏夹失败：${e.message}")
-                    NetWorkResult.Error("内置API删除收藏夹失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+        if (!useEmbeddedApi()) return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+        return embeddedDataSource.deleteFavoriteFolder(folderId)
     }
 
-    override suspend fun renameFavoriteFolder(folderId: String, newName: String): NetWorkResult<Unit> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        client.manageFavoriteFolder(FavoriteFolderType.EDIT, folderId, newName, "")
-                    }
-                    NetWorkResult.Success(Unit)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logError("ComicRepositoryImpl", "重命名收藏夹失败：${e.message}")
-                    NetWorkResult.Error("内置API重命名收藏夹失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+    override suspend fun renameFavoriteFolder(
+        folderId: String,
+        newName: String,
+    ): NetWorkResult<Unit> {
+        if (!useEmbeddedApi()) return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+        return embeddedDataSource.renameFavoriteFolder(folderId, newName)
     }
 
-    override suspend fun moveComicToFolder(comicId: Int, folderId: String): NetWorkResult<Unit> {
-        if (useEmbeddedApi()) {
-            return withContext(Dispatchers.IO) {
-                try {
-                    withEmbeddedClient { client ->
-                        client.manageFavoriteFolder(FavoriteFolderType.MOVE, folderId, "", comicId.toString())
-                    }
-                    NetWorkResult.Success(Unit)
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logError("ComicRepositoryImpl", "移动漫画到收藏夹失败：${e.message}")
-                    NetWorkResult.Error("内置API移动漫画到收藏夹失败：${e.message ?: "未知错误"}")
-                }
-            }
-        }
-        return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+    override suspend fun moveComicToFolder(
+        comicId: Int,
+        folderId: String,
+    ): NetWorkResult<Unit> {
+        if (!useEmbeddedApi()) return NetWorkResult.Error("网络API暂不支持收藏夹管理")
+        return embeddedDataSource.moveComicToFolder(comicId, folderId)
     }
 
-    override suspend fun getComicIdsByTag(tagName: String, maxPages: Int): Set<Int> {
-        if (tagName.isBlank()) return emptySet()
-        return withContext(Dispatchers.IO) {
-            try {
-                val client = getEmbeddedClient()
-                val ids = mutableSetOf<Int>()
-                for (page in 1..maxPages.coerceAtLeast(1)) {
-                    val query = SearchQuery.Builder()
-                        .text(tagName)
-                        .mainTag(SearchMainTag.TAG)
-                        .page(page)
-                        .build()
-                    val result = try {
-                        client.search(query)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        logError("ComicRepositoryImpl", "搜索标签 [$tagName] 第${page}页失败：${e.message}")
-                        break
-                    }
-                    val content = result.content().orEmpty()
-                    if (content.isEmpty()) break
-                    content.forEach { meta ->
-                        meta.id().toIntOrNull()?.let { ids += it }
-                    }
-                    val total = result.totalItems()
-                    if (total <= page * 20) break
-                    if (page < maxPages) delay(150)
-                }
-                log("ComicRepositoryImpl", "标签 [$tagName] 获取到 ${ids.size} 个漫画ID")
-                ids
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logError("ComicRepositoryImpl", "获取标签 [$tagName] 漫画ID失败：${e.message}")
-                emptySet()
-            }
-        }
-    }
+    override suspend fun getComicIdsByTag(tagName: String, maxPages: Int): Set<Int> =
+        embeddedDataSource.getComicIdsByTag(tagName, maxPages)
 
     private fun useEmbeddedApi(): Boolean {
-        val source = localSettingManager.localSettingState.value.comicApiSource
+        val source = localSettings.localSettingState.value.comicApiSource
         return source == COMIC_API_SOURCE_BUILTIN || source == COMIC_API_SOURCE_MIXED
     }
 
     private fun useNetworkApiForImages(): Boolean {
-        val source = localSettingManager.localSettingState.value.comicApiSource
+        val source = localSettings.localSettingState.value.comicApiSource
         return source == COMIC_API_SOURCE_NETWORK || source == COMIC_API_SOURCE_MIXED
-    }
-
-    private fun getEmbeddedClient(): JmApiClient = embeddedClientManager.getClient()
-
-    private fun <T> withEmbeddedClient(block: (JmApiClient) -> T): T {
-        return block(getEmbeddedClient())
-    }
-
-    private suspend fun getComicDetailFromEmbeddedApi(id: Int): NetWorkResult<ComicDetailResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                NetWorkResult.Success(withEmbeddedClient { client ->
-                    client.getAlbum(id.toString()).toComicDetailResponse()
-                })
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置 API 获取漫画详情失败：${e.message ?: "未知错误"}")
-            }
-        }
-    }
-
-
-    private suspend fun getComicPicListFromEmbeddedApi(id: Int): NetWorkResult<ComicPicListResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                withEmbeddedClient { client ->
-                    val photo = try {
-                        client.getPhoto(id.toString())
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (_: Exception) {
-                        null
-                    }
-                    val images = photo?.images()?.takeIf { it.isNotEmpty() }
-                        ?: client.getComicRead(id.toString()).images().orEmpty()
-                    if (images.isEmpty()) {
-                        NetWorkResult.Error("内置 API 未返回图片列表")
-                    } else {
-                        synchronized(imageCache) {
-                            imageCache[id] = images
-                        }
-                        NetWorkResult.Success(
-                            ComicPicListResponse(
-                                list = images.map { fixImageUrl(it.getDownloadUrl()) },
-                                __aId = photo?.albumId()?.toIntOrNull() ?: id,
-                                __scrambleId = photo?.scrambleId()?.toIntOrNull()
-                                    ?: images.firstOrNull()?.scrambleId()?.toIntOrNull()
-                                    ?: 0,
-                                __speed = "0"
-                            )
-                        )
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置 API 获取图片列表失败：${e.message ?: "未知错误"}")
-            }
-        }
-    }
-
-    override suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray? {
-        val images = synchronized(imageCache) { imageCache[comicId] }
-        val image = images?.getOrNull(imageIndex) ?: return null
-        val imageUrl = fixImageUrl(image.getDownloadUrl())
-        return withContext(Dispatchers.IO) {
-            try {
-                logError("ComicRepositoryImpl", "下载图片 comicId=$comicId index=$imageIndex URL=$imageUrl")
-                val request = buildImageRequest(imageUrl)
-                cleanHttpClient.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        logError("ComicRepositoryImpl", "下载图片失败 comicId=$comicId index=$imageIndex: HTTP ${response.code} URL=$imageUrl")
-                        return@withContext null
-                    }
-                    response.body?.bytes()
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logError("ComicRepositoryImpl", "下载图片异常 comicId=$comicId index=$imageIndex: ${e.message} URL=$imageUrl")
-                null
-            }
-        }
-    }
-
-    private suspend fun getComicListFromEmbeddedApi(
-        page: Int,
-        order: ComicSearchOrderFilter,
-        searchContent: String,
-    ): NetWorkResult<ComicListResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                NetWorkResult.Success(withEmbeddedClient { client ->
-                    val query = SearchQuery.Builder()
-                        .text(searchContent)
-                        .page(page)
-                        .orderBy(order.toEmbeddedOrderBy())
-                        .build()
-                    client.search(query).toComicListResponse(searchContent)
-                })
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置 API 搜索漫画失败：${e.message ?: "未知错误"}")
-            }
-        }
-    }
-
-    private fun ComicSearchOrderFilter.toEmbeddedOrderBy(): OrderBy {
-        return when (this) {
-            ComicSearchOrderFilter.NEWEST -> OrderBy.LATEST
-            ComicSearchOrderFilter.MOST_COLLECT_COUNT -> OrderBy.MOST_VIEWED
-            ComicSearchOrderFilter.MOST_PIC_COUNT -> OrderBy.MOST_IMAGES
-            ComicSearchOrderFilter.MOST_LIKE_COUNT -> OrderBy.MOST_LIKED
-        }
-    }
-
-    private fun JmAlbum.toComicDetailResponse(): ComicDetailResponse {
-        return ComicDetailResponse(
-            id = id().toIntOrNull() ?: 0,
-            name = title().orEmpty(),
-            description = description().orEmpty(),
-            author = authors().orEmpty(),
-            total_views = views().toDisplayCount(),
-            likes = likes().toDisplayCount(),
-            comment_total = commentCount(),
-            tags = tags().orEmpty(),
-            actors = actors().orEmpty(),
-            works = works().orEmpty(),
-            is_favorite = isFavorite,
-            liked = liked(),
-            related_list = relatedAlbums().orEmpty().map {
-                ComicDetailRelatedListItemResponse(
-                    id = it.id().orEmpty(),
-                    name = it.title().orEmpty(),
-                    author = it.authors().orEmpty().firstOrNull().orEmpty(),
-                    image = it.image().orEmpty()
-                )
-            },
-            series = photoMetas().orEmpty().map {
-                ComicDetailSeriesListItemResponse(
-                    id = it.id().orEmpty(),
-                    name = it.title().orEmpty(),
-                    sort = it.sortOrder().toString()
-                )
-            },
-            series_id = seriesId().orEmpty(),
-            price = price().orEmpty(),
-            purchased = purchased().equals("true", ignoreCase = true)
-        )
-    }
-
-    private fun JmSearchPage.toComicListResponse(searchContent: String): ComicListResponse {
-        return ComicListResponse(
-            search_query = searchContent,
-            total = totalItems().toString(),
-            redirect_aid = null,
-            content = content().orEmpty().map { it.toContentListItem() }
-        )
-    }
-
-    private fun JmAlbumMeta.toContentListItem(): ComicListResponse.ContentListItem {
-        return ComicListResponse.ContentListItem(
-            id = id().orEmpty(),
-            author = authors().orEmpty().firstOrNull().orEmpty(),
-            description = description(),
-            name = title().orEmpty(),
-            image = image().orEmpty(),
-            category = category().toContentCategory(),
-            category_sub = subCategory().toContentCategory(),
-            liked = false,
-            is_favorite = false,
-            update_at = 0
-        )
-    }
-
-    private fun JmAlbumMeta.toHomeListItem(): HomeSwiperComicListItemResponse.ListItem {
-        return HomeSwiperComicListItemResponse.ListItem(
-            id = id().orEmpty(),
-            author = authors().orEmpty().firstOrNull().orEmpty(),
-            description = description(),
-            name = title().orEmpty(),
-            image = image().orEmpty(),
-            category = category().toHomeCategory(),
-            category_sub = subCategory().toHomeCategory(),
-            liked = false,
-            is_favorite = false,
-            update_at = 0
-        )
-    }
-
-    private fun JmCategoryMeta?.toContentCategory(): ComicListResponse.ContentListItem.Category {
-        return ComicListResponse.ContentListItem.Category(
-            id = this?.id(),
-            title = this?.title()
-        )
-    }
-
-    private fun JmCategoryMeta?.toHomeCategory(): HomeSwiperComicListItemResponse.ListItem.Category {
-        return HomeSwiperComicListItemResponse.ListItem.Category(
-            id = this?.id(),
-            title = this?.title()
-        )
-    }
-
-    private fun JmComment.toCommentListItem(): CommentListResponse.ListItem {
-        return CommentListResponse.ListItem(
-            AID = null,
-            BID = commentId(),
-            CID = commentId(),
-            UID = userId(),
-            username = username(),
-            nickname = nickname(),
-            likes = likes.toString(),
-            gender = gender(),
-            update_at = updateAt(),
-            addtime = postDate(),
-            parent_CID = parentCommentId(),
-            name = nickname(),
-            content = content(),
-            photo = photo() ?: "",
-            spoiler = spoiler(),
-            replys = replys().orEmpty().map { it.toCommentListItem() }
-        )
-    }
-
-    private fun String?.toDisplayCount(): Int {
-        val text = this?.trim().orEmpty()
-        if (text.isBlank()) return 0
-        val multiplier = when {
-            text.endsWith("K", ignoreCase = true) -> 1_000
-            text.endsWith("M", ignoreCase = true) -> 1_000_000
-            else -> 1
-        }
-        val numeric = if (multiplier == 1) text else text.dropLast(1)
-        return (numeric.toDoubleOrNull()?.times(multiplier)
-            ?: text.filter(Char::isDigit).toDoubleOrNull()
-            ?: 0.0).toInt()
     }
 }

@@ -6,9 +6,7 @@ import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.data.models.BlockedTagTemplate
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_BUILTIN
 import com.par9uet.jm.data.models.COMIC_API_SOURCE_MIXED
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_NETWORK
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.utils.flattenBlockedTagTemplates
@@ -72,11 +70,6 @@ class LocalSettingStorage(
                     listOf()
                 }
                 saved.copy(
-                    comicApiSourceList = listOf(
-                        COMIC_API_SOURCE_BUILTIN,
-                        COMIC_API_SOURCE_NETWORK,
-                        COMIC_API_SOURCE_MIXED
-                    ),
                     // The app now always uses the mixed API path. Keep accepting the legacy
                     // field above for JSON compatibility, but migrate every existing install.
                     comicApiSource = COMIC_API_SOURCE_MIXED,

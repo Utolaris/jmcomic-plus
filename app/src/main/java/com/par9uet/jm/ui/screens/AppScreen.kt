@@ -44,18 +44,11 @@ fun AppScreen(
         NavHost(
             modifier = Modifier.fillMaxSize(),
             navController = mainNavController,
-//            startDestination = "comicQuickSearch/百合"
-//            startDestination = "appLocalSetting"
             startDestination = "tab/home",
             enterTransition = { NavigationMotion.hierarchicalEnter() },
             exitTransition = { NavigationMotion.hierarchicalExit() },
             popEnterTransition = { NavigationMotion.hierarchicalPopEnter() },
             popExitTransition = { NavigationMotion.hierarchicalPopExit() },
-//            startDestination = "comicRead/1044155",
-//             startDestination = "comicDetail/1044155"
-//            startDestination = "comicSearch"
-//            startDestination = "sign",
-//            startDestination = "download"
         ) {
             composable(
                 route = "tab/{tabName}?",
@@ -91,25 +84,17 @@ fun AppScreen(
                 ComicDetailScreen(id = id)
             }
             composable(
-                route = "comicChapter/{id}?currentChapterId={currentChapterId}",
+                route = "comicChapter?currentChapterId={currentChapterId}",
                 arguments = listOf(
-                    navArgument(name = "id") { type = NavType.IntType; defaultValue = -1 },
                     navArgument(name = "currentChapterId") { type = NavType.IntType; defaultValue = -1 }
                 ),
             ) { backStackEntry ->
-                val id = backStackEntry.arguments?.getInt("id") ?: -1
                 val currentChapterId = backStackEntry.arguments?.getInt("currentChapterId") ?: -1
                 ComicChapterScreen(currentChapterId = currentChapterId)
             }
             composable(
-                route = "comicRelate/{id}",
-                arguments = listOf(
-                    navArgument(name = "id") { type = NavType.IntType; defaultValue = -1 }
-                ),
-            ) { backStackEntry ->
-                val id = backStackEntry.arguments?.getInt("id") ?: -1
-                ComicRelateListScreen(/*comicId = id*/)
-            }
+                route = "comicRelate",
+            ) { ComicRelateListScreen() }
             composable(
                 route = "comicRead/{id}",
                 arguments = listOf(

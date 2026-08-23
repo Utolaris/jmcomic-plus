@@ -39,9 +39,6 @@ class LocalSettingManager(
         ensureLoaded()
     }
 
-    fun updateComicApiSource(@Suppress("UNUSED_PARAMETER") comicApiSource: String) =
-        updateSetting { it.copy(comicApiSource = COMIC_API_SOURCE_MIXED) }
-
     fun updatePreferenceRecommendEnabled(enabled: Boolean) =
         updateSetting { it.copy(preferenceRecommendEnabled = enabled) }
 
@@ -57,8 +54,6 @@ class LocalSettingManager(
     fun updateApi(api: String) = updateSetting { it.copy(api = api) }
 
     fun updateTheme(theme: String) = updateSetting { it.copy(theme = theme) }
-
-    fun updateShunt(shunt: String) = updateSetting { it.copy(shunt = shunt) }
 
     fun updatePrefetchCount(prefetchCount: String) =
         updateSetting { it.copy(prefetchCount = prefetchCount.toInt()) }
