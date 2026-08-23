@@ -370,6 +370,7 @@ fun TabScreen(
                                         statusBarInset = statusBarInset,
                                         title = {
                                             Text(
+                                                modifier = Modifier.padding(start = 4.dp),
                                                 text = "设置",
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis,

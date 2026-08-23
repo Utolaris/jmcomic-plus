@@ -32,7 +32,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -59,6 +58,7 @@ import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
+import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.ChapterSingleSelectDialog
 import com.par9uet.jm.ui.components.ComicContentTag
 import com.par9uet.jm.ui.components.JmCoverImage
@@ -214,8 +214,8 @@ fun DownloadComicDetailScreen(
         null -> Unit
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxSize(),
+    CommonScaffold(
+        title = detailState.title.ifBlank { "缓存详情" },
         bottomBar = {
             if (detailState.found && detailState.canRead) {
                 Surface(
@@ -245,11 +245,10 @@ fun DownloadComicDetailScreen(
                 }
             }
         }
-    ) { innerPadding ->
+    ) {
         if (!detailState.found) {
             Box(
                 modifier = Modifier
-                    .padding(innerPadding)
                     .fillMaxSize()
             ) {
                 if (!detailState.loading) {
@@ -260,12 +259,11 @@ fun DownloadComicDetailScreen(
                     )
                 }
             }
-            return@Scaffold
+            return@CommonScaffold
         }
 
         Column(
             modifier = Modifier
-                .padding(innerPadding)
                 .fillMaxSize()
                 .verticalScroll(scrollState)
         ) {

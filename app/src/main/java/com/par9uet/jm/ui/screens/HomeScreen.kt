@@ -370,6 +370,7 @@ internal fun HomeGlassTopBar(
                 contentAlignment = Alignment.CenterStart,
             ) {
                 Text(
+                    modifier = Modifier.padding(start = 4.dp),
                     text = title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

@@ -1,9 +1,9 @@
 package com.par9uet.jm.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,8 +17,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -84,21 +82,40 @@ fun UserHistoryComicScreen(
     val selectedComics: List<com.par9uet.jm.data.models.Comic> = remember(historyComicLazyPagingItems.itemSnapshotList, historyEditState.selectedComicIds) {
         historyComicLazyPagingItems.itemSnapshotList.filterNotNull().filter { it.id in historyEditState.selectedComicIds }
     }
+    BackHandler(enabled = historyEditState.editing) {
+        userViewModel.clearHistorySelection()
+    }
 
     CommonScaffold(
-        title = "历史浏览"
+        title = "历史浏览",
+        titleContent = if (historyEditState.editing) {
+            { Text("已选择 ${historyEditState.selectedComicIds.size} 项") }
+        } else {
+            null
+        },
+        navigationContent = if (historyEditState.editing) {
+            {
+                IconButton(onClick = userViewModel::clearHistorySelection) {
+                    Icon(Icons.Rounded.Close, contentDescription = "退出编辑")
+                }
+            }
+        } else {
+            null
+        },
+        actions = {
+            if (historyEditState.editing) {
+                IconButton(onClick = { userViewModel.cacheHistoryComics(selectedComics) }) {
+                    Icon(Icons.Rounded.Download, contentDescription = "缓存")
+                }
+                IconButton(onClick = { showDeleteConfirmDialog = true }) {
+                    Icon(Icons.Rounded.Delete, contentDescription = "删除")
+                }
+            }
+        },
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
-            if (historyEditState.editing) {
-                HistoryEditBar(
-                    selectedCount = historyEditState.selectedComicIds.size,
-                    onClose = userViewModel::clearHistorySelection,
-                    onDownload = { userViewModel.cacheHistoryComics(selectedComics) },
-                    onDelete = { showDeleteConfirmDialog = true }
-                )
-            }
             if (historyComicLazyPagingItems.loadState.refresh is LoadState.Loading && historyComicLazyPagingItems.itemCount == 0) {
                 UserHistoryComicSkeleton()
             } else {
@@ -143,39 +160,5 @@ fun UserHistoryComicScreen(
                 TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("取消") }
             }
         )
-    }
-}
-
-@Composable
-private fun HistoryEditBar(
-    selectedCount: Int,
-    onClose: () -> Unit,
-    onDownload: () -> Unit,
-    onDelete: () -> Unit
-) {
-    Surface(
-        tonalElevation = 2.dp,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            IconButton(onClick = onClose) {
-                Icon(Icons.Rounded.Close, contentDescription = "退出编辑")
-            }
-            Text(
-                modifier = Modifier.weight(1f),
-                text = "已选择 $selectedCount 项"
-            )
-            IconButton(onClick = onDownload) {
-                Icon(Icons.Rounded.Download, contentDescription = "缓存")
-            }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Rounded.Delete, contentDescription = "删除")
-            }
-        }
     }
 }

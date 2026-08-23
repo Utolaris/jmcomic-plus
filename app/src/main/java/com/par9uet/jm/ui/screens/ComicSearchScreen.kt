@@ -16,7 +16,6 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.rememberTextFieldState
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Cancel
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.Search
@@ -26,12 +25,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -50,6 +45,7 @@ import com.par9uet.jm.data.models.BlockedTagTemplate
 import com.par9uet.jm.store.HistorySearchManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.ComicSearchHistoryTag
+import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SearchExclusionEditor
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.utils.normalizeSearchExcludedTags
@@ -87,7 +83,6 @@ fun ComicSearchScreen(
     }
     val historySearchState by historySearchManager.historySearchState.collectAsState()
     val localSetting by localSettingManager.localSettingState.collectAsState()
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior(rememberTopAppBarState())
 
     fun addExcludedTag(tag: String) {
         excludedTags = normalizeSearchExcludedTags(excludedTags + tag)
@@ -118,30 +113,9 @@ fun ComicSearchScreen(
         focusRequester.requestFocus()
     }
 
-    Scaffold(
-        modifier = Modifier.fillMaxWidth(),
-        topBar = {
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
-                    titleContentColor = MaterialTheme.colorScheme.onSurface,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = { mainNavController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                title = { Text("搜索") },
-                scrollBehavior = scrollBehavior
-            )
-        }
-    ) { paddingValues ->
+    CommonScaffold(title = "搜索") {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(paddingValues),
+            modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
