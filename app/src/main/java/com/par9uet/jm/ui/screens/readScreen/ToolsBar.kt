@@ -12,12 +12,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NavigateBefore
 import androidx.compose.material.icons.automirrored.filled.NavigateNext
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,6 +36,8 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import com.par9uet.jm.ui.glass.GlassSurface
+import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import kotlin.math.roundToInt
 
 @Composable
@@ -49,6 +48,7 @@ fun ToolsBar(
     previousChapterEnabled: Boolean,
     nextChapterEnabled: Boolean,
     showResetZoom: Boolean = false,
+    surfaceAlpha: Float = 1f,
     onPreviousChapter: () -> Unit,
     onNextChapter: () -> Unit,
     onPageSelected: (index: Int) -> Unit,
@@ -60,81 +60,85 @@ fun ToolsBar(
     val progress = if (pageCount <= 0) 0f else currentPage.toFloat() / pageCount
     val progressText = if (pageCount <= 0) "0%" else "${(progress * 100).roundToInt()}%"
 
-    Card(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp)
-            .widthIn(max = 560.dp),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-        ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            .padding(horizontal = 20.dp, vertical = 16.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        GlassSurface(
+            surfaceId = "reader-bottom-controls",
+            modifier = Modifier
+                .fillMaxWidth()
+                .widthIn(max = 560.dp),
+            style = GlassSurfaceStyle(cornerRadius = 28.dp),
+            surfaceAlpha = surfaceAlpha,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+            Column(
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                FilledTonalIconButton(
-                    enabled = previousChapterEnabled,
-                    onClick = onPreviousChapter
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
-                        contentDescription = "上一章"
-                    )
-                }
-                Text(
-                    text = "$currentPage / $pageCount",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    Text(
-                        text = progressText,
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                     FilledTonalIconButton(
-                        enabled = nextChapterEnabled,
-                        onClick = onNextChapter
+                        enabled = previousChapterEnabled,
+                        onClick = onPreviousChapter
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.NavigateNext,
-                            contentDescription = "下一章"
+                            imageVector = Icons.AutoMirrored.Filled.NavigateBefore,
+                            contentDescription = "上一章"
+                        )
+                    }
+                    Text(
+                        text = "$currentPage / $pageCount",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = progressText,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        FilledTonalIconButton(
+                            enabled = nextChapterEnabled,
+                            onClick = onNextChapter
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.NavigateNext,
+                                contentDescription = "下一章"
+                            )
+                        }
+                    }
+                }
+                if (showResetZoom) {
+                    TextButton(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally),
+                        onClick = onResetZoom
+                    ) {
+                        Text(
+                            text = "还原页面",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
+                PageProgressBar(
+                    currentIndex = safeIndex,
+                    pageCount = pageCount,
+                    onPageSelected = onPageSelected
+                )
             }
-            if (showResetZoom) {
-                TextButton(
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally),
-                    onClick = onResetZoom
-                ) {
-                    Text(
-                        text = "还原页面",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.Medium
-                    )
-                }
-            }
-            PageProgressBar(
-                currentIndex = safeIndex,
-                pageCount = pageCount,
-                onPageSelected = onPageSelected
-            )
         }
     }
 }

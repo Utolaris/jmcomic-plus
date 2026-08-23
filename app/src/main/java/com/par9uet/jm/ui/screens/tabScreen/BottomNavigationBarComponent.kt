@@ -41,6 +41,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.R
+import com.par9uet.jm.ui.glass.GlassSurface
+import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import com.par9uet.jm.ui.glass.GlassStyle
 import com.par9uet.jm.ui.navigation.MainTab
 
@@ -49,11 +51,13 @@ fun BottomNavigationBarComponent(
     selectedTab: MainTab,
     onTabSelected: (MainTab) -> Unit,
     modifier: Modifier = Modifier,
+    navigationBarInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     PrimaryGlassBottomBar(
         selectedTab = selectedTab,
         onTabSelected = onTabSelected,
         modifier = modifier,
+        navigationBarInset = navigationBarInset,
     )
 }
 
@@ -63,6 +67,7 @@ fun PrimaryGlassBottomBar(
     onTabSelected: (MainTab) -> Unit,
     modifier: Modifier = Modifier,
     style: GlassStyle = GlassStyle.Default,
+    navigationBarInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val barWidth = minOf(
@@ -71,71 +76,82 @@ fun PrimaryGlassBottomBar(
         )
         Box(
             modifier = Modifier
-                .align(Alignment.TopCenter)
-                .width(barWidth)
-                .height(style.barHeight),
+                .fillMaxSize()
+                .padding(bottom = navigationBarInset + style.outerMargin),
         ) {
-            val itemWidth = barWidth / MainTab.ordered.size
-            val selectedIndex by animateFloatAsState(
-                targetValue = selectedTab.index.toFloat(),
-                animationSpec = tween(
-                    durationMillis = 320,
-                    easing = FastOutSlowInEasing,
-                ),
-                label = "glass-selected-tab",
-            )
-
-            Box(
+            GlassSurface(
+                surfaceId = "primary-bottom-navigation",
                 modifier = Modifier
-                    .offset(x = itemWidth * selectedIndex)
-                    .width(itemWidth)
-                    .fillMaxHeight()
-                    .padding(4.dp)
-                    .clip(RoundedCornerShape(style.cornerRadius))
-                    .background(
-                        MaterialTheme.colorScheme.primary.copy(
-                            alpha = style.selectedIndicatorAlpha,
-                        ),
+                    .align(Alignment.BottomCenter)
+                    .width(barWidth)
+                    .height(style.barHeight),
+                style = GlassSurfaceStyle(
+                    cornerRadius = style.cornerRadius,
+                    material = style.material,
+                ),
+            ) {
+                val itemWidth = barWidth / MainTab.ordered.size
+                val selectedIndex by animateFloatAsState(
+                    targetValue = selectedTab.index.toFloat(),
+                    animationSpec = tween(
+                        durationMillis = 320,
+                        easing = FastOutSlowInEasing,
                     ),
-            )
+                    label = "glass-selected-tab",
+                )
 
-            Row(modifier = Modifier.fillMaxSize()) {
-                MainTab.ordered.forEach { tab ->
-                    val isSelected = tab == selectedTab
-                    val contentColor = if (isSelected) {
-                        MaterialTheme.colorScheme.onSecondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clip(RoundedCornerShape(style.cornerRadius))
-                            .clickable(
-                                role = Role.Tab,
-                                onClick = { onTabSelected(tab) },
+                Box(
+                    modifier = Modifier
+                        .offset(x = itemWidth * selectedIndex)
+                        .width(itemWidth)
+                        .fillMaxHeight()
+                        .padding(4.dp)
+                        .clip(RoundedCornerShape(style.cornerRadius))
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(
+                                alpha = style.selectedIndicatorAlpha,
+                            ),
+                        ),
+                )
+
+                Row(modifier = Modifier.fillMaxSize()) {
+                    MainTab.ordered.forEach { tab ->
+                        val isSelected = tab == selectedTab
+                        val contentColor = if (isSelected) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clip(RoundedCornerShape(style.cornerRadius))
+                                .clickable(
+                                    role = Role.Tab,
+                                    onClick = { onTabSelected(tab) },
+                                )
+                                .semantics(mergeDescendants = true) {
+                                    contentDescription = tab.navigationLabel
+                                    selected = isSelected
+                                    role = Role.Tab
+                                },
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            MainTabIcon(
+                                tab = tab,
+                                contentDescription = null,
+                                tint = contentColor,
                             )
-                            .semantics(mergeDescendants = true) {
-                                contentDescription = tab.navigationLabel
-                                selected = isSelected
-                                role = Role.Tab
-                            },
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center,
-                    ) {
-                        MainTabIcon(
-                            tab = tab,
-                            contentDescription = null,
-                            tint = contentColor,
-                        )
-                        Text(
-                            text = tab.navigationLabel,
-                            color = contentColor,
-                            style = MaterialTheme.typography.labelSmall,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+                            Text(
+                                text = tab.navigationLabel,
+                                color = contentColor,
+                                style = MaterialTheme.typography.labelSmall,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
                     }
                 }
             }

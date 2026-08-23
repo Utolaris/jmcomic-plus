@@ -2,7 +2,9 @@ package com.par9uet.jm.ui.screens.readScreen
 
 import android.app.Activity
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -54,7 +56,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -70,6 +71,9 @@ import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.ui.glass.GlassCaptureHost
+import com.par9uet.jm.ui.glass.GlassSurface
+import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
 import org.koin.androidx.compose.koinViewModel
@@ -245,160 +249,183 @@ fun ComicReadScreen(
 
     // The reader is a full-screen NavHost destination: keep its first frame opaque so the
     // sliding navigation spring never shows the previous screen through the loading state.
-    Surface(
+    GlassCaptureHost(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background,
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (loading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
-            } else if (size <= 0) {
-                Text(
-                    text = comicPicState.errorMsg.orEmpty().ifBlank { "暂无可阅读图片" },
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.align(Alignment.Center)
-                )
-            } else {
-                if (localSetting.readMode == "scroll") {
-                    ComicScrollRead(
-                        lazyListState = lazyListState,
-                        pagerState = pagerState,
-                        targetIndex = targetIndex,
-                        zoomState = zoomState,
-                        onUpdateSliderValue = { updateIndexFromReader(it) }
-                    )
-                } else {
-                    ComicPageRead(
-                        lazyListState = lazyListState,
-                        pagerState = pagerState,
-                        targetIndex = targetIndex,
-                        zoomState = zoomState,
-                        tapOnly = localSetting.readMode == "tap",
-                        onUpdateSliderValue = { updateIndexFromReader(it) }
-                    )
-                }
-                AnimatedVisibility(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 10.dp),
-                    visible = isShowToolbar,
-                    enter = slideInHorizontally(
-                        initialOffsetX = { fullWidth -> -fullWidth },
-                        animationSpec = tween(durationMillis = 250)
-                    ) + fadeIn(),
-                    exit = slideOutHorizontally(
-                        targetOffsetX = { fullWidth -> -fullWidth },
-                        animationSpec = tween(durationMillis = 250)
-                    ) + fadeOut()
-                ) {
-                    ReadSideBar(
-                        comic = comic,
-                        localOnly = localOnly,
-                        chapterEnabled = readableChapters.isNotEmpty(),
-                        onToggleCollect = {
-                            if (!isLogin) {
-                                mainNavController.navigate("login")
-                            } else {
-                                comic?.let { currentComic ->
-                                    if (currentComic.isCollect) {
-                                        comicReadViewModel.unCollect(currentComic.id)
-                                    } else {
-                                        comicReadViewModel.collect(currentComic.id)
-                                    }
-                                }
-                            }
-                        },
-                        onCache = {
-                            comic?.let { currentComic ->
-                                if (currentComic.comicChapterList.isEmpty()) {
-                                    downloadManager.downloadComic(currentComic)
-                                } else {
-                                    selectedCacheChapterIds =
-                                        currentComic.comicChapterList.map { it.id }.toSet()
-                                    activeDialog = ReadPanelDialog.Cache
-                                }
-                            }
-                        },
-                        onComment = {
-                            if (!isLogin) {
-                                mainNavController.navigate("login")
-                            } else {
-                                mainNavController.navigate("comment/$comicId")
-                            }
-                        },
-                        onChapterJump = {
-                            if (readableChapters.isNotEmpty()) {
-                                activeDialog = ReadPanelDialog.Chapter
-                            }
-                        }
-                    )
-                }
-                AnimatedVisibility(
-                    modifier = Modifier.align(Alignment.BottomCenter),
-                    visible = isShowToolbar,
-                    enter = slideInVertically(
-                        initialOffsetY = { fullHeight -> fullHeight },
-                        animationSpec = tween(durationMillis = 300)
-                    ) + fadeIn(),
-                    exit = slideOutVertically(
-                        targetOffsetY = { fullHeight -> fullHeight },
-                        animationSpec = tween(durationMillis = 300)
-                    ) + fadeOut()
-                ) {
-                    ToolsBar(
-                        currentIndex = currentIndexState,
-                        pageCount = size,
-                        previousChapterEnabled = previousChapter != null,
-                        nextChapterEnabled = nextChapter != null,
-                        showResetZoom = zoomState.isZoomed,
-                        onPreviousChapter = { navigateToChapter(previousChapter) },
-                        onNextChapter = { navigateToChapter(nextChapter) },
-                        onPageSelected = { jumpToIndex(it) },
-                        onResetZoom = { zoomState.reset() }
-                    )
-                }
-                AnimatedVisibility(
-                    modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(start = 12.dp, top = 12.dp),
-                    visible = isShowToolbar,
-                    enter = slideInHorizontally(
-                        initialOffsetX = { fullWidth -> -fullWidth },
-                        animationSpec = tween(durationMillis = 250)
-                    ) + fadeIn(),
-                    exit = slideOutHorizontally(
-                        targetOffsetX = { fullWidth -> -fullWidth },
-                        animationSpec = tween(durationMillis = 250)
-                    ) + fadeOut()
-                ) {
-                    ReaderExitButton(
-                        onClick = { mainNavController.popBackStack() }
-                    )
-                }
-                if (localSetting.showComicPageReadTip && localSetting.readMode == "page" || localSetting.showComicScrollReadTip && localSetting.readMode == "scroll") {
-                    Tip(readMode = localSetting.readMode)
-                    TipCloseButton(
-                        modifier = Modifier.align(
-                            if (localSetting.readMode == "scroll") Alignment.CenterEnd else Alignment.BottomCenter
-                        ).let {
-                            if (localSetting.readMode == "scroll") {
-                                it.padding(end = 40.dp)
-                            } else {
-                                it.padding(bottom = 40.dp)
-                            }
-                        },
-                        onClick = {
-                            if (localSetting.readMode == "scroll") {
-                                localSettingManager.closeShowComicScrollReadTip()
-                            } else {
-                                localSettingManager.closeShowComicPageReadTip()
-                            }
-                        }
-                    )
+        sourceContent = {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background,
+            ) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (loading) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                    } else if (size <= 0) {
+                        Text(
+                            text = comicPicState.errorMsg.orEmpty().ifBlank { "暂无可阅读图片" },
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    } else if (localSetting.readMode == "scroll") {
+                        ComicScrollRead(
+                            lazyListState = lazyListState,
+                            pagerState = pagerState,
+                            targetIndex = targetIndex,
+                            zoomState = zoomState,
+                            onUpdateSliderValue = { updateIndexFromReader(it) }
+                        )
+                    } else {
+                        ComicPageRead(
+                            lazyListState = lazyListState,
+                            pagerState = pagerState,
+                            targetIndex = targetIndex,
+                            zoomState = zoomState,
+                            tapOnly = localSetting.readMode == "tap",
+                            onUpdateSliderValue = { updateIndexFromReader(it) }
+                        )
+                    }
                 }
             }
-        }
-    }
+        },
+        overlayContent = {
+            if (!loading && size > 0) {
+                Box(modifier = Modifier.fillMaxSize()) {
+                    AnimatedVisibility(
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 10.dp),
+                        visible = isShowToolbar,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { fullWidth -> -fullWidth },
+                            animationSpec = tween(durationMillis = 250)
+                        ),
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> -fullWidth },
+                            animationSpec = tween(durationMillis = 250)
+                        )
+                    ) {
+                        val glassAlpha by transition.animateFloat(
+                            transitionSpec = { tween(durationMillis = 250) },
+                            label = "readerSideBarGlassAlpha",
+                        ) { state ->
+                            if (state == EnterExitState.Visible) 1f else 0f
+                        }
+                        ReadSideBar(
+                            comic = comic,
+                            localOnly = localOnly,
+                            chapterEnabled = readableChapters.isNotEmpty(),
+                            surfaceAlpha = glassAlpha,
+                            onToggleCollect = {
+                                if (!isLogin) {
+                                    mainNavController.navigate("login")
+                                } else {
+                                    comic?.let { currentComic ->
+                                        if (currentComic.isCollect) {
+                                            comicReadViewModel.unCollect(currentComic.id)
+                                        } else {
+                                            comicReadViewModel.collect(currentComic.id)
+                                        }
+                                    }
+                                }
+                            },
+                            onCache = {
+                                comic?.let { currentComic ->
+                                    if (currentComic.comicChapterList.isEmpty()) {
+                                        downloadManager.downloadComic(currentComic)
+                                    } else {
+                                        selectedCacheChapterIds =
+                                            currentComic.comicChapterList.map { it.id }.toSet()
+                                        activeDialog = ReadPanelDialog.Cache
+                                    }
+                                }
+                            },
+                            onComment = {
+                                if (!isLogin) {
+                                    mainNavController.navigate("login")
+                                } else {
+                                    mainNavController.navigate("comment/$comicId")
+                                }
+                            },
+                            onChapterJump = {
+                                if (readableChapters.isNotEmpty()) {
+                                    activeDialog = ReadPanelDialog.Chapter
+                                }
+                            }
+                        )
+                    }
+                    AnimatedVisibility(
+                        modifier = Modifier.align(Alignment.BottomCenter),
+                        visible = isShowToolbar,
+                        enter = slideInVertically(
+                            initialOffsetY = { fullHeight -> fullHeight },
+                            animationSpec = tween(durationMillis = 300)
+                        ),
+                        exit = slideOutVertically(
+                            targetOffsetY = { fullHeight -> fullHeight },
+                            animationSpec = tween(durationMillis = 300)
+                        )
+                    ) {
+                        val glassAlpha by transition.animateFloat(
+                            transitionSpec = { tween(durationMillis = 300) },
+                            label = "readerBottomControlsGlassAlpha",
+                        ) { state ->
+                            if (state == EnterExitState.Visible) 1f else 0f
+                        }
+                        ToolsBar(
+                            currentIndex = currentIndexState,
+                            pageCount = size,
+                            previousChapterEnabled = previousChapter != null,
+                            nextChapterEnabled = nextChapter != null,
+                            showResetZoom = zoomState.isZoomed,
+                            surfaceAlpha = glassAlpha,
+                            onPreviousChapter = { navigateToChapter(previousChapter) },
+                            onNextChapter = { navigateToChapter(nextChapter) },
+                            onPageSelected = { jumpToIndex(it) },
+                            onResetZoom = { zoomState.reset() }
+                        )
+                    }
+                    AnimatedVisibility(
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .padding(start = 12.dp, top = 12.dp),
+                        visible = isShowToolbar,
+                        enter = slideInHorizontally(
+                            initialOffsetX = { fullWidth -> -fullWidth },
+                            animationSpec = tween(durationMillis = 250)
+                        ) + fadeIn(),
+                        exit = slideOutHorizontally(
+                            targetOffsetX = { fullWidth -> -fullWidth },
+                            animationSpec = tween(durationMillis = 250)
+                        ) + fadeOut()
+                    ) {
+                        ReaderExitButton(
+                            onClick = { mainNavController.popBackStack() }
+                        )
+                    }
+                    if (localSetting.showComicPageReadTip && localSetting.readMode == "page" || localSetting.showComicScrollReadTip && localSetting.readMode == "scroll") {
+                        Tip(readMode = localSetting.readMode)
+                        TipCloseButton(
+                            modifier = Modifier.align(
+                                if (localSetting.readMode == "scroll") Alignment.CenterEnd else Alignment.BottomCenter
+                            ).let {
+                                if (localSetting.readMode == "scroll") {
+                                    it.padding(end = 40.dp)
+                                } else {
+                                    it.padding(bottom = 40.dp)
+                                }
+                            },
+                            onClick = {
+                                if (localSetting.readMode == "scroll") {
+                                    localSettingManager.closeShowComicScrollReadTip()
+                                } else {
+                                    localSettingManager.closeShowComicPageReadTip()
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        },
+    )
 
     when (activeDialog) {
         ReadPanelDialog.Cache -> {
@@ -543,21 +570,21 @@ private fun ReadSideBar(
     comic: Comic?,
     localOnly: Boolean,
     chapterEnabled: Boolean,
+    surfaceAlpha: Float = 1f,
     onToggleCollect: () -> Unit,
     onCache: () -> Unit,
     onComment: () -> Unit,
     onChapterJump: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.shadow(14.dp, RoundedCornerShape(28.dp)),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-        tonalElevation = 10.dp,
-        shadowElevation = 10.dp,
-        shape = RoundedCornerShape(28.dp),
+    GlassSurface(
+        surfaceId = "reader-left-actions",
+        modifier = Modifier.width(82.dp),
+        style = GlassSurfaceStyle(cornerRadius = 28.dp),
+        surfaceAlpha = surfaceAlpha,
     ) {
         Column(
             modifier = Modifier
-                .width(82.dp)
+                .fillMaxWidth()
                 .padding(vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -582,7 +609,7 @@ private fun ReadSideBar(
                     onClick = onComment
                 )
             }
-            ReadChapterSideBarAction(
+            ReadSideBarAction(
                 icon = Icons.AutoMirrored.Filled.MenuBook,
                 label = "章节",
                 enabled = chapterEnabled,
@@ -647,55 +674,6 @@ private fun ReadSideBarAction(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
-    }
-}
-
-@Composable
-private fun ReadChapterSideBarAction(
-    icon: ImageVector,
-    label: String,
-    enabled: Boolean = true,
-    onClick: () -> Unit,
-) {
-    val containerColor = if (enabled) {
-        MaterialTheme.colorScheme.primaryContainer
-    } else {
-        MaterialTheme.colorScheme.surfaceVariant
-    }
-    val contentColor = if (enabled) {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-    }
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 7.dp, vertical = 4.dp)
-            .clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
-        color = containerColor,
-        tonalElevation = if (enabled) 3.dp else 0.dp
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 10.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = label,
-                modifier = Modifier.size(23.dp),
-                tint = contentColor
-            )
-            Text(
-                text = label,
-                color = contentColor,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
     }
 }
 

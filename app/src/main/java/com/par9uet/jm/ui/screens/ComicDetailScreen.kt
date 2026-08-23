@@ -9,14 +9,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +25,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
@@ -45,7 +45,6 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -68,8 +67,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.par9uet.jm.data.models.Comic
@@ -82,6 +83,9 @@ import com.par9uet.jm.ui.components.ComicContentTag
 import com.par9uet.jm.ui.components.ComicCoverImage
 import com.par9uet.jm.ui.components.ComicRoleTag
 import com.par9uet.jm.ui.components.ComicWorkTag
+import com.par9uet.jm.ui.glass.GlassCaptureHost
+import com.par9uet.jm.ui.glass.GlassSurface
+import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.utils.shimmer
 import org.koin.compose.getKoin
@@ -339,82 +343,50 @@ fun ComicDetailScreen(
     }
 
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior()
+    val navigationBarInset = with(LocalDensity.current) {
+        WindowInsets.navigationBars.getBottom(this).toDp()
+    }
+    val detailBarHeight = 64.dp
+    val detailBarBottomPadding = 8.dp + navigationBarInset
+    val detailContentBottomPadding = detailBarHeight + detailBarBottomPadding
 
-    Scaffold(
-        modifier = Modifier
-            .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection),
-        topBar = {
-            val comicTitle = comicDetailState.data?.name ?: ""
-            TopAppBar(
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-                navigationIcon = {
-                    IconButton(onClick = { mainNavController.popBackStack() }) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "\u8fd4\u56de"
-                        )
-                    }
-                },
-                title = {
-                    Text(
-                        text = comicTitle,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+    GlassCaptureHost(
+        modifier = Modifier.fillMaxSize(),
+        sourceContent = {
+            Scaffold(
+                contentWindowInsets = WindowInsets(),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(scrollBehavior.nestedScrollConnection),
+                topBar = {
+                    val comicTitle = comicDetailState.data?.name ?: ""
+                    TopAppBar(
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                        ),
+                        navigationIcon = {
+                            IconButton(onClick = { mainNavController.popBackStack() }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = "\u8fd4\u56de"
+                                )
+                            }
+                        },
+                        title = {
+                            Text(
+                                text = comicTitle,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        },
+                        scrollBehavior = scrollBehavior
                     )
                 },
-                scrollBehavior = scrollBehavior
-            )
-        },
-        bottomBar = {
-            val comic = comicDetailState.data ?: return@Scaffold
-            ComicDetailBottomBar(
-                comic = comic,
-                likeEnabled = !comic.isLike && comic.id !in likeRequestInFlightComicIds,
-                readHistoryManager = readHistoryManager,
-                readHistory = readHistory,
-                onLike = {
-                    requireLogin {
-                        comicDetailViewModel.likeComic(comic.id)
-                    }
-                },
-                onCollect = {
-                    requireLogin {
-                        if (comic.isCollect) {
-                            comicDetailViewModel.unCollect(comic.id)
-                        } else if (comicDetailViewModel.shouldShowFolderPicker()) {
-                            // 内置 API 模式：弹出收藏夹选择
-                            comicDetailViewModel.refreshFolderList()
-                            comicDetailViewModel.showFolderPicker()
-                        } else {
-                            // 网络 API 模式：直接收藏到默认夹
-                            comicDetailViewModel.collect(comic.id)
-                        }
-                    }
-                },
-                onRelated = { mainNavController.navigate("comicRelate/${comic.id}") },
-                onDownload = {
-                    if (comic.comicChapterList.isEmpty()) {
-                        downloadManager.downloadComic(comic)
-                    } else {
-                        selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
-                        showDownloadChapterDialog = true
-                    }
-                },
-                onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
-                onChapters = {
-                    val currentChapterId = readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
-                    mainNavController.navigate("comicChapter/${comic.id}?currentChapterId=$currentChapterId")
-                }
-            )
-        }
-    ) { innerPadding ->
-        val comic = comicDetailState.data ?: return@Scaffold
+            ) { innerPadding ->
+                val comic = comicDetailState.data ?: return@Scaffold
 
         if (showDownloadChapterDialog) {
             ChapterMultiSelectDialog(
@@ -462,7 +434,8 @@ fun ComicDetailScreen(
                         Column(
                             modifier = Modifier
                                 .weight(0.58f)
-                                .verticalScroll(scrollState),
+                                .verticalScroll(scrollState)
+                                .padding(bottom = detailContentBottomPadding),
                             verticalArrangement = Arrangement.spacedBy(16.dp)
                         ) {
                             ComicMetadataContent(comic, ::searchTag)
@@ -478,7 +451,8 @@ fun ComicDetailScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .verticalScroll(scrollState),
+                            .verticalScroll(scrollState)
+                            .padding(bottom = detailContentBottomPadding),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         ComicCoverImage(comic = comic, showIdChip = true)
@@ -510,7 +484,65 @@ fun ComicDetailScreen(
                 onDismiss = { comicDetailViewModel.hideFolderPicker() }
             )
         }
-    }
+        }
+        },
+        overlayContent = {
+            val comic = comicDetailState.data
+            if (comic != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(bottom = detailBarBottomPadding),
+                ) {
+                    ComicDetailBottomBar(
+                        modifier = Modifier
+                            .align(Alignment.BottomCenter)
+                            .fillMaxWidth()
+                            .widthIn(max = 600.dp)
+                            .height(detailBarHeight),
+                        comic = comic,
+                        likeEnabled = !comic.isLike && comic.id !in likeRequestInFlightComicIds,
+                        readHistoryManager = readHistoryManager,
+                        readHistory = readHistory,
+                        onLike = {
+                            requireLogin {
+                                comicDetailViewModel.likeComic(comic.id)
+                            }
+                        },
+                        onCollect = {
+                            requireLogin {
+                                if (comic.isCollect) {
+                                    comicDetailViewModel.unCollect(comic.id)
+                                } else if (comicDetailViewModel.shouldShowFolderPicker()) {
+                                    comicDetailViewModel.refreshFolderList()
+                                    comicDetailViewModel.showFolderPicker()
+                                } else {
+                                    comicDetailViewModel.collect(comic.id)
+                                }
+                            }
+                        },
+                        onRelated = { mainNavController.navigate("comicRelate/${comic.id}") },
+                        onDownload = {
+                            if (comic.comicChapterList.isEmpty()) {
+                                downloadManager.downloadComic(comic)
+                            } else {
+                                selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
+                                showDownloadChapterDialog = true
+                            }
+                        },
+                        onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
+                        onChapters = {
+                            val currentChapterId =
+                                readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
+                            mainNavController.navigate(
+                                "comicChapter/${comic.id}?currentChapterId=$currentChapterId"
+                            )
+                        }
+                    )
+                }
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -560,6 +592,7 @@ private fun FolderPickerSheet(
 
 @Composable
 private fun ComicDetailBottomBar(
+    modifier: Modifier = Modifier,
     comic: Comic,
     likeEnabled: Boolean,
     readHistoryManager: ReadHistoryManager,
@@ -571,77 +604,102 @@ private fun ComicDetailBottomBar(
     onRead: (Int) -> Unit,
     onChapters: () -> Unit,
 ) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        tonalElevation = 3.dp,
-        shadowElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surfaceContainer
+    val lastReadChapterId = readHistoryManager.lastReadChapterId(comic, readHistory)
+    val hasChapters = comic.comicChapterList.isNotEmpty()
+    val readTargetId = lastReadChapterId
+        ?: comic.comicChapterList.firstOrNull()?.id
+        ?: comic.id
+
+    GlassSurface(
+        surfaceId = "comic-detail-actions",
+        modifier = modifier,
+        style = GlassSurfaceStyle(cornerRadius = 32.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .navigationBarsPadding()
-                .defaultMinSize(minHeight = 80.dp)
-                .padding(10.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row {
-                IconButton(onClick = onLike, enabled = likeEnabled) {
-                    if (comic.isLike) {
-                        Icon(Icons.Default.Favorite, contentDescription = "\u5df2\u559c\u6b22", tint = MaterialTheme.colorScheme.error)
-                    } else {
-                        Icon(Icons.Default.FavoriteBorder, contentDescription = "\u559c\u6b22")
-                    }
-                }
-                IconButton(onClick = onCollect) {
-                    if (comic.isCollect) {
-                        Icon(Icons.Filled.Bookmark, contentDescription = "\u5df2\u6536\u85cf", tint = MaterialTheme.colorScheme.tertiary)
-                    } else {
-                        Icon(Icons.Filled.BookmarkBorder, contentDescription = "\u6536\u85cf")
-                    }
-                }
-                IconButton(onClick = onRelated) {
-                    Icon(Icons.Default.AutoAwesome, contentDescription = "\u76f8\u5173")
-                }
-                IconButton(onClick = onDownload) {
-                    Icon(Icons.Default.Download, contentDescription = "\u7f13\u5b58")
-                }
-            }
-            Spacer(modifier = Modifier.weight(1f))
-            val lastReadChapterId = readHistoryManager.lastReadChapterId(comic, readHistory)
-            if (comic.comicChapterList.isEmpty()) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val iconCellSize = 48.dp
+            val readButtonWidth = (
+                maxWidth - 16.dp - iconCellSize * 5
+            ).coerceAtLeast(100.dp)
+
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Button(
-                    onClick = { onRead(lastReadChapterId ?: comic.id) },
-                    shape = CircleShape
+                    modifier = Modifier
+                        .width(readButtonWidth)
+                        .height(48.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    onClick = { onRead(readTargetId) },
+                    shape = CircleShape,
                 ) {
-                    Text(if (lastReadChapterId != null) "\u7ee7\u7eed\u9605\u8bfb" else "\u5f00\u59cb\u9605\u8bfb")
+                    Text(if (lastReadChapterId != null) "\u7ee7\u7eed\u9605\u8bfb" else "\u9605\u8bfb")
                 }
-            } else {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Button(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        onClick = onChapters,
-                        shape = CircleShape
-                    ) {
-                        Text("\u7ae0\u8282")
-                    }
-                    Button(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        onClick = {
-                            val targetChapterId = lastReadChapterId
-                                ?: comic.comicChapterList.firstOrNull()?.id
-                                ?: comic.id
-                            onRead(targetChapterId)
-                        },
-                        shape = CircleShape
-                    ) {
-                        Text(if (lastReadChapterId != null) "\u7ee7\u7eed" else "\u9605\u8bfb")
-                    }
-                }
+
+                DetailIconAction(
+                    icon = if (comic.isLike) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                    contentDescription = if (comic.isLike) "\u5df2\u559c\u6b22" else "\u559c\u6b22",
+                    enabled = likeEnabled,
+                    tint = if (comic.isLike) MaterialTheme.colorScheme.error else null,
+                    size = iconCellSize,
+                    onClick = onLike,
+                )
+                DetailIconAction(
+                    icon = if (comic.isCollect) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
+                    contentDescription = if (comic.isCollect) "\u5df2\u6536\u85cf" else "\u6536\u85cf",
+                    tint = if (comic.isCollect) MaterialTheme.colorScheme.tertiary else null,
+                    size = iconCellSize,
+                    onClick = onCollect,
+                )
+                DetailIconAction(
+                    icon = Icons.Default.AutoAwesome,
+                    contentDescription = "\u76f8\u5173",
+                    size = iconCellSize,
+                    onClick = onRelated,
+                )
+                DetailIconAction(
+                    icon = Icons.Default.Download,
+                    contentDescription = "\u7f13\u5b58",
+                    size = iconCellSize,
+                    onClick = onDownload,
+                )
+                DetailIconAction(
+                    icon = Icons.AutoMirrored.Rounded.MenuBook,
+                    contentDescription = "\u7ae0\u8282",
+                    enabled = hasChapters,
+                    size = iconCellSize,
+                    onClick = onChapters,
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun DetailIconAction(
+    icon: ImageVector,
+    contentDescription: String,
+    enabled: Boolean = true,
+    tint: androidx.compose.ui.graphics.Color? = null,
+    size: Dp,
+    onClick: () -> Unit,
+) {
+    val contentColor = when {
+        !enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+        tint != null -> tint
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    IconButton(
+        modifier = Modifier.size(size),
+        enabled = enabled,
+        onClick = onClick,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = contentColor,
+        )
     }
 }

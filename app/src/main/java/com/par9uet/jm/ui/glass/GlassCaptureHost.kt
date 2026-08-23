@@ -2,6 +2,8 @@ package com.par9uet.jm.ui.glass
 
 import android.content.Context
 import android.graphics.Canvas
+import android.os.Build
+import android.view.View
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,22 +24,20 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.unit.Dp
 import androidx.navigation.NavHostController
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.theme.ExtendedColorScheme
 import com.par9uet.jm.ui.theme.ExtendedTheme
 import com.par9uet.jm.ui.theme.LocalExtendedColors
+import kotlin.math.roundToInt
 
 /**
- * Splits a Compose-first surface into a source composition and a foreground composition. The
- * native backdrop view sits between them and can therefore never capture its own output.
+ * Hosts one source composition and one transparent foreground composition. Any number of
+ * [GlassSurface] instances in the foreground share the source display list.
  */
 @Composable
 fun GlassCaptureHost(
     modifier: Modifier = Modifier,
-    style: GlassStyle = GlassStyle.Default,
-    navigationBarInset: Dp,
     sourceContent: @Composable () -> Unit,
     overlayContent: @Composable () -> Unit,
 ) {
@@ -67,8 +67,6 @@ fun GlassCaptureHost(
                     mainNavController = mainNavController,
                     minimumInteractiveComponentSize = minimumInteractiveComponentSize,
                 )
-                updateStyle(style)
-                updateNavigationBarInset(navigationBarInset)
             }
         },
         update = { host ->
@@ -80,37 +78,59 @@ fun GlassCaptureHost(
                 mainNavController = mainNavController,
                 minimumInteractiveComponentSize = minimumInteractiveComponentSize,
             )
-            host.updateStyle(style)
-            host.updateNavigationBarInset(navigationBarInset)
         },
         onRelease = GlassCaptureHostView::dispose,
     )
 }
 
-internal class GlassCaptureHostView(context: Context) : FrameLayout(context) {
+internal class GlassCaptureHostView(context: Context) :
+    FrameLayout(context),
+    GlassSurfaceRegistry {
+
     private data class ThemeState(
         val colorScheme: ColorScheme,
         val typography: Typography,
         val shapes: Shapes,
         val extendedColors: ExtendedColorScheme,
         val mainNavController: NavHostController,
-        val minimumInteractiveComponentSize: Dp,
+        val minimumInteractiveComponentSize: androidx.compose.ui.unit.Dp,
+    )
+
+    private data class RegisteredSurface(
+        val style: GlassSurfaceStyle,
+        val alpha: Float,
+        val bounds: GlassSurfaceBounds? = null,
     )
 
     private val sourceComposeView = ComposeView(context)
     private val overlayComposeView = ComposeView(context)
-    private val backdropView = GlassBackdropView(context, GlassStyle.Default)
     private val sourceContentState = mutableStateOf<(@Composable () -> Unit)?>(null)
     private val overlayContentState = mutableStateOf<(@Composable () -> Unit)?>(null)
     private val themeState = mutableStateOf<ThemeState?>(null)
-    private var style = GlassStyle.Default
-    private var navigationBarInsetPx = 0
+    private val registeredSurfaces = linkedMapOf<String, RegisteredSurface>()
+    private val backdropViews = linkedMapOf<String, GlassBackdropView>()
+    private var currentColorScheme: ColorScheme? = null
+    private var isDarkTheme = false
+    private var surfaceSyncPosted = false
     private var isCapturingSource = false
+    private val sourceCapture = GlassCaptureSource(
+        sourceView = sourceComposeView,
+        onCaptureStart = { isCapturingSource = true },
+        onCaptureEnd = { isCapturingSource = false },
+    )
 
     init {
         setWillNotDraw(true)
         clipChildren = false
 
+        sourceComposeView.layoutParams = LayoutParams(
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.MATCH_PARENT,
+        )
+        overlayComposeView.layoutParams = LayoutParams(
+            LayoutParams.MATCH_PARENT,
+            LayoutParams.MATCH_PARENT,
+        )
         sourceComposeView.setViewCompositionStrategy(
             ViewCompositionStrategy.DisposeOnDetachedFromWindow,
         )
@@ -121,17 +141,7 @@ internal class GlassCaptureHostView(context: Context) : FrameLayout(context) {
         overlayComposeView.isFocusable = false
 
         addView(sourceComposeView)
-        addView(backdropView)
         addView(overlayComposeView)
-
-        backdropView.setSource(sourceComposeView) { canvas ->
-            isCapturingSource = true
-            try {
-                sourceComposeView.draw(canvas)
-            } finally {
-                isCapturingSource = false
-            }
-        }
 
         sourceComposeView.setContent {
             val theme = themeState.value
@@ -159,9 +169,11 @@ internal class GlassCaptureHostView(context: Context) : FrameLayout(context) {
             val theme = themeState.value
             val content = overlayContentState.value
             if (theme != null && content != null) {
-                ThemedContent(theme) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        content()
+                CompositionLocalProvider(LocalGlassSurfaceRegistry provides this@GlassCaptureHostView) {
+                    ThemedContent(theme) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            content()
+                        }
                     }
                 }
             }
@@ -174,7 +186,8 @@ internal class GlassCaptureHostView(context: Context) : FrameLayout(context) {
     ) {
         sourceContentState.value = sourceContent
         overlayContentState.value = overlayContent
-        backdropView.markSourceDirty()
+        sourceCapture.markDirty()
+        invalidate()
     }
 
     fun updateTheme(
@@ -183,7 +196,7 @@ internal class GlassCaptureHostView(context: Context) : FrameLayout(context) {
         shapes: Shapes,
         extendedColors: ExtendedColorScheme,
         mainNavController: NavHostController,
-        minimumInteractiveComponentSize: Dp,
+        minimumInteractiveComponentSize: androidx.compose.ui.unit.Dp,
     ) {
         val newTheme = ThemeState(
             colorScheme = colorScheme,
@@ -195,89 +208,176 @@ internal class GlassCaptureHostView(context: Context) : FrameLayout(context) {
         )
         val themeChanged = themeState.value != newTheme
         themeState.value = newTheme
-        val dark = colorScheme.background.luminance() < 0.5f
-        backdropView.setColors(
-            GlassSurfaceColors(
-                tint = colorScheme.surfaceContainer.copy(alpha = style.tintAlpha).toArgb(),
-                topStroke = if (dark) 0x06FFFFFF else 0x11000000,
-                bottomStroke = if (dark) 0x11FFFFFF else 0x20000000,
-                shadow = if (dark) 0x04FFFFFF else 0x20000000,
-            ),
+        currentColorScheme = colorScheme
+        isDarkTheme = colorScheme.background.luminance() < 0.5f
+        setBackgroundColor(colorScheme.background.toArgb())
+        if (themeChanged) {
+            sourceCapture.markDirty()
+            backdropViews.forEach { (surfaceId, view) ->
+                val style = registeredSurfaces[surfaceId]?.style ?: GlassSurfaceStyle.Default
+                view.setColors(colorsFor(style.material))
+            }
+            invalidate()
+        }
+    }
+
+    override fun updateSurface(
+        surfaceId: String,
+        style: GlassSurfaceStyle,
+        alpha: Float,
+        bounds: GlassSurfaceBounds,
+    ) {
+        val next = RegisteredSurface(
+            style = style,
+            alpha = alpha.coerceIn(0f, 1f),
+            bounds = bounds,
         )
-        if (themeChanged) backdropView.markSourceDirty()
+        if (registeredSurfaces[surfaceId] == next) return
+        registeredSurfaces[surfaceId] = next
+        backdropViews[surfaceId]?.alpha = alpha.coerceIn(0f, 1f)
+        scheduleSurfaceSync()
     }
 
-    fun updateStyle(newStyle: GlassStyle) {
-        if (style == newStyle) return
-        style = newStyle
-        backdropView.setStyle(newStyle)
-        themeState.value?.let { updateThemeFromState(it) }
-        requestLayout()
+    override fun updateSurfaceStyle(surfaceId: String, style: GlassSurfaceStyle, alpha: Float) {
+        val previous = registeredSurfaces[surfaceId]
+        val next = RegisteredSurface(
+            style = style,
+            alpha = alpha.coerceIn(0f, 1f),
+            bounds = previous?.bounds,
+        )
+        if (previous == next) return
+        registeredSurfaces[surfaceId] = next
+        backdropViews[surfaceId]?.apply {
+            this.alpha = alpha.coerceIn(0f, 1f)
+            setSurfaceStyle(style)
+            setColors(colorsFor(style.material))
+        }
     }
 
-    fun updateNavigationBarInset(inset: Dp) {
-        val insetPx = (inset.value * resources.displayMetrics.density).toInt().coerceAtLeast(0)
-        if (navigationBarInsetPx == insetPx) return
-        navigationBarInsetPx = insetPx
-        requestLayout()
-        backdropView.markSourceDirty()
+    override fun removeSurface(surfaceId: String) {
+        registeredSurfaces.remove(surfaceId)
+        backdropViews.remove(surfaceId)?.let(::removeView)
+        scheduleSurfaceSync()
     }
 
     fun dispose() {
         sourceContentState.value = null
         overlayContentState.value = null
+        registeredSurfaces.clear()
+        backdropViews.values.forEach(::removeView)
+        backdropViews.clear()
         sourceComposeView.disposeComposition()
         overlayComposeView.disposeComposition()
     }
 
-    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
-        val width = resolveSize(suggestedMinimumWidth, widthMeasureSpec)
-        val height = resolveSize(suggestedMinimumHeight, heightMeasureSpec)
-        setMeasuredDimension(width, height)
-
-        sourceComposeView.measure(
-            MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY),
-            MeasureSpec.makeMeasureSpec(height, MeasureSpec.EXACTLY),
-        )
-        val surfaceHeight = minOf(
-            height,
-            (style.barHeight.value * resources.displayMetrics.density).toInt() +
-                (style.outerMargin.value * resources.displayMetrics.density).toInt() +
-                navigationBarInsetPx,
-        )
-        val surfaceWidthSpec = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY)
-        val surfaceHeightSpec = MeasureSpec.makeMeasureSpec(surfaceHeight, MeasureSpec.EXACTLY)
-        backdropView.measure(surfaceWidthSpec, surfaceHeightSpec)
-        overlayComposeView.measure(surfaceWidthSpec, surfaceHeightSpec)
+    override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
+        super.onSizeChanged(width, height, oldWidth, oldHeight)
+        sourceCapture.markDirty()
+        invalidate()
     }
 
-    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
-        val width = right - left
-        val height = bottom - top
-        sourceComposeView.layout(0, 0, width, height)
+    /** Draws source first, records it once, then draws all native glass views before Compose UI. */
+    override fun dispatchDraw(canvas: Canvas) {
+        val time = drawingTime
+        drawChild(canvas, sourceComposeView, time)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            sourceCapture.recordIfNeeded()
+        }
+        backdropViews.values.forEach { view ->
+            if (view.visibility != View.GONE) {
+                drawChild(canvas, view, time)
+            }
+        }
+        drawChild(canvas, overlayComposeView, time)
+    }
 
-        val surfaceHeight = backdropView.measuredHeight
-        val surfaceTop = height - surfaceHeight
-        backdropView.layout(0, surfaceTop, width, height)
-        overlayComposeView.layout(0, surfaceTop, width, height)
-        if (changed) backdropView.markSourceDirty()
+    private fun scheduleSurfaceSync() {
+        if (surfaceSyncPosted) return
+        surfaceSyncPosted = true
+        postOnAnimation {
+            surfaceSyncPosted = false
+            syncSurfaceViews()
+        }
+    }
+
+    private fun syncSurfaceViews() {
+        val invalidIds = registeredSurfaces
+            .filterValues { registration ->
+                val bounds = registration.bounds
+                bounds == null || bounds.width <= 0f || bounds.height <= 0f
+            }
+            .keys
+        val activeIds = registeredSurfaces.keys - invalidIds
+
+        backdropViews.keys
+            .filter { it !in activeIds }
+            .toList()
+            .forEach { surfaceId ->
+                backdropViews.remove(surfaceId)?.let(::removeView)
+            }
+
+        val hostLocation = IntArray(2)
+        getLocationInWindow(hostLocation)
+        var layoutChanged = false
+        registeredSurfaces.forEach { (surfaceId, registration) ->
+            val bounds = registration.bounds ?: return@forEach
+            if (bounds.width <= 0f || bounds.height <= 0f) return@forEach
+
+            val view = backdropViews.getOrPut(surfaceId) {
+                layoutChanged = true
+                GlassBackdropView(context, registration.style).also {
+                    it.setSource(sourceCapture, sourceComposeView)
+                    it.setColors(colorsFor(registration.style.material))
+                    addView(it, childCount - 1)
+                }
+            }
+            view.setSurfaceStyle(registration.style)
+            view.setColors(colorsFor(registration.style.material))
+            view.alpha = registration.alpha
+
+            val left = (bounds.left - hostLocation[0]).roundToInt()
+            val top = (bounds.top - hostLocation[1]).roundToInt()
+            val width = maxOf(1, bounds.width.roundToInt())
+            val height = maxOf(1, bounds.height.roundToInt())
+            val currentParams = view.layoutParams as? LayoutParams
+            if (
+                currentParams == null ||
+                currentParams.leftMargin != left ||
+                currentParams.topMargin != top ||
+                currentParams.width != width ||
+                currentParams.height != height
+            ) {
+                layoutChanged = true
+                view.markSurfacePositionChanged()
+                view.layoutParams = LayoutParams(width, height).apply {
+                    leftMargin = left
+                    topMargin = top
+                }
+            }
+        }
+        if (layoutChanged) requestLayout()
+        invalidate()
+    }
+
+    private fun colorsFor(material: GlassMaterialStyle): GlassSurfaceColors {
+        val colorScheme = currentColorScheme ?: return GlassSurfaceColors(
+            tint = 0,
+            topStroke = 0,
+            bottomStroke = 0,
+            shadow = 0,
+        )
+        return GlassSurfaceColors(
+            tint = colorScheme.surfaceContainer.copy(alpha = material.tintAlpha).toArgb(),
+            topStroke = if (isDarkTheme) 0x06FFFFFF else 0x11000000,
+            bottomStroke = if (isDarkTheme) 0x11FFFFFF else 0x20000000,
+            shadow = if (isDarkTheme) 0x04FFFFFF else 0x20000000,
+        )
     }
 
     private fun onSourceDrawn() {
         if (!isCapturingSource) {
-            backdropView.markSourceDirty()
+            sourceCapture.markDirty()
         }
-    }
-
-    private fun updateThemeFromState(theme: ThemeState) {
-        updateTheme(
-            colorScheme = theme.colorScheme,
-            typography = theme.typography,
-            shapes = theme.shapes,
-            extendedColors = theme.extendedColors,
-            mainNavController = theme.mainNavController,
-            minimumInteractiveComponentSize = theme.minimumInteractiveComponentSize,
-        )
     }
 
     @Composable

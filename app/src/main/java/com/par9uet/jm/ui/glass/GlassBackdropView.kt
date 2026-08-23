@@ -22,16 +22,16 @@ internal data class GlassSurfaceColors(
 )
 
 /**
- * Draws only the native glass surface. The sharp tab foreground is a sibling ComposeView owned by
- * [GlassCaptureHostView], so it is never part of this RenderNode source.
+ * Draws one native glass surface from the shared source display list. The sharp foreground is
+ * rendered by the sibling overlay ComposeView and is therefore never part of this view's source.
  */
 @SuppressLint("ViewConstructor")
 internal class GlassBackdropView(
     context: Context,
-    private var style: GlassStyle,
+    private var style: GlassSurfaceStyle = GlassSurfaceStyle.Default,
 ) : View(context) {
     private val density = resources.displayMetrics.density
-    private val barRect = RectF()
+    private val surfaceRect = RectF()
     private val glassPath = Path()
     private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val tintPaint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -48,9 +48,10 @@ internal class GlassBackdropView(
         bottomStroke = Color.TRANSPARENT,
         shadow = Color.TRANSPARENT,
     )
+    private var source: GlassCaptureSource? = null
     private var sourceView: View? = null
-    private var sourceRenderer: ((Canvas) -> Unit)? = null
-    private var sourceDirty = true
+    private var lastSourceGeneration = -1
+    private var sourceRegionDirty = true
     private var geometryDirty = true
     private var nativeRenderState: NativeGlassRenderState? = createNativeRenderState(style)
     private var nativeRenderFailed = false
@@ -65,16 +66,28 @@ internal class GlassBackdropView(
         updatePaintMetrics()
     }
 
-    fun setStyle(newStyle: GlassStyle) {
+    fun setSurfaceStyle(newStyle: GlassSurfaceStyle) {
         if (style == newStyle) return
         style = newStyle
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            nativeRenderState?.setBlurRadius(style.blurRadiusPx())
+            nativeRenderState?.setBlurRadius(style.material.blurRadiusPx())
         }
         updatePaintMetrics()
+        sourceRegionDirty = true
         geometryDirty = true
-        sourceDirty = true
-        requestLayout()
+        invalidate()
+    }
+
+    fun setSource(newSource: GlassCaptureSource, newSourceView: View) {
+        source = newSource
+        sourceView = newSourceView
+        lastSourceGeneration = -1
+        sourceRegionDirty = true
+        invalidate()
+    }
+
+    fun markSurfacePositionChanged() {
+        sourceRegionDirty = true
         invalidate()
     }
 
@@ -85,76 +98,50 @@ internal class GlassBackdropView(
         topStrokePaint.color = colors.topStroke
         bottomStrokePaint.color = colors.bottomStroke
         shadowPaint.color = Color.argb(1, 0, 0, 0)
-        shadowPaint.setShadowLayer(
-            style.shadowRadiusPx(),
-            0f,
-            style.shadowDyPx(),
-            colors.shadow,
-        )
+        updatePaintMetrics()
         invalidate()
-    }
-
-    private fun updatePaintMetrics() {
-        val strokeWidth = style.borderWidth.value * density
-        topStrokePaint.strokeWidth = strokeWidth
-        bottomStrokePaint.strokeWidth = strokeWidth
-        shadowPaint.setShadowLayer(
-            style.shadowRadiusPx(),
-            0f,
-            style.shadowDyPx(),
-            colors.shadow,
-        )
-    }
-
-    fun setSource(source: View, renderer: (Canvas) -> Unit) {
-        sourceView = source
-        sourceRenderer = renderer
-        sourceDirty = true
-        invalidate()
-    }
-
-    fun markSourceDirty() {
-        if (!sourceDirty) {
-            sourceDirty = true
-            invalidate()
-        }
     }
 
     override fun onSizeChanged(width: Int, height: Int, oldWidth: Int, oldHeight: Int) {
         super.onSizeChanged(width, height, oldWidth, oldHeight)
         geometryDirty = true
-        sourceDirty = true
+        sourceRegionDirty = true
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         updateGeometryIfNeeded()
-        if (barRect.isEmpty) return
+        if (surfaceRect.isEmpty) return
 
-        canvas.drawRoundRect(barRect, cornerRadiusPx(), cornerRadiusPx(), shadowPaint)
+        canvas.drawRoundRect(surfaceRect, cornerRadiusPx(), cornerRadiusPx(), shadowPaint)
 
+        val sharedSource = source
         if (
             !nativeRenderFailed &&
             nativeRenderState != null &&
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            sharedSource != null &&
+            sharedSource.nativeCaptureAvailable &&
             canvas.isHardwareAccelerated &&
-            sourceDirty
+            (sourceRegionDirty || lastSourceGeneration != sharedSource.generation)
         ) {
-            recordSourceRegion()
+            recordSourceRegion(sharedSource)
         }
 
         if (
             !nativeRenderFailed &&
             nativeRenderState != null &&
+            sharedSource?.nativeCaptureAvailable == true &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            canvas.isHardwareAccelerated
+            canvas.isHardwareAccelerated &&
+            !sourceRegionDirty &&
+            lastSourceGeneration == sharedSource.generation
         ) {
             drawNativeBackdrop(canvas)
         }
 
         // On API 23-30 this translucent tint is the complete fallback. On API 31+ it is drawn over
-        // the blurred RenderNode, keeping the same material geometry on every supported device.
-        canvas.drawRoundRect(barRect, cornerRadiusPx(), cornerRadiusPx(), tintPaint)
+        // the blurred source RenderNode, keeping the same material geometry on every device.
+        canvas.drawRoundRect(surfaceRect, cornerRadiusPx(), cornerRadiusPx(), tintPaint)
         drawDirectionalStroke(canvas, topStrokePaint, clipTop = true)
         drawDirectionalStroke(canvas, bottomStrokePaint, clipTop = false)
     }
@@ -162,46 +149,31 @@ internal class GlassBackdropView(
     private fun updateGeometryIfNeeded() {
         if (!geometryDirty) return
 
-        val margin = style.outerMarginPx()
-        val maxWidth = style.maxBarWidthPx()
-        val width = max(0f, min(maxWidth, this.width.toFloat() - margin * 2f))
-        val left = (this.width - width) / 2f
-        val height = min(style.barHeightPx(), this.height.toFloat())
-        barRect.set(left, 0f, left + width, height)
-
+        surfaceRect.set(0f, 0f, width.toFloat(), height.toFloat())
         glassPath.rewind()
         glassPath.addRoundRect(
-            barRect,
+            surfaceRect,
             cornerRadiusPx(),
             cornerRadiusPx(),
             Path.Direction.CW,
         )
         geometryDirty = false
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            nativeRenderState?.setPosition(
-                max(1, ceil(barRect.width() + style.blurPaddingPx() * 2f).toInt()),
-                max(1, ceil(barRect.height() + style.blurPaddingPx() * 2f).toInt()),
-            )
-        }
     }
 
     @RequiresApi(31)
-    private fun recordSourceRegion() {
-        val source = sourceView ?: return
-        val renderer = sourceRenderer ?: return
-        if (source.width <= 0 || source.height <= 0 || barRect.width() <= 0f || barRect.height() <= 0f) {
-            return
-        }
+    private fun recordSourceRegion(sharedSource: GlassCaptureSource) {
+        val sourceView = sourceView ?: return
+        if (sourceView.width <= 0 || sourceView.height <= 0) return
 
-        val padding = style.blurPaddingPx()
-        val captureLeftInSurface = barRect.left - padding
-        val captureTopInSurface = barRect.top - padding
-        val captureWidth = max(1, ceil(barRect.width() + padding * 2f).toInt())
-        val captureHeight = max(1, ceil(barRect.height() + padding * 2f).toInt())
+        val padding = style.material.blurRadiusPx()
+        val captureLeftInSurface = -padding
+        val captureTopInSurface = -padding
+        val captureWidth = max(1, ceil(surfaceRect.width() + padding * 2f).toInt())
+        val captureHeight = max(1, ceil(surfaceRect.height() + padding * 2f).toInt())
 
         val sourceLocation = IntArray(2)
         val surfaceLocation = IntArray(2)
-        source.getLocationInWindow(sourceLocation)
+        sourceView.getLocationInWindow(sourceLocation)
         getLocationInWindow(surfaceLocation)
         val captureLeftInSource =
             surfaceLocation[0] + captureLeftInSurface - sourceLocation[0]
@@ -214,12 +186,13 @@ internal class GlassBackdropView(
                 height = captureHeight,
                 sourceLeft = captureLeftInSource,
                 sourceTop = captureTopInSource,
-                renderer = renderer,
+                sourceNode = sharedSource.renderNode,
             )
-            sourceDirty = false
+            lastSourceGeneration = sharedSource.generation
+            sourceRegionDirty = false
         } catch (_: RuntimeException) {
-            // A device-specific hardware renderer failure should degrade to the same translucent
-            // material as pre-31 instead of taking down the primary navigation surface.
+            // A device-specific hardware renderer failure degrades to the same translucent
+            // material as pre-31 instead of taking down the screen.
             nativeRenderFailed = true
         }
     }
@@ -227,50 +200,54 @@ internal class GlassBackdropView(
     @RequiresApi(31)
     private fun drawNativeBackdrop(canvas: Canvas) {
         val nativeState = nativeRenderState ?: return
-        val padding = style.blurPaddingPx()
+        val padding = style.material.blurRadiusPx()
         canvas.save()
         canvas.clipPath(glassPath)
-        canvas.translate(barRect.left - padding, barRect.top - padding)
+        canvas.translate(-padding, -padding)
         canvas.drawRenderNode(nativeState.renderNode)
         canvas.restore()
     }
 
     private fun drawDirectionalStroke(canvas: Canvas, paint: Paint, clipTop: Boolean) {
         canvas.save()
-        val split = barRect.top + barRect.height() / 2f
+        val split = surfaceRect.top + surfaceRect.height() / 2f
         if (clipTop) {
-            canvas.clipRect(barRect.left, barRect.top, barRect.right, split)
+            canvas.clipRect(surfaceRect.left, surfaceRect.top, surfaceRect.right, split)
         } else {
-            canvas.clipRect(barRect.left, split, barRect.right, barRect.bottom)
+            canvas.clipRect(surfaceRect.left, split, surfaceRect.right, surfaceRect.bottom)
         }
-        canvas.drawRoundRect(barRect, cornerRadiusPx(), cornerRadiusPx(), paint)
+        canvas.drawRoundRect(surfaceRect, cornerRadiusPx(), cornerRadiusPx(), paint)
         canvas.restore()
     }
 
-    private fun cornerRadiusPx(): Float = min(style.cornerRadiusPx(), barRect.height() / 2f)
+    private fun updatePaintMetrics() {
+        val material = style.material
+        val strokeWidth = material.borderWidth.value * density
+        topStrokePaint.strokeWidth = strokeWidth
+        bottomStrokePaint.strokeWidth = strokeWidth
+        shadowPaint.setShadowLayer(
+            material.shadowRadius.value * density,
+            0f,
+            material.shadowDy.value * density,
+            colors.shadow,
+        )
+    }
 
-    private fun GlassStyle.blurPaddingPx(): Float = blurRadiusPx()
+    private fun cornerRadiusPx(): Float = min(
+        style.cornerRadius.value * density,
+        surfaceRect.height() / 2f,
+    )
 
-    private fun GlassStyle.barHeightPx(): Float = barHeight.value * density
-    private fun GlassStyle.outerMarginPx(): Float = outerMargin.value * density
-    private fun GlassStyle.maxBarWidthPx(): Float = maxBarWidth.value * density
-    private fun GlassStyle.cornerRadiusPx(): Float = cornerRadius.value * density
-    private fun GlassStyle.blurRadiusPx(): Float = blurRadius.value * density
-    private fun GlassStyle.shadowRadiusPx(): Float = shadowRadius.value * density
-    private fun GlassStyle.shadowDyPx(): Float = shadowDy.value * density
+    private fun GlassMaterialStyle.blurRadiusPx(): Float = blurRadius.value * density
 
     @RequiresApi(31)
     private class NativeGlassRenderState(initialBlurRadius: Float) {
-        val renderNode = android.graphics.RenderNode("JmGlassBackdropSource")
+        val renderNode = android.graphics.RenderNode("JmGlassSurface")
         private var blurRadius = 0f
 
         init {
             renderNode.setClipToBounds(true)
             setBlurRadius(initialBlurRadius)
-        }
-
-        fun setPosition(width: Int, height: Int) {
-            renderNode.setPosition(0, 0, width, height)
         }
 
         fun setBlurRadius(radius: Float) {
@@ -294,21 +271,21 @@ internal class GlassBackdropView(
             height: Int,
             sourceLeft: Float,
             sourceTop: Float,
-            renderer: (Canvas) -> Unit,
+            sourceNode: android.graphics.RenderNode,
         ) {
             renderNode.setPosition(0, 0, width, height)
             val recordingCanvas = renderNode.beginRecording(width, height)
             recordingCanvas.save()
             recordingCanvas.translate(-sourceLeft, -sourceTop)
-            renderer(recordingCanvas)
+            recordingCanvas.drawRenderNode(sourceNode)
             recordingCanvas.restore()
             renderNode.endRecording()
         }
     }
 
-    private fun createNativeRenderState(style: GlassStyle): NativeGlassRenderState? {
+    private fun createNativeRenderState(style: GlassSurfaceStyle): NativeGlassRenderState? {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            NativeGlassRenderState(style.blurRadiusPx())
+            NativeGlassRenderState(style.material.blurRadius.value * density)
         } else {
             null
         }

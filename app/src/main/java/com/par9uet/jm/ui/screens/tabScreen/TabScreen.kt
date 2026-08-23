@@ -222,8 +222,6 @@ fun TabScreen(
                 ) {
                     GlassCaptureHost(
                         modifier = Modifier.fillMaxSize(),
-                        style = glassStyle,
-                        navigationBarInset = navigationBarInset,
                         sourceContent = {
                             pagerContent(Modifier.fillMaxSize())
                         },
@@ -232,6 +230,7 @@ fun TabScreen(
                                 selectedTab = selectedTab,
                                 onTabSelected = ::selectTab,
                                 modifier = Modifier.fillMaxSize(),
+                                navigationBarInset = navigationBarInset,
                             )
                         },
                     )
