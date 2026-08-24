@@ -233,14 +233,17 @@ fun ComicReadScreen(
     }
     LaunchedEffect(isShowToolbar) {
         if (isShowToolbar) {
-            controller?.show(WindowInsetsCompat.Type.statusBars())
+            // Show/hide BOTH system bars together: splitting them dispatches two separate
+            // inset changes, which makes the underlying page relayout twice (visible jump
+            // when the navigation bar/dock reappears after leaving the reader).
+            controller?.show(WindowInsetsCompat.Type.systemBars())
         } else {
-            controller?.hide(WindowInsetsCompat.Type.statusBars())
+            controller?.hide(WindowInsetsCompat.Type.systemBars())
         }
     }
     DisposableEffect(Unit) {
         onDispose {
-            controller?.show(WindowInsetsCompat.Type.statusBars())
+            controller?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
 
