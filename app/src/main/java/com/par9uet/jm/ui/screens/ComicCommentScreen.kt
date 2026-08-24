@@ -622,6 +622,7 @@ fun ComicCommentScreen(
     val comicTitle = comicDetailState.data?.let { "${it.name} · JM${it.id}" } ?: "评论"
     CommonScaffold(
         title = comicTitle,
+        titleTopPadding = 8.dp,
         bottomBar = {
             CommentComposer(
                 comicId = comicId,

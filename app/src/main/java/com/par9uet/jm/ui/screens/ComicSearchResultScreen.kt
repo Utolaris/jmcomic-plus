@@ -172,7 +172,11 @@ fun ComicSearchResultScreen(
                 )
             }
             if (isLoading && comicSearchLazyPagingItems.itemCount == 0) {
-                ComicSearchResultSkeleton(modifier = Modifier.weight(1f).padding(top = 8.dp))
+                ComicSearchResultSkeleton(
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(top = topContentPadding + 8.dp),
+                )
                 return@Column
             }
             if (hasError && comicSearchLazyPagingItems.itemCount == 0) {

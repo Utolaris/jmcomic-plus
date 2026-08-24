@@ -272,9 +272,10 @@ internal fun UserCollectComicScreen(
         )
     }
 
-    GlassModal(
-        visible = showCreateFolderDialog,
-        onDismissRequest = {
+    if (useScaffold) {
+        GlassModal(
+            visible = showCreateFolderDialog,
+            onDismissRequest = {
                 showCreateFolderDialog = false
                 newFolderName = ""
             },
@@ -304,6 +305,7 @@ internal fun UserCollectComicScreen(
                             showCreateFolderDialog = false
                         }
                     }) { Text("创建") }
+                }
             }
         }
     }
@@ -406,9 +408,10 @@ internal fun UserCollectComicScreen(
         }
     }
 
-    GlassModal(
-        visible = showRenameDialog,
-        onDismissRequest = { showRenameDialog = false },
+    if (useScaffold) {
+        GlassModal(
+            visible = showRenameDialog,
+            onDismissRequest = { showRenameDialog = false },
             surfaceId = "favorites-rename-folder-glass-modal",
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
@@ -432,26 +435,29 @@ internal fun UserCollectComicScreen(
                             showRenameDialog = false
                         }
                     }) { Text("确定") }
+                }
             }
         }
     }
 
-    GlassConfirmDialog(
-        visible = showDeleteConfirmDialog,
-        title = "删除收藏夹",
+    if (useScaffold) {
+        GlassConfirmDialog(
+            visible = showDeleteConfirmDialog,
+            title = "删除收藏夹",
             message = "确定删除「${actionFolderName}」吗？\n注意：删除收藏夹不会删除其中的漫画，漫画会移至「全部」。",
-            confirmText = "删除",
-            destructive = true,
-            surfaceId = "favorites-delete-folder-glass-confirm",
-            onConfirm = {
-                val folderId = actionFolderId
-                if (folderId != null) {
-                    userViewModel.deleteFolder(folderId)
-                    showDeleteConfirmDialog = false
-                }
-            },
-            onDismiss = { showDeleteConfirmDialog = false },
-        )
+                confirmText = "删除",
+                destructive = true,
+                surfaceId = "favorites-delete-folder-glass-confirm",
+                onConfirm = {
+                    val folderId = actionFolderId
+                    if (folderId != null) {
+                        userViewModel.deleteFolder(folderId)
+                        showDeleteConfirmDialog = false
+                    }
+                },
+                onDismiss = { showDeleteConfirmDialog = false },
+            )
+    }
 
     GlassConfirmDialog(
         visible = useScaffold && controller.deleteDialogVisible,

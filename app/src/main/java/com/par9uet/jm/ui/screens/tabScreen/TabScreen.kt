@@ -393,7 +393,9 @@ fun TabScreen(
                                 BottomNavigationBarComponent(
                                     selectedTab = selectedTab,
                                     onTabSelected = ::selectTab,
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.BottomCenter),
                                     navigationBarInset = navigationBarInset,
                                 )
                                 if (selectedTab == MainTab.Home) {

@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.AppGlassTopBarDefaults
@@ -34,6 +35,7 @@ import com.par9uet.jm.ui.screens.LocalMainNavController
 fun CommonScaffold(
     title: String,
     titleContent: @Composable (() -> Unit)? = null,
+    titleTopPadding: Dp = 0.dp,
     onNavigateBack: (() -> Unit)? = null,
     navigationContent: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
@@ -94,17 +96,21 @@ fun CommonScaffold(
                             }
                         },
                         title = {
-                            if (titleContent != null) {
-                                titleContent()
-                            } else {
-                                Text(
-                                    text = title,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    fontSize = 18.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface,
-                                )
+                            Column(
+                                modifier = Modifier.padding(top = titleTopPadding),
+                            ) {
+                                if (titleContent != null) {
+                                    titleContent()
+                                } else {
+                                    Text(
+                                        text = title,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                    )
+                                }
                             }
                         },
                         actions = actions,
