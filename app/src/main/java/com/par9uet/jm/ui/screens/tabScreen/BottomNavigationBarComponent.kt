@@ -11,11 +11,13 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
@@ -69,13 +71,22 @@ fun PrimaryGlassBottomBar(
     style: GlassStyle = GlassStyle.Default,
     navigationBarInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
-    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+    // fillMaxSize here would make this overlay box swallow taps across the whole screen,
+    // blocking dialogs rendered behind it; only the bar area may be interactive.
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(style.barHeight + style.outerMargin + navigationBarInset)
+            .wrapContentHeight(Alignment.Bottom),
+    ) {
         val barWidth = minOf(
             (maxWidth - style.outerMargin * 2).coerceAtLeast(0.dp),
             style.maxBarWidth,
         )
         Box(
             modifier = Modifier
+                // The bar itself must not own the whole screen: an unqualified fillMaxSize Box
+                // in the overlay layer swallows taps meant for dialogs rendered behind it.
                 .fillMaxSize()
                 .padding(bottom = navigationBarInset + style.outerMargin),
         ) {

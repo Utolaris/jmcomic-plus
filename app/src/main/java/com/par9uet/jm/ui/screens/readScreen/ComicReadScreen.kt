@@ -246,6 +246,21 @@ fun ComicReadScreen(
             controller?.show(WindowInsetsCompat.Type.systemBars())
         }
     }
+    // Restore the system bars BEFORE the reader leaves composition: while this screen is
+    // still fully covering the destination, the resulting inset change makes the underlying
+    // page relayout invisibly. Restoring in onDispose (after the exit animation) instead let
+    // the user watch the page jump when the navigation bar/dock reappeared.
+    val readerBackCallback = remember {
+        object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                controller?.show(WindowInsetsCompat.Type.systemBars())
+                isEnabled = false
+                mainNavController.popBackStack()
+            }
+        }
+    }
+    androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
+        ?.addCallback(readerBackCallback)
 
     // The reader is a full-screen NavHost destination: keep its first frame opaque so the
     // sliding navigation spring never shows the previous screen through the loading state.

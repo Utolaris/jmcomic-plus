@@ -54,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.ChromeMode
+import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.DownloadComicGroup
@@ -76,6 +77,8 @@ fun DownloadScreen(
     var completeExpanded by rememberSaveable { mutableStateOf(true) }
     var activeExpanded by rememberSaveable { mutableStateOf(true) }
     var errorExpanded by rememberSaveable { mutableStateOf(true) }
+    // Pending deletion request waiting for user confirmation (single dialog for both paths).
+    var pendingDeleteIds by remember { mutableStateOf<Set<Int>?>(null) }
 
     // 仅当选中项中存在"正在缓存"分组时才显示暂停/继续按钮
     val activeItemIds = remember(activeGroups) {
@@ -101,8 +104,24 @@ fun DownloadScreen(
                 onPause = downloadViewModel::pauseSelected,
                 onStart = downloadViewModel::startSelected,
                 onRedownload = downloadViewModel::redownloadSelected,
-                onDelete = downloadViewModel::deleteSelected,
+                onDelete = { pendingDeleteIds = editState.selectedIds },
             )
+        },
+        overlayContent = {
+            pendingDeleteIds?.let { ids ->
+                GlassConfirmDialog(
+                    title = "删除缓存",
+                    message = "确定删除选中的缓存内容吗？删除后需要重新下载。",
+                    confirmText = "删除",
+                    destructive = true,
+                    surfaceId = "download-delete-glass-confirm",
+                    onConfirm = {
+                        downloadViewModel.deleteMany(ids)
+                        pendingDeleteIds = null
+                    },
+                    onDismiss = { pendingDeleteIds = null },
+                )
+            }
         },
     ) {
         Column {
