@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -45,6 +46,7 @@ import com.par9uet.jm.ui.glass.GlassMenuAlignment
 import com.par9uet.jm.ui.glass.GlassMenuDivider
 import com.par9uet.jm.ui.glass.GlassMenuItem
 import com.par9uet.jm.ui.glass.GlassCaptureHost
+import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassStyle
 import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
 import com.par9uet.jm.ui.interaction.PullDownSearchIndicator
@@ -183,12 +185,15 @@ fun TabScreen(
         previousSettledPage = currentlySettledPage
     }
 
+    // When leaving Favorites, clear every transient UI flag so no scrim / selection / sheet
+    // can leak onto Home or Settings. Persistent state (folder, paging, filters) is untouched.
     LaunchedEffect(pagerState.settledPage) {
-        if (pagerState.settledPage != MainTab.Collect.index && favoritesController.searchActive) {
-            favoritesController.exitSearch()
-            userViewModel.updateCollectSearchText("")
-            keyboardController?.hide()
-        }
+        if (pagerState.settledPage == MainTab.Collect.index) return@LaunchedEffect
+        userViewModel.clearCollectSelection()
+        favoritesController.clearAllTransientUi()
+        favoritesFolderMenuState.dismiss()
+        userViewModel.updateCollectSearchText("")
+        keyboardController?.hide()
     }
 
     // Logging in while already settled on Favorites must also trigger one eligible auto sync.
@@ -388,7 +393,7 @@ fun TabScreen(
                                 BottomNavigationBarComponent(
                                     selectedTab = selectedTab,
                                     onTabSelected = ::selectTab,
-                                    modifier = Modifier.fillMaxSize(),
+                                    modifier = Modifier.fillMaxWidth(),
                                     navigationBarInset = navigationBarInset,
                                 )
                                 if (selectedTab == MainTab.Home) {
@@ -492,6 +497,23 @@ fun TabScreen(
                                     }
                                 }
                             }
+                            GlassConfirmDialog(
+                                visible = selectedTab == MainTab.Collect &&
+                                    canShowAuthenticatedUi &&
+                                    favoritesController.deleteDialogVisible,
+                                title = "取消收藏",
+                                message = "确定取消收藏 ${favoritesController.selectedComics().size} 部漫画吗？",
+                                confirmText = "取消收藏",
+                                destructive = true,
+                                surfaceId = "favorites-uncollect-glass-confirm",
+                                onConfirm = {
+                                    userViewModel.deleteCollectedComics(
+                                        favoritesController.selectedComics(),
+                                    )
+                                    favoritesController.dismissDeleteDialog()
+                                },
+                                onDismiss = favoritesController::dismissDeleteDialog,
+                            )
                         },
                     )
                 }

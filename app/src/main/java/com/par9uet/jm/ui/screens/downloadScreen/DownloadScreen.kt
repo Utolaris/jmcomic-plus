@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -54,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.ChromeMode
+import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.DownloadComicGroup
@@ -88,6 +91,8 @@ fun DownloadScreen(
     BackHandler(enabled = editState.editing) {
         downloadViewModel.clearSelection()
     }
+    // Pending deletion request waiting for user confirmation (single dialog for both paths).
+    var pendingDeleteIds by remember { mutableStateOf<Set<Int>?>(null) }
 
     CommonScaffold(
         title = "下载",
@@ -101,11 +106,26 @@ fun DownloadScreen(
                 onPause = downloadViewModel::pauseSelected,
                 onStart = downloadViewModel::startSelected,
                 onRedownload = downloadViewModel::redownloadSelected,
-                onDelete = downloadViewModel::deleteSelected,
+                onDelete = { pendingDeleteIds = editState.selectedIds },
             )
         },
-    ) {
-        Column {
+        overlayContent = {
+            GlassConfirmDialog(
+                visible = pendingDeleteIds != null,
+                title = "删除缓存",
+                message = "确定删除选中的缓存内容吗？删除后需要重新下载。",
+                confirmText = "删除",
+                destructive = true,
+                surfaceId = "download-delete-glass-confirm",
+                onConfirm = {
+                    pendingDeleteIds?.let { ids -> downloadViewModel.deleteMany(ids) }
+                    pendingDeleteIds = null
+                },
+                onDismiss = { pendingDeleteIds = null },
+            )
+        },
+    ) { topContentPadding, bottomContentPadding ->
+        Column(modifier = Modifier.fillMaxSize()) {
             val activeCount = activeGroups.size
             val errorCount = errorGroups.size
             val completeCount = completeGroups.size
@@ -115,10 +135,12 @@ fun DownloadScreen(
                 DownloadEmptyState()
             } else {
                 LazyColumn(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 12.dp,
-                        vertical = 8.dp
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = topContentPadding + 8.dp,
+                        bottom = bottomContentPadding + 8.dp,
                     ),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {

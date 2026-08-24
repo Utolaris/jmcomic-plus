@@ -40,7 +40,7 @@ fun CommonScaffold(
     bottomBar: @Composable () -> Unit = {},
     overlayContent: @Composable BoxScope.() -> Unit = {},
     variableTopBar: (@Composable (statusBarInset: Dp) -> Unit)? = null,
-    content: @Composable (() -> Unit)? = null,
+    content: @Composable (topContentPadding: Dp, bottomContentPadding: Dp) -> Unit = { _, _ -> },
 ) {
     val mainNavController = LocalMainNavController.current
     val density = LocalDensity.current
@@ -56,18 +56,15 @@ fun CommonScaffold(
                 contentWindowInsets = WindowInsets(),
                 bottomBar = bottomBar,
             ) { innerPadding ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(
-                            top = topContentPadding,
-                            bottom = maxOf(
-                                innerPadding.calculateBottomPadding(),
-                                navigationBarInset,
-                            ),
-                        ),
-                ) {
-                    content?.invoke()
+                // The source viewport is intentionally FULL-SCREEN: scrollable children
+                // extend underneath the glass top bar so the blur samples live content,
+                // exactly like Home. Children receive the chrome insets and apply them as
+                // their own scroll contentPadding instead of being clipped below the bar.
+                Box(modifier = Modifier.fillMaxSize()) {
+                    content(
+                        topContentPadding,
+                        maxOf(innerPadding.calculateBottomPadding(), navigationBarInset),
+                    )
                 }
             }
         },

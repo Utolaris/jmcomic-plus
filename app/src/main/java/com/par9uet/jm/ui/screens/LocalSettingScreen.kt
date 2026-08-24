@@ -142,10 +142,15 @@ fun LocalSettingScreen(
         }
     }
 
-    CommonScaffold(title = "\u8bbe\u7f6e") {
+    CommonScaffold(title = "\u8bbe\u7f6e") { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = topContentPadding + 16.dp,
+                bottom = bottomContentPadding + 16.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {

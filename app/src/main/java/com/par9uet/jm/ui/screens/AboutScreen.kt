@@ -123,10 +123,15 @@ fun AboutScreen() {
     val appVersion = remember(context) { appVersionName(context) }
     val versionCode = remember(context) { appVersionCode(context) }
 
-    CommonScaffold(title = "关于") {
+    CommonScaffold(title = "关于") { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = topContentPadding + 16.dp,
+                bottom = bottomContentPadding + 16.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item { AppHeaderCard(appIcon, appVersion, versionCode) }
@@ -351,10 +356,15 @@ fun CheckUpdateScreen(
         downloadState.savedPath.isNotEmpty() &&
         File(downloadState.savedPath).exists()
 
-    CommonScaffold(title = "检查更新") {
+    CommonScaffold(title = "检查更新") { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = topContentPadding + 16.dp,
+                bottom = bottomContentPadding + 16.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {

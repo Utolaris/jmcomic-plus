@@ -60,13 +60,18 @@ fun LogViewerScreen() {
         }
     }
 
-    CommonScaffold(title = "日志") {
+    CommonScaffold(title = "日志") { topContentPadding, bottomContentPadding ->
         Column(modifier = Modifier.fillMaxSize()) {
             // Action bar
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .padding(
+                        start = 16.dp,
+                        top = topContentPadding + 8.dp,
+                        end = 16.dp,
+                        bottom = 8.dp,
+                    ),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
@@ -109,7 +114,7 @@ fun LogViewerScreen() {
                     .fillMaxSize()
                     .padding(horizontal = 16.dp),
                 state = listState,
-                contentPadding = PaddingValues(bottom = 16.dp),
+                contentPadding = PaddingValues(top = 0.dp, bottom = bottomContentPadding + 16.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 if (logs.isEmpty()) {

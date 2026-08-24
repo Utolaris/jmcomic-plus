@@ -107,10 +107,15 @@ fun AppLockSettingScreen(
         }
     }
 
-    CommonScaffold(title = "应用锁") {
+    CommonScaffold(title = "应用锁") { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = topContentPadding + 16.dp,
+                bottom = bottomContentPadding + 16.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // Section 1: 设置解锁方式

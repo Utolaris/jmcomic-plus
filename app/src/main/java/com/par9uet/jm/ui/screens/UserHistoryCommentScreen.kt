@@ -3,6 +3,8 @@ package com.par9uet.jm.ui.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.key
@@ -38,16 +40,21 @@ fun UserHistoryCommentScreen(
     val historyCommentLazyPagingItems = userViewModel.historyCommentPager.collectAsLazyPagingItems()
     val navController = LocalMainNavController.current
 
-    CommonScaffold(title = "我的评论") {
+    CommonScaffold(title = "我的评论") { topContentPadding, bottomContentPadding ->
         if (historyCommentLazyPagingItems.loadState.refresh is LoadState.Loading && historyCommentLazyPagingItems.itemCount == 0) {
-            Column {
+            Column(modifier = Modifier.padding(top = topContentPadding)) {
                 UserHistoryCommentSkeleton()
             }
         } else {
             PullRefreshAndLoadMoreGrid(
                 lazyPagingItems = historyCommentLazyPagingItems,
                 key = { "${it.comicId}:${it.sourceChapterId}:${it.id}:${it.time}:${it.content.hashCode()}" },
-                columns = GridCells.Fixed(1)
+                columns = GridCells.Fixed(1),
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = topContentPadding,
+                    bottom = bottomContentPadding,
+                ),
             ) {
                 Comment(
                     comment = it,

@@ -627,9 +627,9 @@ fun ComicDetailScreen(
                     }
                 }
             }
-            if (showFolderPicker) {
-                GlassModal(
-                    onDismissRequest = comicDetailViewModel::hideFolderPicker,
+            GlassModal(
+                visible = showFolderPicker,
+                onDismissRequest = comicDetailViewModel::hideFolderPicker,
                     surfaceId = "comic-detail-folder-picker-glass-modal",
                     modifier = Modifier.widthIn(max = 480.dp),
                 ) {
@@ -671,7 +671,6 @@ fun ComicDetailScreen(
                         }
                     }
                 }
-            }
             }
         },
     )

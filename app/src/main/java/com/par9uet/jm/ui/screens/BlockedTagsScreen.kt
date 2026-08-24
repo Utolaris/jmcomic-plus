@@ -88,14 +88,14 @@ fun BlockedTagsScreen(
         resetEditor()
     }
 
-    CommonScaffold(title = "排除模板") {
+    CommonScaffold(title = "排除模板") { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxWidth(),
             contentPadding = PaddingValues(
                 start = 16.dp,
                 end = 16.dp,
-                top = 16.dp,
-                bottom = 32.dp
+                top = topContentPadding + 16.dp,
+                bottom = bottomContentPadding + 32.dp
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {

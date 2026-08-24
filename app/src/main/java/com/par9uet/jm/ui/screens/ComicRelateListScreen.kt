@@ -26,7 +26,7 @@ fun ComicRelateListScreen(
 ) {
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
     val localSetting by localSettingManager.localSettingState.collectAsState()
-    CommonScaffold(title = "相关本子") {
+    CommonScaffold(title = "相关本子") { topContentPadding, bottomContentPadding ->
         if (comicDetailState.data != null) {
             val relateList = remember(comicDetailState.data, localSetting.blockedTagList) {
                 comicDetailState.data?.relateComicList?.filterBlockedTags(localSetting.blockedTagList) ?: emptyList()
@@ -35,7 +35,12 @@ fun ComicRelateListScreen(
                 columns = adaptiveComicGridCells(),
                 verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Top),
                 horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.Start),
-                contentPadding = PaddingValues(10.dp),
+                contentPadding = PaddingValues(
+                    start = 10.dp,
+                    top = topContentPadding + 10.dp,
+                    end = 10.dp,
+                    bottom = bottomContentPadding + 10.dp,
+                ),
             ) {
                 items(
                     relateList,

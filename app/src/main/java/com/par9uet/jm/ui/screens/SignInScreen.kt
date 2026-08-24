@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -126,7 +127,7 @@ fun SignInScreen(
         }
     }
 
-    CommonScaffold(title = "每日签到") {
+    CommonScaffold(title = "每日签到") { topContentPadding, bottomContentPadding ->
         PullToRefreshBox(
             modifier = Modifier
                 .fillMaxSize(),
@@ -140,7 +141,13 @@ fun SignInScreen(
                 }
             }
         ) {
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    top = topContentPadding,
+                    bottom = bottomContentPadding,
+                ),
+            ) {
                 item {
                     Column(
                         modifier = Modifier

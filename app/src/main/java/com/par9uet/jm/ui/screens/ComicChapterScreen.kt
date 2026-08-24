@@ -64,10 +64,15 @@ fun ComicChapterScreen(
         }
     }
 
-    CommonScaffold(title = "选择章节") {
+    CommonScaffold(title = "选择章节") { topContentPadding, bottomContentPadding ->
         LazyVerticalGrid(
             state = gridState,
-            contentPadding = PaddingValues(10.dp),
+            contentPadding = PaddingValues(
+                start = 10.dp,
+                top = topContentPadding + 10.dp,
+                end = 10.dp,
+                bottom = bottomContentPadding + 10.dp,
+            ),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             columns = GridCells.Fixed(4)

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -161,8 +162,8 @@ fun ComicSearchResultScreen(
                 }
             }
         },
-    ) {
-        Column {
+    ) { topContentPadding, bottomContentPadding ->
+        Column(modifier = Modifier.fillMaxSize()) {
             AnimatedVisibility(visible = isLoading, enter = fadeIn(), exit = fadeOut()) {
                 LinearProgressIndicator(
                     modifier = Modifier
@@ -179,6 +180,7 @@ fun ComicSearchResultScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
+                        .padding(top = topContentPadding, bottom = bottomContentPadding)
                         .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -196,7 +198,12 @@ fun ComicSearchResultScreen(
                 lazyPagingItems = comicSearchLazyPagingItems,
                 key = { it.id },
                 columns = adaptiveComicGridCells(localSetting.searchGridColumns),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 10.dp)
+                contentPadding = PaddingValues(
+                    start = 10.dp,
+                    end = 10.dp,
+                    top = topContentPadding + 10.dp,
+                    bottom = bottomContentPadding + 10.dp,
+                ),
             ) {
                 Comic(it)
             }

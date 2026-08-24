@@ -234,6 +234,8 @@ internal fun ComicCommentContent(
     onReply: (Comment) -> Unit,
     modifier: Modifier = Modifier,
     listBottomPadding: Dp = 10.dp,
+    topContentPadding: Dp = 0.dp,
+    bottomContentPadding: Dp = 0.dp,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
@@ -250,7 +252,8 @@ internal fun ComicCommentContent(
             authState = authState,
             onLogin = onLogin,
             onReply = onReply,
-            bottomContentPadding = listBottomPadding,
+            bottomContentPadding = listBottomPadding + bottomContentPadding,
+            topContentPadding = topContentPadding,
         )
     }
 }
@@ -263,6 +266,7 @@ private fun CommentList(
     onLogin: () -> Unit,
     onReply: (Comment) -> Unit,
     bottomContentPadding: Dp,
+    topContentPadding: Dp = 0.dp,
 ) {
     when (val refreshState = commentLazyPagingItems.loadState.refresh) {
         is LoadState.Loading -> {
@@ -297,7 +301,10 @@ private fun CommentList(
         lazyPagingItems = commentLazyPagingItems,
         key = { it.id },
         columns = GridCells.Fixed(1),
-        contentPadding = PaddingValues(top = 10.dp, bottom = bottomContentPadding),
+        contentPadding = PaddingValues(
+            top = topContentPadding + 10.dp,
+            bottom = bottomContentPadding,
+        ),
         enablePullRefresh = false,
     ) { comment ->
         CommentWithAction(comment) { target ->
@@ -639,7 +646,7 @@ fun ComicCommentScreen(
                     .padding(horizontal = ComicDetailHorizontalPadding, vertical = 8.dp),
             )
         },
-    ) {
+    ) { topContentPadding, bottomContentPadding ->
         ComicCommentContent(
             commentLazyPagingItems = commentLazyPagingItems,
             authState = authState,
@@ -647,6 +654,8 @@ fun ComicCommentScreen(
             onReply = {
                 replyComment = it
             },
+            topContentPadding = topContentPadding,
+            bottomContentPadding = bottomContentPadding,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(horizontal = ComicDetailHorizontalPadding),

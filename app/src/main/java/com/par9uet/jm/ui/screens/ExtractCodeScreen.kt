@@ -113,12 +113,17 @@ fun ExtractCodeScreen(
         loading = false
     }
 
-    CommonScaffold(title = "提取编码") {
+    CommonScaffold(title = "提取编码") { topContentPadding, bottomContentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(
+                    start = 16.dp,
+                    top = topContentPadding + 16.dp,
+                    end = 16.dp,
+                    bottom = bottomContentPadding + 16.dp,
+                ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(

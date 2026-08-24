@@ -91,12 +91,13 @@ fun LoginScreen(
         userViewModel.login(username, password)
     }
 
-    CommonScaffold(title = "", onNavigateBack = ::goBack) {
+    CommonScaffold(title = "", onNavigateBack = ::goBack) { topContentPadding, bottomContentPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
+                .padding(top = topContentPadding, bottom = bottomContentPadding)
                 .padding(horizontal = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center

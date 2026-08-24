@@ -245,7 +245,7 @@ fun DownloadComicDetailScreen(
                 }
             }
         }
-    ) {
+    ) { topContentPadding, bottomContentPadding ->
         if (!detailState.found) {
             Box(
                 modifier = Modifier
@@ -266,6 +266,7 @@ fun DownloadComicDetailScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(scrollState)
+                .padding(top = topContentPadding, bottom = bottomContentPadding)
         ) {
             LocalCover(
                 title = detailState.title,

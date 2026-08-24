@@ -2,12 +2,12 @@ package com.par9uet.jm.ui.glass
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,7 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 
 /**
@@ -42,12 +43,17 @@ import androidx.compose.ui.unit.dp
  * backdrop blur and older devices get the existing translucent fallback. No extra capture host
  * is created; callers must place this in CommonScaffold overlayContent (or equivalent).
  *
- * Motion: enter fade ~200ms + scale 0.96->1 + small vertical offset; exit reverses. After exit
- * finishes nothing remains composed, so no invisible scrim can intercept input. Outside tap and
- * Back dismissal are individually configurable.
+ * Motion: enter fade ~200ms + scale 0.96->1; exit reverses and the scrim hit layer is removed
+ * once the transition finishes, so no invisible scrim can intercept input. Outside tap and Back
+ * dismissal are individually configurable.
+ *
+ * [visible] is the logical visibility CONTROLLED BY THE CALLER (callers keep this composable
+ * composed and flip [visible]); [onDismissRequest] fires for outside tap / Back so the caller
+ * can set [visible] = false, after which the exit animation actually runs to completion.
  */
 @Composable
 fun GlassModal(
+    visible: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
     surfaceId: String = "glass-modal",
@@ -56,14 +62,39 @@ fun GlassModal(
     alignment: Alignment = Alignment.Center,
     surface: @Composable () -> Unit,
 ) {
+    val visibleState = remember { MutableTransitionState(false) }
+    visibleState.targetState = visible
+    val transition = rememberTransition(
+        transitionState = visibleState,
+        label = "glass-modal-transition",
+    )
+    val scrimAlpha by transition.animateFloat(
+        transitionSpec = { tween(200) },
+        label = "glass-modal-scrim",
+    ) { if (it) 1f else 0f }
+    val surfaceAlpha by transition.animateFloat(
+        transitionSpec = { tween(200) },
+        label = "glass-modal-surface-alpha",
+    ) { if (it) 1f else 0f }
+    val surfaceScale by transition.animateFloat(
+        transitionSpec = { tween(200) },
+        label = "glass-modal-surface-scale",
+    ) { if (it) 1f else 0.96f }
+    val active = transition.currentState || transition.isRunning
     val scrimInteraction = remember { MutableInteractionSource() }
     val surfaceInteraction = remember { MutableInteractionSource() }
+    if (dismissOnBack) {
+        BackHandler(enabled = visible && active) {
+            onDismissRequest()
+        }
+    }
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .graphicsLayer { alpha = scrimAlpha }
             .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f))
             .then(
-                if (dismissOnOutsideClick) {
+                if (dismissOnOutsideClick && active) {
                     Modifier.clickable(
                         interactionSource = scrimInteraction,
                         indication = null,
@@ -76,11 +107,9 @@ fun GlassModal(
         contentAlignment = alignment,
     ) {
         AnimatedVisibility(
-            visible = true,
-            enter = fadeIn(tween(200)) +
-                scaleIn(initialScale = 0.96f, animationSpec = tween(200)),
-            exit = fadeOut(tween(160)) +
-                scaleOut(targetScale = 0.96f, animationSpec = tween(160)),
+            visibleState = visibleState,
+            enter = fadeIn(tween(200)),
+            exit = fadeOut(tween(160)),
         ) {
             GlassSurface(
                 surfaceId = surfaceId,
@@ -96,6 +125,8 @@ fun GlassModal(
                     }
                 ),
                 style = GlassSurfaceStyle(cornerRadius = 24.dp),
+                surfaceAlpha = surfaceAlpha,
+                surfaceScale = surfaceScale,
             ) {
                 surface()
             }
@@ -106,6 +137,7 @@ fun GlassModal(
 /** Canonical glass confirmation layout used by destructive-action confirmations. */
 @Composable
 fun GlassConfirmDialog(
+    visible: Boolean,
     title: String,
     message: String,
     confirmText: String,
@@ -117,6 +149,7 @@ fun GlassConfirmDialog(
     destructive: Boolean = false,
 ) {
     GlassModal(
+        visible = visible,
         onDismissRequest = onDismiss,
         modifier = modifier.widthIn(max = 420.dp),
         surfaceId = surfaceId,

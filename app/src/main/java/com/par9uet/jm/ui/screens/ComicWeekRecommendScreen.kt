@@ -4,6 +4,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -91,12 +93,16 @@ fun ComicWeekRecommendScreen(
     }
     CommonScaffold(
         title = "每周推荐"
-    ) {
-        Column {
+    ) { topContentPadding, bottomContentPadding ->
+        Column(modifier = Modifier.fillMaxSize()) {
             if (weekDataState.data != null) {
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    modifier = Modifier.padding(10.dp)
+                    modifier = Modifier.padding(
+                        start = 10.dp,
+                        top = topContentPadding + 10.dp,
+                        end = 10.dp,
+                    )
                 ) {
                     val typeList = weekDataState.data?.typeList ?: emptyList()
                     Row(
@@ -128,11 +134,15 @@ fun ComicWeekRecommendScreen(
             }
             PullRefreshAndLoadMoreGrid(
                 modifier = Modifier
-                    .fillMaxWidth()
                     .weight(1f),
                 lazyPagingItems = weekRecommendComicPagingItems,
                 key = { it.id },
                 columns = adaptiveComicGridCells(),
+                contentPadding = PaddingValues(
+                    start = 10.dp,
+                    end = 10.dp,
+                    bottom = bottomContentPadding + 10.dp,
+                ),
             ) {
                 Comic(it)
             }

@@ -205,24 +205,26 @@ fun CacheCleanupScreen(
         onDone()
     }
 
-    if (showConfirmDialog) {
-        GlassConfirmDialog(
-            title = "确认清理",
-            message = "将清理 ${selectedItems.size} 项缓存，共 ${formatBytes(totalSelected)}。",
-            confirmText = "清理",
-            dismissText = "取消",
-            destructive = true,
-            surfaceId = "cache-cleanup-glass-confirm",
-            onDismiss = { showConfirmDialog = false },
-            onConfirm = {
-                showConfirmDialog = false
-                cleaning = true
-                performCacheCleanup {}
-            },
-        )
-    }
-
-    CommonScaffold(title = "缓存清理") {
+    CommonScaffold(
+        title = "缓存清理",
+        overlayContent = {
+            GlassConfirmDialog(
+                visible = showConfirmDialog,
+                title = "确认清理",
+                message = "将清理 ${selectedItems.size} 项缓存，共 ${formatBytes(totalSelected)}。",
+                confirmText = "清理",
+                dismissText = "取消",
+                destructive = true,
+                surfaceId = "cache-cleanup-glass-confirm",
+                onDismiss = { showConfirmDialog = false },
+                onConfirm = {
+                    showConfirmDialog = false
+                    cleaning = true
+                    performCacheCleanup {}
+                },
+            )
+        },
+    ) { topContentPadding, bottomContentPadding ->
         if (loading) {
             androidx.compose.foundation.layout.Box(
                 modifier = Modifier.fillMaxSize(),
@@ -235,7 +237,12 @@ fun CacheCleanupScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState)
-                    .padding(16.dp),
+                    .padding(
+                        start = 16.dp,
+                        top = topContentPadding + 16.dp,
+                        end = 16.dp,
+                        bottom = bottomContentPadding + 16.dp,
+                    ),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 cleanResult?.let {

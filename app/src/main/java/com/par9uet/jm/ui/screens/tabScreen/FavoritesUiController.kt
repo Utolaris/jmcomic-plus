@@ -79,6 +79,15 @@ internal class FavoritesUiController {
         deleteDialogVisible = false
     }
 
+    /** Clears every transient UI flag when the Favorites root tab is left. */
+    fun clearAllTransientUi() {
+        searchActive = false
+        filterDialogVisible = false
+        folderManagementVisible = false
+        moveDialogVisible = false
+        deleteDialogVisible = false
+    }
+
     fun bindSelectedComics(provider: () -> List<Comic>) {
         selectedComicsProvider = provider
     }

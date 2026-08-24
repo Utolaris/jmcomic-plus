@@ -272,9 +272,9 @@ internal fun UserCollectComicScreen(
         )
     }
 
-    if (showCreateFolderDialog) {
-        GlassModal(
-            onDismissRequest = {
+    GlassModal(
+        visible = showCreateFolderDialog,
+        onDismissRequest = {
                 showCreateFolderDialog = false
                 newFolderName = ""
             },
@@ -304,7 +304,6 @@ internal fun UserCollectComicScreen(
                             showCreateFolderDialog = false
                         }
                     }) { Text("创建") }
-                }
             }
         }
     }
@@ -407,9 +406,9 @@ internal fun UserCollectComicScreen(
         }
     }
 
-    if (showRenameDialog) {
-        GlassModal(
-            onDismissRequest = { showRenameDialog = false },
+    GlassModal(
+        visible = showRenameDialog,
+        onDismissRequest = { showRenameDialog = false },
             surfaceId = "favorites-rename-folder-glass-modal",
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
@@ -433,14 +432,13 @@ internal fun UserCollectComicScreen(
                             showRenameDialog = false
                         }
                     }) { Text("确定") }
-                }
             }
         }
     }
 
-    if (showDeleteConfirmDialog) {
-        GlassConfirmDialog(
-            title = "删除收藏夹",
+    GlassConfirmDialog(
+        visible = showDeleteConfirmDialog,
+        title = "删除收藏夹",
             message = "确定删除「${actionFolderName}」吗？\n注意：删除收藏夹不会删除其中的漫画，漫画会移至「全部」。",
             confirmText = "删除",
             destructive = true,
@@ -454,21 +452,19 @@ internal fun UserCollectComicScreen(
             },
             onDismiss = { showDeleteConfirmDialog = false },
         )
-    }
 
-    if (controller.deleteDialogVisible) {
-        GlassConfirmDialog(
-            title = "取消收藏",
-            message = "确定取消收藏 ${collectEditState.selectedComicIds.size} 部漫画吗？",
-            confirmText = "取消收藏",
-            surfaceId = "favorites-uncollect-glass-confirm",
-            onConfirm = {
-                userViewModel.deleteCollectedComics(selectedComics)
-                controller.dismissDeleteDialog()
-            },
-            onDismiss = controller::dismissDeleteDialog,
-        )
-    }
+    GlassConfirmDialog(
+        visible = useScaffold && controller.deleteDialogVisible,
+        title = "取消收藏",
+        message = "确定取消收藏 ${collectEditState.selectedComicIds.size} 部漫画吗？",
+        confirmText = "取消收藏",
+        surfaceId = "favorites-uncollect-glass-confirm",
+        onConfirm = {
+            userViewModel.deleteCollectedComics(selectedComics)
+            controller.dismissDeleteDialog()
+        },
+        onDismiss = controller::dismissDeleteDialog,
+    )
 
     if (controller.moveDialogVisible) {
         MoveFolderSheet(

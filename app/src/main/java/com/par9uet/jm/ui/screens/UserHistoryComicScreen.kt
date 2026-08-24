@@ -2,7 +2,9 @@ package com.par9uet.jm.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -113,46 +115,47 @@ fun UserHistoryComicScreen(
             )
         },
         overlayContent = {
-            if (showDeleteConfirmDialog) {
-                HistoryDeleteGlassConfirm(
-                    selectedCount = historyEditState.selectedComicIds.size,
-                    onConfirm = {
-                        userViewModel.deleteHistoryComics(selectedComics)
-                        showDeleteConfirmDialog = false
-                    },
-                    onDismiss = { showDeleteConfirmDialog = false },
-                )
-            }
+            HistoryDeleteGlassConfirm(
+                visible = showDeleteConfirmDialog,
+                selectedCount = historyEditState.selectedComicIds.size,
+                onConfirm = {
+                    userViewModel.deleteHistoryComics(selectedComics)
+                    showDeleteConfirmDialog = false
+                },
+                onDismiss = { showDeleteConfirmDialog = false },
+            )
         },
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            if (historyComicLazyPagingItems.loadState.refresh is LoadState.Loading && historyComicLazyPagingItems.itemCount == 0) {
+    ) { topContentPadding, bottomContentPadding ->
+        if (historyComicLazyPagingItems.loadState.refresh is LoadState.Loading && historyComicLazyPagingItems.itemCount == 0) {
+            Box(modifier = Modifier.padding(top = topContentPadding)) {
                 UserHistoryComicSkeleton()
-            } else {
-                PullRefreshAndLoadMoreGrid(
-                    modifier = Modifier.fillMaxSize(),
-                    lazyPagingItems = historyComicLazyPagingItems,
-                    key = { it.id },
-                    columns = adaptiveComicGridCells(localSetting.historyGridColumns),
-                ) { comic ->
-                    Comic(
-                        comic = comic,
-                        editing = historyEditState.editing,
-                        selected = comic.id in historyEditState.selectedComicIds,
-                        onLongClick = {
-                            if (historyEditState.editing) {
-                                userViewModel.toggleHistorySelected(comic.id)
-                            } else {
-                                userViewModel.enterHistoryEdit(comic.id)
-                            }
-                        },
-                        onToggleSelected = {
+            }
+        } else {
+            PullRefreshAndLoadMoreGrid(
+                modifier = Modifier.fillMaxSize(),
+                lazyPagingItems = historyComicLazyPagingItems,
+                key = { it.id },
+                columns = adaptiveComicGridCells(localSetting.historyGridColumns),
+                contentPadding = PaddingValues(
+                    top = topContentPadding,
+                    bottom = bottomContentPadding,
+                ),
+            ) { comic ->
+                Comic(
+                    comic = comic,
+                    editing = historyEditState.editing,
+                    selected = comic.id in historyEditState.selectedComicIds,
+                    onLongClick = {
+                        if (historyEditState.editing) {
                             userViewModel.toggleHistorySelected(comic.id)
+                        } else {
+                            userViewModel.enterHistoryEdit(comic.id)
                         }
-                    )
-                }
+                    },
+                    onToggleSelected = {
+                        userViewModel.toggleHistorySelected(comic.id)
+                    },
+                )
             }
         }
     }
@@ -162,11 +165,13 @@ fun UserHistoryComicScreen(
 /** Reference implementation for the shared glass confirmation design. */
 @Composable
 private fun HistoryDeleteGlassConfirm(
+    visible: Boolean,
     selectedCount: Int,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     GlassConfirmDialog(
+        visible = visible,
         title = "删除历史记录",
         message = "确定要删除选中的 $selectedCount 条历史记录吗？",
         confirmText = "删除",
