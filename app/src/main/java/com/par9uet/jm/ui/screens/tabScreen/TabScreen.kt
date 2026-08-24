@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
@@ -389,9 +388,7 @@ fun TabScreen(
                                 BottomNavigationBarComponent(
                                     selectedTab = selectedTab,
                                     onTabSelected = ::selectTab,
-                                    // Consume taps only on the bar itself; a full-screen
-                                    // overlay box here blocked dialog buttons behind it.
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxSize(),
                                     navigationBarInset = navigationBarInset,
                                 )
                                 if (selectedTab == MainTab.Home) {
