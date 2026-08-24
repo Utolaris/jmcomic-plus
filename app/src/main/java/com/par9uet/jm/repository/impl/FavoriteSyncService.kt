@@ -2,15 +2,7 @@ package com.par9uet.jm.repository.impl
 
 import android.os.SystemClock
 import com.par9uet.jm.data.models.CollectComicOrderFilter
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_BUILTIN
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_MIXED
-import com.par9uet.jm.repository.BaseRepository
-import com.par9uet.jm.retrofit.Retrofit
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.retrofit.model.UserCollectComicListResponse
-import com.par9uet.jm.retrofit.service.ComicService
-import com.par9uet.jm.retrofit.service.UserService
-import com.par9uet.jm.store.AppLocalSettings
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
 import com.par9uet.jm.store.FavoriteMetadataPayload
 import com.par9uet.jm.store.FavoriteRemoteItem
@@ -41,16 +33,12 @@ import kotlinx.coroutines.withContext
 
 /** Coordinates persistent favorite synchronization without owning favorite persistence. */
 class FavoriteSyncService(
-    private val service: UserService,
-    private val localSettings: AppLocalSettings,
     private val embeddedClientManager: EmbeddedClientManager,
-    private val retrofit: Retrofit,
     private val sessionReadinessHolder: SessionReadinessHolder,
     private val userStorage: UserStorage,
-    private val comicService: ComicService,
     private val favoriteStore: FavoriteStore,
     private val applicationScope: CoroutineScope,
-) : BaseRepository() {
+) {
     private data class RemoteFavoriteSnapshot(
         val items: List<FavoriteRemoteItem>,
         val folders: Map<Int, String>,
@@ -205,39 +193,20 @@ class FavoriteSyncService(
             var expectedTotal = 0
             var continuePaging = true
             while (continuePaging) {
-                if (useEmbeddedApi()) {
-                    val favoritePage = embeddedClientManager.getClient().getFavorites(
-                        FavoriteQuery.Builder().folderId(folderId).page(page).build()
-                    )
-                    val pageItems = favoritePage.content().orEmpty().mapNotNull { it.toFavoriteRemoteItem() }
-                    items += pageItems
-                    favoritePage.folderList().orEmpty().forEach { (id, name) ->
-                        id.toIntOrNull()?.let { folders[it] = name }
-                    }
-                    expectedTotal = favoritePage.totalItems()
-                    onProgress(FavoriteSyncProgress(items.size, expectedTotal, progressPhase))
-                    continuePaging = when {
-                        favoritePage.totalPages() > 0 -> page < favoritePage.totalPages()
-                        pageItems.isEmpty() -> false
-                        else -> pageItems.size >= FAVORITE_REMOTE_PAGE_SIZE
-                    }
-                } else {
-                    val response = safeApiCall {
-                        service.getCollectComicList(page, order.value, folderId)
-                    }
-                    val pageData = when (response) {
-                        is NetWorkResult.Error -> throw IllegalStateException(response.message)
-                        is NetWorkResult.Success -> response.data
-                    }
-                    val pageItems = pageData.list.mapNotNull { it.toFavoriteRemoteItem() }
-                    items += pageItems
-                    pageData.folder_list.orEmpty().forEach { (id, name) ->
-                        id.toIntOrNull()?.let { folders[it] = name }
-                    }
-                    expectedTotal = pageData.total
-                    onProgress(FavoriteSyncProgress(items.size, expectedTotal, progressPhase))
-                    continuePaging = pageItems.isNotEmpty() &&
-                        (pageItems.size >= FAVORITE_REMOTE_PAGE_SIZE || expectedTotal > items.size)
+                val favoritePage = embeddedClientManager.getClient().getFavorites(
+                    FavoriteQuery.Builder().folderId(folderId).page(page).build()
+                )
+                val pageItems = favoritePage.content().orEmpty().mapNotNull { it.toFavoriteRemoteItem() }
+                items += pageItems
+                favoritePage.folderList().orEmpty().forEach { (id, name) ->
+                    id.toIntOrNull()?.let { folders[it] = name }
+                }
+                expectedTotal = favoritePage.totalItems()
+                onProgress(FavoriteSyncProgress(items.size, expectedTotal, progressPhase))
+                continuePaging = when {
+                    favoritePage.totalPages() > 0 -> page < favoritePage.totalPages()
+                    pageItems.isEmpty() -> false
+                    else -> pageItems.size >= FAVORITE_REMOTE_PAGE_SIZE
                 }
                 page++
             }
@@ -310,38 +279,11 @@ class FavoriteSyncService(
         )
     }
 
-    private suspend fun fetchFavoriteMetadata(albumId: Int): FavoriteMetadataPayload {
-        if (useEmbeddedApi()) {
-            return embeddedClientManager.getClient().getAlbum(albumId.toString()).toFavoriteMetadataPayload()
-        }
-        return when (val result = safeApiCall { comicService.getComicDetail(albumId) }) {
-            is NetWorkResult.Error -> throw IllegalStateException(result.message)
-            is NetWorkResult.Success -> result.data.let {
-                FavoriteMetadataPayload(
-                    albumId = it.id,
-                    title = it.name,
-                    description = it.description,
-                    authors = it.author,
-                    tags = it.tags,
-                    roles = it.actors,
-                    works = it.works,
-                )
-            }
-        }
-    }
-
-    private fun useEmbeddedApi(): Boolean {
-        val source = localSettings.localSettingState.value.comicApiSource
-        return source == COMIC_API_SOURCE_BUILTIN || source == COMIC_API_SOURCE_MIXED
-    }
+    private suspend fun fetchFavoriteMetadata(albumId: Int): FavoriteMetadataPayload =
+        embeddedClientManager.getClient().getAlbum(albumId.toString()).toFavoriteMetadataPayload()
 
     private suspend fun awaitAuthenticatedSessionReady() {
-        val hasInstantSession = if (useEmbeddedApi()) {
-            embeddedClientManager.hasPersistedSession()
-        } else {
-            retrofit.hasPersistedSession()
-        }
-        if (hasInstantSession) return
+        if (embeddedClientManager.hasPersistedSession()) return
         sessionReadinessHolder.awaitReady()
     }
 
@@ -358,23 +300,6 @@ class FavoriteSyncService(
             categoryTitle = category()?.title(),
             subCategoryId = subCategory()?.id(),
             subCategoryTitle = subCategory()?.title(),
-        )
-    }
-
-    private fun UserCollectComicListResponse.ListItem.toFavoriteRemoteItem(): FavoriteRemoteItem? {
-        val albumId = id.toIntOrNull() ?: return null
-        return FavoriteRemoteItem(
-            albumId = albumId,
-            title = name,
-            authors = authors?.filter { it.isNotBlank() }?.takeIf { it.isNotEmpty() }
-                ?: listOf(author).filter { it.isNotBlank() },
-            description = description.orEmpty(),
-            image = image,
-            tags = tags.orEmpty(),
-            categoryId = category.id,
-            categoryTitle = category.title,
-            subCategoryId = category_sub.id,
-            subCategoryTitle = category_sub.title,
         )
     }
 

@@ -487,11 +487,9 @@ fun ComicDetailScreen(
                                 requireLogin {
                                     if (comic.isCollect) {
                                         comicDetailViewModel.unCollect(comic.id)
-                                    } else if (comicDetailViewModel.shouldShowFolderPicker()) {
+                                    } else {
                                         comicDetailViewModel.refreshFolderList()
                                         comicDetailViewModel.showFolderPicker()
-                                    } else {
-                                        comicDetailViewModel.collect(comic.id)
                                     }
                                 }
                             },

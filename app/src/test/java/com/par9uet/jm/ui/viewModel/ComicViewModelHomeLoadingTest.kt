@@ -40,7 +40,7 @@ import org.junit.Test
  * - 推荐关闭时启动只请求“最新上架”
  * - 其它分类点击才请求，再次点击复用缓存
  * - force refresh 只刷新当前分类
- * - 数据源变化丢弃旧缓存，迟到的旧请求结果不得写入新状态
+ * - 推荐拓扑变化时，迟到的旧请求结果不得写入新状态
  * - 失败后可重试
  */
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -95,7 +95,7 @@ class ComicViewModelHomeLoadingTest {
         override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> =
             NetWorkResult.Error("stub")
 
-        override suspend fun getComicPicList(id: Int, shunt: String): NetWorkResult<ComicPicListResponse> =
+        override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPicListResponse> =
             NetWorkResult.Error("stub")
 
         override suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray? = null
@@ -184,7 +184,7 @@ class ComicViewModelHomeLoadingTest {
         assertEquals(0, repo.networkPageCalls)
         assertEquals(ComicViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
         assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
-        assertEquals(ComicViewModel.BUILTIN_CATEGORIES, vm.homeState.value.categories)
+        assertEquals(ComicViewModel.EMBEDDED_CATEGORIES, vm.homeState.value.categories)
     }
 
     @Test
@@ -332,7 +332,7 @@ class ComicViewModelHomeLoadingTest {
     }
 
     @Test
-    fun staleResultAfterSourceChangeIsDiscarded() = runTest(scheduler) {
+    fun staleResultAfterRecommendationTopologyChangeIsDiscarded() = runTest(scheduler) {
         val gate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
         val repo = FakeComicRepository(
             embeddedHandler = {
@@ -349,18 +349,18 @@ class ComicViewModelHomeLoadingTest {
         advanceUntilIdle()
         assertTrue(vm.homeState.value.states["builtin_week_hot"]?.isLoading == true)
 
-        // 用户切换到网络数据源：旧分类表与缓存全部作废。
-        settings.localSettingState.update { it.copy(comicApiSource = "network") }
+        // 用户开启网络推荐：旧请求 token 作废，首页切换到推荐 + Embedded 分类拓扑。
+        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = true) }
         vm.refreshHome()
         advanceUntilIdle()
-        assertTrue(vm.homeState.value.categories.none { it.id == "builtin_week_hot" })
+        assertEquals("net_home", vm.homeState.value.selectedCategoryId)
 
         // 迟到的旧请求完成：不得写入任何状态。
         gate.complete(NetWorkResult.Success(listOf(item(9))))
         advanceUntilIdle()
 
         assertNull(vm.homeState.value.states["builtin_week_hot"])
-        // 网络首页正常展开。
+        // 网络推荐正常展开。
         assertTrue(vm.homeState.value.categories.isNotEmpty())
         assertTrue(vm.homeState.value.states.values.any { it.content.isNotEmpty() })
     }
@@ -397,12 +397,9 @@ class ComicViewModelHomeLoadingTest {
     }
 
     @Test
-    fun networkSourceExpandsToTabsAndDropsOldEmbeddedCache() = runTest(scheduler) {
-        var network = true
+    fun networkRecommendationAddsTabsWithoutReplacingEmbeddedCategories() = runTest(scheduler) {
         val repo = FakeComicRepository(
-            embeddedHandler = {
-                if (network) embeddedOk(it) else NetWorkResult.Error("should not be requested")
-            },
+            embeddedHandler = { embeddedOk(it) },
             networkHandler = {
                 NetWorkResult.Success(
                     listOf(
@@ -415,24 +412,28 @@ class ComicViewModelHomeLoadingTest {
         val settings = FakeSettings()
         val vm = ComicViewModel(repo, settings)
 
-        // 内置模式先加载最新上架。
+        // 默认只加载 Embedded 最新上架。
         vm.refreshHome()
         advanceUntilIdle()
         assertEquals(1, repo.embeddedCalls.size)
 
-        // 切到网络数据源：整页一次请求，展开为 tab，旧内置缓存不再显示。
-        settings.localSettingState.update { it.copy(comicApiSource = "network") }
+        // 开启网络推荐：/promote 展开为 tab，同时保留 Embedded 分类入口。
+        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = true) }
         vm.refreshHome()
         advanceUntilIdle()
         assertEquals(1, repo.networkPageCalls)
-        assertEquals(listOf("C108推荐本本", "连载漫画"), vm.homeState.value.categories.map { it.title })
+        assertEquals(
+            listOf("C108推荐本本", "连载漫画"),
+            vm.homeState.value.categories.take(2).map { it.title },
+        )
+        assertTrue(vm.homeState.value.categories.any { it.id == ComicViewModel.CATEGORY_LATEST })
         assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
 
-        // 切回内置：旧网络缓存丢弃，重新请求默认分类。
-        settings.localSettingState.update { it.copy(comicApiSource = "builtin") }
+        // 关闭网络推荐：回到 Embedded，并复用已加载的最新上架缓存。
+        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = false) }
         vm.refreshHome()
         advanceUntilIdle()
-        assertEquals(2, repo.embeddedCalls.size)
+        assertEquals(1, repo.embeddedCalls.size)
         assertEquals(ComicViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
         assertTrue(vm.homeState.value.categories.none { it.id == "net_rec" })
     }

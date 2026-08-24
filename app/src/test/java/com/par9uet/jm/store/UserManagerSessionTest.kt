@@ -114,9 +114,6 @@ class UserManagerSessionTest {
             if (verified.embeddedCookies.isNotEmpty()) {
                 cookieStorage.set(verified.embeddedCookies)
             }
-            if (verified.networkCookies.isNotEmpty()) {
-                cookieStorage.set(cookieStorage.get() + verified.networkCookies)
-            }
         }
 
         override fun clearSession() = Unit

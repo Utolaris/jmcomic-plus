@@ -10,13 +10,6 @@ internal data class ReaderPrefetchPolicy(
     val parallelism: Int,
 )
 
-internal fun shouldWarmNextChapter(
-    currentPageIndex: Int,
-    pageCount: Int,
-    distance: Int,
-): Boolean = pageCount > 0 && distance >= 0 &&
-    pageCount - currentPageIndex.coerceIn(0, pageCount - 1) - 1 <= distance
-
 /** Bounded adaptive policy: memory and network conditions can reduce work, never make it unbounded. */
 internal fun readerAdaptivePrefetchPolicy(
     configuredDistance: Int,

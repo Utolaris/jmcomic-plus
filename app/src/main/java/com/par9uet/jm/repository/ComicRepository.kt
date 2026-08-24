@@ -22,15 +22,12 @@ interface ComicRepository {
     suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse>
     suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse>
     suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse>
-    /**
-     * 内置 API：按首页分类 ID 加载单个分类数据（"最新上架"、"本周热门"等）。
-     * 一次只请求一个分类；分类 ID 由 ComicViewModel 的首页分类表提供。
-     */
+    /** Embedded API: load one Home category lazily. */
     suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>
 
-    /** 网络 API 的 /promote 整页；响应中的每个 section 都是独立首页分类。 */
+    /** Optional network /promote page; each response section is a Home category. */
     suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>>
-    suspend fun getComicPicList(id: Int, shunt: String): NetWorkResult<ComicPicListResponse>
+    suspend fun getComicPicList(id: Int): NetWorkResult<ComicPicListResponse>
     suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray?
     suspend fun getComicList(
         page: Int,

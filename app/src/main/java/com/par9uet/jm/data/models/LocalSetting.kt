@@ -1,8 +1,5 @@
 package com.par9uet.jm.data.models
 
-const val COMIC_API_SOURCE_BUILTIN = "builtin"
-const val COMIC_API_SOURCE_NETWORK = "network"
-const val COMIC_API_SOURCE_MIXED = "mixed"
 const val APP_LOCK_TYPE_PASSWORD = "password"
 const val APP_LOCK_TYPE_PATTERN = "pattern"
 
@@ -12,8 +9,6 @@ data class BlockedTagTemplate(
 )
 
 data class LocalSetting(
-    // Kept for persisted-setting compatibility. LocalSettingManager normalizes this to mixed.
-    val comicApiSource: String = COMIC_API_SOURCE_MIXED,
     // 偏好推荐开关：开启后将请求网络 API 获取基于登录账号的个性化推荐，可能不稳定
     val preferenceRecommendEnabled: Boolean = false,
     val apiList: List<String> = listOf(
@@ -30,7 +25,6 @@ data class LocalSetting(
         "dark",
     ),
     val theme: String = "auto",
-    val shunt: String = "1",
     // 阅读页预先加载的图片张数
     val prefetchCount: Int = 3,
     // scroll || page || tap

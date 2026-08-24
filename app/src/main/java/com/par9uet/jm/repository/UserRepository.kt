@@ -14,9 +14,7 @@ import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import okhttp3.Cookie
 
 /**
- * 一次登录的结果：登录响应 + 登录完成后活动会话的完整 cookie 状态。
- * cookie 由实现方在登录网络调用结束后读取（内置 API 为 JmApiClient.getCookies()，
- * 含 AVS），由 UserManager 在会话锁内、generation 确认后提交到 CookieStorage。
+ * 一次 Embedded 登录的结果：登录响应 + 登录完成后的完整 cookie 状态。
  */
 data class LoginSession(
     val loginResponse: LoginResponse,
@@ -31,8 +29,6 @@ data class VerifiedCredentials(
     val loginResponse: LoginResponse,
     /** 内置 API 候选客户端 CookieJar 的完整快照（含 AVS）。 */
     val embeddedCookies: List<Cookie> = emptyList(),
-    /** 网络 API 候选登录响应 Set-Cookie 捕获的会话 cookie。 */
-    val networkCookies: List<Cookie> = emptyList(),
 )
 
 interface UserRepository {

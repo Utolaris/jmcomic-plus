@@ -6,7 +6,6 @@ import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.data.models.BlockedTagTemplate
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_MIXED
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.utils.flattenBlockedTagTemplates
@@ -27,11 +26,10 @@ class LocalSettingStorage(
     val state = _state.asStateFlow()
 
     fun set(localSetting: LocalSetting) {
-        val normalizedSetting = localSetting.copy(comicApiSource = COMIC_API_SOURCE_MIXED)
         _state.update {
-            normalizedSetting
+            localSetting
         }
-        secureStorage.setStartup(STORAGE_KEY, normalizedSetting)
+        secureStorage.setStartup(STORAGE_KEY, localSetting)
     }
 
     fun get(): LocalSetting {
@@ -70,9 +68,8 @@ class LocalSettingStorage(
                     listOf()
                 }
                 saved.copy(
-                    // The app now always uses the mixed API path. Keep accepting the legacy
-                    // field above for JSON compatibility, but migrate every existing install.
-                    comicApiSource = COMIC_API_SOURCE_MIXED,
+                    // Gson ignores the retired comicApiSource/shunt fields in legacy JSON.
+                    // With no domain field left to consult, every installation uses Embedded.
                     showComicCacheNotification = if (savedJson.hasField("showComicCacheNotification")) {
                         saved.showComicCacheNotification
                     } else {
@@ -139,7 +136,7 @@ class LocalSettingStorage(
 
     fun remove() {
         _state.update {
-            LocalSetting().copy(comicApiSource = COMIC_API_SOURCE_MIXED)
+            LocalSetting()
         }
         secureStorage.remove(STORAGE_KEY)
         secureStorage.removeStartup(STORAGE_KEY)

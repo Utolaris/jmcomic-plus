@@ -197,14 +197,14 @@ fun LocalSettingScreen(
                 SettingsSection(title = "\u8fde\u63a5") {
                     SettingsRow(
                         Icons.Rounded.Api,
-                        "\u6570\u636e\u6e90",
+                        "\u7f51\u7edc\u63a8\u8350\u8282\u70b9",
                         localSetting.api
                     ) {
                         openSetting(SettingType.Api)
                     }
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Recommend,
-                        title = "\u504f\u597d\u63a8\u8350",
+                        title = "\u7f51\u7edc\u63a8\u8350",
                         value = localSetting.preferenceRecommendEnabled,
                         onCheckedChange = { localSettingManager.updatePreferenceRecommendEnabled(it) }
                     )
@@ -730,7 +730,7 @@ private fun notificationText(localSetting: LocalSetting): String {
 
 private fun settingTitle(type: SettingType): String {
     return when (type) {
-        is SettingType.Api -> "\u6570\u636e\u6e90"
+        is SettingType.Api -> "\u7f51\u7edc\u63a8\u8350\u8282\u70b9"
         is SettingType.Theme -> "\u4e3b\u9898"
         is SettingType.LauncherDisguise -> "\u56fe\u6807\u4f2a\u88c5"
         is SettingType.PrefetchCount -> "\u56fe\u7247\u9884\u52a0\u8f7d"

@@ -116,47 +116,6 @@ class Retrofit(
         return service
     }
 
-    /** 是否存在可直接恢复的持久化会话（无需等待后台验证即可发认证请求）。 */
-    fun hasPersistedSession(): Boolean {
-        return cookieList.isNotEmpty() || cookieStorage.get().isNotEmpty()
-    }
-
-    /**
-     * 创建隔离验证服务：请求不带任何已存 cookie，响应 Set-Cookie 只写入 [captured]，
-     * 不会污染活动会话的 CookieJar。验证成功后由会话管理层在 generation 确认后调用
-     * [promoteCapturedCookies] 提升。
-     */
-    fun <T> createCapturingService(cls: Class<T>, captured: CapturingCookieJar): T {
-        val isolatedClient = okHttpClient.newBuilder()
-            .cookieJar(captured)
-            .build()
-        return retrofit2.Retrofit.Builder()
-            .baseUrl("https://placeholder.com/")
-            .client(isolatedClient)
-            .addConverterFactory(scalarsConverterFactory)
-            .addConverterFactory(responseConverterFactory)
-            .addConverterFactory(primitiveToRequestBodyConverterFactory)
-            .build()
-            .create(cls)
-    }
-
-    /**
-     * 把隔离验证登录捕获的会话 cookie 合并进活动会话并持久化。
-     * 调用方必须在会话锁内确认用户 session generation 仍然有效，避免陈旧验证结果覆盖
-     * 更新的登录会话。
-     */
-    fun promoteCapturedCookies(captured: List<Cookie>) {
-        if (captured.isEmpty()) return
-        synchronized(cookieStateLock) {
-            cookieList =
-                (cookieList + captured)
-                    .associateBy { c -> c.domain + ":" + c.path + ":" + c.name }
-                    .values.toList()
-            cookiesLoaded = true
-            cookieStorage.set(cookieList)
-        }
-    }
-
     override fun clearCookie() {
         synchronized(cookieStateLock) {
             sessionGeneration.incrementAndGet()
@@ -164,20 +123,4 @@ class Retrofit(
             cookiesLoaded = true
         }
     }
-}
-
-/** 隔离验证服务使用的捕获型 CookieJar：只记录响应 Set-Cookie，不发送任何已存 cookie。 */
-class CapturingCookieJar : CookieJar {
-    @Volatile
-    var capturedCookies: List<Cookie> = emptyList()
-        private set
-
-    override fun saveFromResponse(
-        url: HttpUrl,
-        cookies: List<Cookie>
-    ) {
-        capturedCookies = cookies
-    }
-
-    override fun loadForRequest(url: HttpUrl): List<Cookie> = emptyList()
 }

@@ -181,7 +181,7 @@ internal fun HomeScreen(
         onTrigger = onPullDownSearch,
     )
 
-    LaunchedEffect(localSetting.comicApiSource, localSetting.preferenceRecommendEnabled) {
+    LaunchedEffect(localSetting.preferenceRecommendEnabled) {
         comicViewModel.refreshHome()
     }
 

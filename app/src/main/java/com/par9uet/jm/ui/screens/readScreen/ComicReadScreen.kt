@@ -189,11 +189,7 @@ fun ComicReadScreen(
             comicReadViewModel.getLocalComicPicList(comicId, context, onSuccess)
         } else {
             comicReadViewModel.getComicDetail(comicId)
-            comicReadViewModel.getComicPicList(
-                comicId,
-                localSettingManager.localSettingState.value.shunt,
-                onSuccess
-            )
+            comicReadViewModel.getComicPicList(comicId, onSuccess)
         }
     }
 

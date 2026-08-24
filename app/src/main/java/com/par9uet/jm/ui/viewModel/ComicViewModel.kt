@@ -5,7 +5,6 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
-import com.par9uet.jm.data.models.COMIC_API_SOURCE_NETWORK
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.repository.ComicRepository
@@ -67,13 +66,11 @@ class ComicViewModel(
     private data class HomeRequestToken(
         val topologyGeneration: Long,
         val requestGeneration: Long,
-        val source: String,
         val key: String,
     )
 
     private var homeTopologyGeneration = 0L
     private var homeRequestGeneration = 0L
-    private var lastHomeSource: String? = null
     private var lastPreferenceRecommendEnabled: Boolean? = null
     private val homeCategoryCache =
         mutableMapOf<String, List<HomeSwiperComicListItemResponse.ListItem>>()
@@ -82,10 +79,9 @@ class ComicViewModel(
 
     companion object {
         const val CATEGORY_LATEST = "builtin_latest"
-        const val CATEGORY_NETWORK_HOME = "home_network"
         private const val NETWORK_CATEGORY_PREFIX = "net_"
         private const val PROMOTE_LOAD_KEY = "promote_sections"
-        val BUILTIN_CATEGORIES = listOf(
+        val EMBEDDED_CATEGORIES = listOf(
             HomeCategoryInfo(CATEGORY_LATEST, "最新上架"),
             HomeCategoryInfo("builtin_week_hot", "本周热门"),
             HomeCategoryInfo("builtin_month_hot", "本月热门"),
@@ -102,51 +98,28 @@ class ComicViewModel(
         )
     }
 
-    /**
-     * 按“当前数据源 + 推荐开关”重建首页分类表，并只加载默认分类：
-     * - 内置/混合数据源：推荐开启时先加载 /promote 的真实分类，否则默认“最新上架”。
-     * - 网络数据源：首页整页来自网络 API（单次请求），分类表由响应展开。
-     * 其它分类保持 lazy：点击后才请求，结果按 (source, categoryId) 缓存。
-     */
+    /** Rebuild Home from Embedded categories plus the optional network recommendation feed. */
     fun refreshHome() {
         val setting = localSettingManager.localSettingState.value
-        val source = setting.comicApiSource
         val recommendEnabled = setting.preferenceRecommendEnabled
-        val sourceChanged = source != lastHomeSource
-        val topologyChanged = sourceChanged ||
-            recommendEnabled != lastPreferenceRecommendEnabled
+        val topologyChanged = recommendEnabled != lastPreferenceRecommendEnabled
         if (topologyChanged) {
             // 分类结构变化时作废所有旧 token。阻塞式 JM 请求即使稍后返回，也不能写回新结构。
             homeTopologyGeneration++
             activeCategoryLoads.clear()
             _homeState.value = HomeUIState()
         }
-        if (sourceChanged) {
-            homeCategoryCache.clear()
-            networkHomeCache = null
-        }
-        lastHomeSource = source
         lastPreferenceRecommendEnabled = recommendEnabled
-
-        if (source == COMIC_API_SOURCE_NETWORK) {
-            val cached = networkHomeCache
-            if (cached != null) {
-                applyPromoteHome(cached, includeBuiltins = false)
-            } else {
-                loadPromoteSections(includeBuiltins = false)
-            }
-            return
-        }
 
         if (recommendEnabled) {
             val cached = networkHomeCache
             if (cached != null) {
-                applyPromoteHome(cached, includeBuiltins = true)
+                applyPromoteHome(cached)
             } else {
-                loadPromoteSections(includeBuiltins = true)
+                loadPromoteSections()
             }
         } else {
-            applyBuiltinHome()
+            applyEmbeddedHome()
         }
     }
 
@@ -169,25 +142,23 @@ class ComicViewModel(
     }
 
     private fun ensureCategoryLoaded(categoryId: String, force: Boolean = false) {
-        val source = localSettingManager.localSettingState.value.comicApiSource
         val state = _homeState.value.states[categoryId]
         val active = activeCategoryLoads[categoryId]
         if (!force && active?.topologyGeneration == homeTopologyGeneration) return
-        if (!force && homeCategoryCache.containsKey(cacheKey(source, categoryId))) {
-            hydrateCategory(categoryId, source)
+        if (!force && homeCategoryCache.containsKey(categoryId)) {
+            hydrateCategory(categoryId)
             return
         }
 
-        if (categoryId == CATEGORY_NETWORK_HOME || isPromoteCategory(categoryId)) {
+        if (isPromoteCategory(categoryId)) {
             loadPromoteSections(
-                includeBuiltins = source != COMIC_API_SOURCE_NETWORK,
                 force = force,
                 refreshingCategoryId = categoryId,
             )
             return
         }
 
-        val token = newHomeRequestToken(source, categoryId)
+        val token = newHomeRequestToken(categoryId)
         activeCategoryLoads[categoryId] = token
         updateCategoryState(
             categoryId,
@@ -218,7 +189,7 @@ class ComicViewModel(
                     }
 
                     is NetWorkResult.Success -> {
-                        homeCategoryCache[cacheKey(source, categoryId)] = result.data
+                        homeCategoryCache[categoryId] = result.data
                         updateCategoryState(categoryId, HomeCategoryLoadState(content = result.data))
                     }
                 }
@@ -231,15 +202,13 @@ class ComicViewModel(
     }
 
     private fun loadPromoteSections(
-        includeBuiltins: Boolean,
         force: Boolean = false,
         refreshingCategoryId: String? = null,
     ) {
-        val source = localSettingManager.localSettingState.value.comicApiSource
         val active = activeCategoryLoads[PROMOTE_LOAD_KEY]
         if (!force && active?.topologyGeneration == homeTopologyGeneration) return
 
-        val token = newHomeRequestToken(source, PROMOTE_LOAD_KEY)
+        val token = newHomeRequestToken(PROMOTE_LOAD_KEY)
         activeCategoryLoads[PROMOTE_LOAD_KEY] = token
         refreshingCategoryId?.let { categoryId ->
             val current = _homeState.value.states[categoryId] ?: HomeCategoryLoadState()
@@ -257,7 +226,7 @@ class ComicViewModel(
                 when (result) {
                     is NetWorkResult.Success -> {
                         networkHomeCache = result.data
-                        applyPromoteHome(result.data, includeBuiltins)
+                        applyPromoteHome(result.data)
                     }
 
                     is NetWorkResult.Error -> {
@@ -275,8 +244,7 @@ class ComicViewModel(
                                 )
                             }
 
-                            includeBuiltins -> applyBuiltinHome()
-                            else -> showNetworkHomeError(result.message)
+                            else -> applyEmbeddedHome()
                         }
                     }
                 }
@@ -288,35 +256,29 @@ class ComicViewModel(
         }
     }
 
-    private fun applyPromoteHome(
-        categories: List<HomeSwiperComicListItemResponse>,
-        includeBuiltins: Boolean,
-    ) {
+    private fun applyPromoteHome(categories: List<HomeSwiperComicListItemResponse>) {
         val promoteSections = reorderPromoteSections(categories.filter { it.content.isNotEmpty() })
         if (promoteSections.isEmpty()) {
-            if (includeBuiltins) applyBuiltinHome() else showNetworkHomeError("暂无首页数据")
+            applyEmbeddedHome()
             return
         }
 
-        val source = localSettingManager.localSettingState.value.comicApiSource
         val networkInfos = promoteSections.map { item ->
             HomeCategoryInfo(networkCategoryId(item.id), item.title)
         }
-        val allInfos = if (includeBuiltins) networkInfos + BUILTIN_CATEGORIES else networkInfos
+        val allInfos = networkInfos + EMBEDDED_CATEGORIES
         val validIds = allInfos.mapTo(mutableSetOf()) { it.id }
         val newStates = _homeState.value.states
             .filterKeys { it in validIds }
             .toMutableMap()
         promoteSections.forEach { item ->
             val id = networkCategoryId(item.id)
-            homeCategoryCache[cacheKey(source, id)] = item.content
+            homeCategoryCache[id] = item.content
             newStates[id] = HomeCategoryLoadState(content = item.content)
         }
-        if (includeBuiltins) {
-            BUILTIN_CATEGORIES.forEach { info ->
-                homeCategoryCache[cacheKey(source, info.id)]?.let { content ->
-                    newStates[info.id] = HomeCategoryLoadState(content = content)
-                }
+        EMBEDDED_CATEGORIES.forEach { info ->
+            homeCategoryCache[info.id]?.let { content ->
+                newStates[info.id] = HomeCategoryLoadState(content = content)
             }
         }
         val selected = _homeState.value.selectedCategoryId
@@ -329,14 +291,13 @@ class ComicViewModel(
         )
     }
 
-    private fun applyBuiltinHome() {
-        val source = localSettingManager.localSettingState.value.comicApiSource
-        val validIds = BUILTIN_CATEGORIES.mapTo(mutableSetOf()) { it.id }
+    private fun applyEmbeddedHome() {
+        val validIds = EMBEDDED_CATEGORIES.mapTo(mutableSetOf()) { it.id }
         val states = _homeState.value.states
             .filterKeys { it in validIds }
             .toMutableMap()
-        BUILTIN_CATEGORIES.forEach { info ->
-            homeCategoryCache[cacheKey(source, info.id)]?.let { content ->
+        EMBEDDED_CATEGORIES.forEach { info ->
+            homeCategoryCache[info.id]?.let { content ->
                 states[info.id] = HomeCategoryLoadState(content = content)
             }
         }
@@ -344,28 +305,15 @@ class ComicViewModel(
             ?.takeIf { it in validIds }
             ?: CATEGORY_LATEST
         _homeState.value = HomeUIState(
-            categories = BUILTIN_CATEGORIES,
+            categories = EMBEDDED_CATEGORIES,
             selectedCategoryId = selected,
             states = states,
         )
         ensureCategoryLoaded(selected)
     }
 
-    private fun showNetworkHomeError(message: String) {
-        _homeState.value = HomeUIState(
-            categories = listOf(HomeCategoryInfo(CATEGORY_NETWORK_HOME, "首页")),
-            selectedCategoryId = CATEGORY_NETWORK_HOME,
-            states = mapOf(
-                CATEGORY_NETWORK_HOME to HomeCategoryLoadState(
-                    isError = true,
-                    errorMsg = message,
-                )
-            ),
-        )
-    }
-
-    private fun hydrateCategory(categoryId: String, source: String) {
-        val content = homeCategoryCache[cacheKey(source, categoryId)].orEmpty()
+    private fun hydrateCategory(categoryId: String) {
+        val content = homeCategoryCache[categoryId].orEmpty()
         updateCategoryState(categoryId, HomeCategoryLoadState(content = content))
     }
 
@@ -378,18 +326,15 @@ class ComicViewModel(
         }
     }
 
-    private fun cacheKey(source: String, categoryId: String): String = "$source:$categoryId"
-
     private fun networkCategoryId(rawId: String): String = "$NETWORK_CATEGORY_PREFIX$rawId"
 
     private fun isPromoteCategory(categoryId: String): Boolean =
         categoryId.startsWith(NETWORK_CATEGORY_PREFIX)
 
-    private fun newHomeRequestToken(source: String, key: String): HomeRequestToken =
+    private fun newHomeRequestToken(key: String): HomeRequestToken =
         HomeRequestToken(
             topologyGeneration = homeTopologyGeneration,
             requestGeneration = ++homeRequestGeneration,
-            source = source,
             key = key,
         )
 
@@ -399,8 +344,6 @@ class ComicViewModel(
     ): Boolean =
         token.topologyGeneration == homeTopologyGeneration &&
             activeCategoryLoads[token.key] == token &&
-            lastHomeSource == token.source &&
-            localSettingManager.localSettingState.value.comicApiSource == token.source &&
             (!requireCategory || _homeState.value.categories.any { it.id == token.key })
 
     private val _searchComicFilterState = MutableStateFlow(SearchComicFilter())

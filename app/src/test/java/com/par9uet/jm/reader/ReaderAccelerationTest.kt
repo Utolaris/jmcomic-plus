@@ -291,14 +291,6 @@ class ReaderAccelerationTest {
     }
 
     @Test
-    fun nextChapterWarmupTriggersOnlyInsideTheForwardWindow() {
-        assertFalse(shouldWarmNextChapter(currentPageIndex = 4, pageCount = 10, distance = 2))
-        assertTrue(shouldWarmNextChapter(currentPageIndex = 7, pageCount = 10, distance = 2))
-        assertTrue(shouldWarmNextChapter(currentPageIndex = 0, pageCount = 1, distance = 0))
-        assertFalse(shouldWarmNextChapter(currentPageIndex = 0, pageCount = 0, distance = 2))
-    }
-
-    @Test
     fun visibleRequestsAreSharedAcrossPageAndSourceRegistries() {
         runBlocking {
             val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

@@ -22,7 +22,6 @@ import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.reader.ReaderPageKey
 import com.par9uet.jm.reader.readerPrefetchPlan
 import com.par9uet.jm.reader.runReaderPrefetchSchedule
-import com.par9uet.jm.reader.shouldWarmNextChapter
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.ToastManager
@@ -76,8 +75,6 @@ class ComicReadViewModel(
     private var directionStreak = 0
     private var lastDirectionAtMillis = 0L
     private var pageVelocity = 0f
-    private var nextChapterWarmupJob: Job? = null
-    private var nextChapterWarmupId: Int? = null
 
     fun getComicDetail(comicId: Int) {
         viewModelScope.launch {
@@ -149,7 +146,7 @@ class ComicReadViewModel(
         }
     }
 
-    fun getComicPicList(comicId: Int, shunt: String, onSuccess: (() -> Unit)? = null) {
+    fun getComicPicList(comicId: Int, onSuccess: (() -> Unit)? = null) {
         viewModelScope.launch {
             _localChapterList.value = emptyList()
             _comicPicState.update {
@@ -160,7 +157,7 @@ class ComicReadViewModel(
                 )
             }
             resetReaderRequests()
-            when (val data = comicRepository.getComicPicList(comicId, shunt)) {
+            when (val data = comicRepository.getComicPicList(comicId)) {
                 is NetWorkResult.Error -> {
                     _comicPicState.update {
                         it.copy(
@@ -311,7 +308,6 @@ class ComicReadViewModel(
         val jumpDistance = previous?.let { abs(index - it) } ?: 0
         loadVisible(index)
         schedulePrefetch(index, direction, jumpDistance, index, index)
-        scheduleNextChapterWarmup(index)
     }
 
     fun decodeVisibleRange(
@@ -334,7 +330,6 @@ class ComicReadViewModel(
         val jumpDistance = previous?.let { abs(anchor - it) } ?: 0
         loadVisible(anchor)
         schedulePrefetch(anchor, direction, jumpDistance, visibleStart, visibleEnd)
-        scheduleNextChapterWarmup(anchor)
     }
 
     fun prev(context: Context) {
@@ -481,54 +476,6 @@ class ComicReadViewModel(
         directionStreak = 0
         lastDirectionAtMillis = 0L
         pageVelocity = 0f
-        nextChapterWarmupJob?.cancel()
-        nextChapterWarmupJob = null
-        nextChapterWarmupId = null
-    }
-
-    private fun scheduleNextChapterWarmup(currentPageIndex: Int) {
-        val pages = comicPicState.value.data ?: return
-        val setting = localSettingManager.localSettingState.value
-        if (setting.prefetchCount <= 0 || pages.isEmpty()) return
-        if (!shouldWarmNextChapter(currentPageIndex, pages.size, setting.prefetchCount.coerceAtLeast(1))) return
-        val chapters = _comicDetailState.value.data?.comicChapterList.orEmpty()
-        val currentChapterIndex = chapters.indexOfFirst { it.id == loadedComicId.intValue }
-        val nextChapter = chapters.getOrNull(currentChapterIndex + 1) ?: return
-        if (nextChapterWarmupId == nextChapter.id) return
-        nextChapterWarmupJob?.cancel()
-        nextChapterWarmupId = nextChapter.id
-        nextChapterWarmupJob = viewModelScope.launch {
-            try {
-                when (val result = comicRepository.getComicPicList(nextChapter.id, setting.shunt)) {
-                    is NetWorkResult.Success<ComicPicListResponse> -> {
-                        val warmCount = if (setting.prefetchCount >= 5) 2 else 1
-                        val warmPages = result.data.list.take(warmCount).mapIndexed { index, url ->
-                            val page = ComicPicImageState(
-                                index = index,
-                                comicId = nextChapter.id,
-                                originSrc = url,
-                                __scrambleId = result.data.__scrambleId,
-                                __speed = result.data.__speed,
-                            ).toReaderPage()
-                            page
-                        }
-                        warmPages.firstOrNull()?.let(readerImagePipeline::warmImageConnections)
-                        warmPages.forEach { page ->
-                            readerImagePipeline.prefetchPageSource(page)
-                        }
-                    }
-                    is NetWorkResult.Error -> Unit
-                }
-            } catch (error: kotlinx.coroutines.CancellationException) {
-                throw error
-            } catch (_: Throwable) {
-                // Metadata/source warming is speculative; the chapter load owns its retry UI.
-            }
-        }.also { job ->
-            job.invokeOnCompletion {
-                if (nextChapterWarmupJob === job) nextChapterWarmupJob = null
-            }
-        }
     }
 
     fun triggerToolBar() {

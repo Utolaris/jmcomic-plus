@@ -9,7 +9,6 @@ import com.par9uet.jm.retrofit.interceptor.ToastInterceptor
 import com.par9uet.jm.retrofit.interceptor.TokenInterceptor
 import com.par9uet.jm.retrofit.service.ComicService
 import com.par9uet.jm.retrofit.service.RemoteSettingService
-import com.par9uet.jm.retrofit.service.UserService
 import org.koin.dsl.module
 import org.koin.dsl.bind
 import retrofit2.converter.scalars.ScalarsConverterFactory
@@ -28,9 +27,8 @@ val retrofitModule = module {
     } bind ActiveSessionCookieStore::class
     single<ComicService> { get<Retrofit>().createService(ComicService::class.java) }
     single<RemoteSettingService> { get<Retrofit>().createService(RemoteSettingService::class.java) }
-    single<UserService> { get<Retrofit>().createService(UserService::class.java) }
     single { BaseUrlInterceptor(get()) }
-    single { TokenInterceptor(get()) }
+    single { TokenInterceptor() }
     single { ToastInterceptor(get()) }
     single { ResponseConverterFactory(get()) }
     single { PrimitiveToRequestBodyConverterFactory() }

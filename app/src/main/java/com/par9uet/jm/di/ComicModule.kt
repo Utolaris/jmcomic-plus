@@ -19,10 +19,10 @@ val comicModule = module {
     single { EmbeddedClientManager(get()) }
     single { NetworkComicDataSource(get()) } bind ComicNetworkDataSource::class
     single { EmbeddedComicDataSource(get()) } bind ComicEmbeddedDataSource::class
-    single { ComicRepositoryImpl(get(), get(), get()) } bind ComicRepository::class
+    single { ComicRepositoryImpl(get(), get()) } bind ComicRepository::class
     single { ReaderImagePipeline(get(), get(), get()) }
 
     viewModel { ComicViewModel(get(), get()) }
-    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get()) }
     viewModel { ComicReadViewModel(get(), get(), get(), get(), get(), get()) }
 }
