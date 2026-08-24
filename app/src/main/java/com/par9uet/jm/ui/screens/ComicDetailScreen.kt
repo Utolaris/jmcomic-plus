@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
@@ -97,6 +98,7 @@ import com.par9uet.jm.ui.components.ComicWorkTag
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.AppGlassTopBarDefaults
 import com.par9uet.jm.ui.glass.GlassCaptureHost
+import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
@@ -507,6 +509,8 @@ fun ComicDetailScreen(
         },
         overlayContent = {
             val comic = comicDetailState.data
+            val showFolderPicker by comicDetailViewModel.showFolderPicker.collectAsState()
+            val folderList by comicDetailViewModel.folderList.collectAsState()
             Box(modifier = Modifier.fillMaxSize()) {
                 AppGlassTopBar(
                     surfaceId = "comic-detail-top-bar",
@@ -620,9 +624,54 @@ fun ComicDetailScreen(
                                     surfaceIdPrefix = "comic-detail-comment",
                                 )
                             }
+                    }
+                }
+            }
+            if (showFolderPicker) {
+                GlassModal(
+                    onDismissRequest = comicDetailViewModel::hideFolderPicker,
+                    surfaceId = "comic-detail-folder-picker-glass-modal",
+                    modifier = Modifier.widthIn(max = 480.dp),
+                ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = "选择收藏夹",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                        )
+                        HorizontalDivider()
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        ) {
+                            val sortedFolders = linkedMapOf<String, String>().apply {
+                                folderList["0"]?.let { put("0", it) }
+                                folderList.filterKeys { it != "0" }.forEach { (fid, fname) -> put(fid, fname) }
+                                if (containsKey("0").not() && folderList.isNotEmpty()) {
+                                    put("0", "全部")
+                                }
+                            }
+                            items(sortedFolders.size) { index ->
+                                val entry = sortedFolders.entries.elementAt(index)
+                                ListItem(
+                                    headlineContent = { Text(entry.value) },
+                                    modifier = Modifier.clickable {
+                                        val currentComicId = comic?.id ?: -1
+                                        if (currentComicId > 0) {
+                                            comicDetailViewModel.collectWithFolder(currentComicId, entry.key)
+                                            comicDetailViewModel.hideFolderPicker()
+                                        }
+                                        comicDetailViewModel.hideFolderPicker()
+                                    },
+                                )
+                                if (index < sortedFolders.size - 1) {
+                                    HorizontalDivider()
+                                }
+                            }
                         }
                     }
                 }
+            }
             }
         },
     )

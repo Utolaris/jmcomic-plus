@@ -14,7 +14,6 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -42,6 +41,7 @@ import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.ChromeMode
+import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
 import com.par9uet.jm.store.LocalSettingManager
 import org.koin.compose.getKoin
@@ -112,6 +112,18 @@ fun UserHistoryComicScreen(
                 onDelete = { showDeleteConfirmDialog = true },
             )
         },
+        overlayContent = {
+            if (showDeleteConfirmDialog) {
+                HistoryDeleteGlassConfirm(
+                    selectedCount = historyEditState.selectedComicIds.size,
+                    onConfirm = {
+                        userViewModel.deleteHistoryComics(selectedComics)
+                        showDeleteConfirmDialog = false
+                    },
+                    onDismiss = { showDeleteConfirmDialog = false },
+                )
+            }
+        },
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
@@ -145,24 +157,24 @@ fun UserHistoryComicScreen(
         }
     }
 
-    if (showDeleteConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("删除历史记录") },
-            text = { Text("确定删除 ${historyEditState.selectedComicIds.size} 条历史记录吗？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    userViewModel.deleteHistoryComics(selectedComics)
-                    showDeleteConfirmDialog = false
-                }) {
-                    Text("删除", color = MaterialTheme.colorScheme.error)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("取消") }
-            }
-        )
-    }
+}
+
+/** Reference implementation for the shared glass confirmation design. */
+@Composable
+private fun HistoryDeleteGlassConfirm(
+    selectedCount: Int,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    GlassConfirmDialog(
+        title = "删除历史记录",
+        message = "确定要删除选中的 $selectedCount 条历史记录吗？",
+        confirmText = "删除",
+        onConfirm = onConfirm,
+        onDismiss = onDismiss,
+        destructive = true,
+        surfaceId = "history-delete-glass-confirm",
+    )
 }
 
 @Composable

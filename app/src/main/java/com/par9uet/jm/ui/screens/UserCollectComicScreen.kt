@@ -32,7 +32,6 @@ import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Search
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -71,6 +70,8 @@ import androidx.paging.compose.collectAsLazyPagingItems
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.ui.components.Comic
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
+import com.par9uet.jm.ui.glass.GlassConfirmDialog
+import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
 import com.par9uet.jm.ui.interaction.pullDownToAction
 import com.par9uet.jm.ui.interaction.PullDownActionState
@@ -272,36 +273,40 @@ internal fun UserCollectComicScreen(
     }
 
     if (showCreateFolderDialog) {
-        AlertDialog(
+        GlassModal(
             onDismissRequest = {
                 showCreateFolderDialog = false
                 newFolderName = ""
             },
-            title = { Text("新建收藏夹") },
-            text = {
+            surfaceId = "favorites-create-folder-glass-modal",
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                Text("新建收藏夹", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = newFolderName,
                     onValueChange = { newFolderName = it },
                     singleLine = true,
-                    label = { Text("文件夹名称") }
+                    label = { Text("文件夹名称") },
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (newFolderName.isNotBlank()) {
-                        userViewModel.createFolder(newFolderName.trim())
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
                         newFolderName = ""
                         showCreateFolderDialog = false
-                    }
-                }) { Text("创建") }
-            },
-            dismissButton = {
-                TextButton(onClick = {
-                    newFolderName = ""
-                    showCreateFolderDialog = false
-                }) { Text("取消") }
+                    }) { Text("取消") }
+                    TextButton(onClick = {
+                        if (newFolderName.isNotBlank()) {
+                            userViewModel.createFolder(newFolderName.trim())
+                            newFolderName = ""
+                            showCreateFolderDialog = false
+                        }
+                    }) { Text("创建") }
+                }
             }
-        )
+        }
     }
 
     if (controller.folderManagementVisible) {
@@ -403,66 +408,65 @@ internal fun UserCollectComicScreen(
     }
 
     if (showRenameDialog) {
-        AlertDialog(
+        GlassModal(
             onDismissRequest = { showRenameDialog = false },
-            title = { Text("重命名收藏夹") },
-            text = {
+            surfaceId = "favorites-rename-folder-glass-modal",
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                Text("重命名收藏夹", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(12.dp))
                 OutlinedTextField(
                     value = renameFolderName,
                     onValueChange = { renameFolderName = it },
                     singleLine = true,
-                    label = { Text("新名称") }
+                    label = { Text("新名称") },
+                    modifier = Modifier.fillMaxWidth(),
                 )
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    val folderId = actionFolderId
-                    if (renameFolderName.isNotBlank() && folderId != null) {
-                        userViewModel.renameFolder(folderId, renameFolderName.trim())
-                        showRenameDialog = false
-                    }
-                }) { Text("确定") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRenameDialog = false }) { Text("取消") }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    TextButton(onClick = { showRenameDialog = false }) { Text("取消") }
+                    TextButton(onClick = {
+                        val folderId = actionFolderId
+                        if (renameFolderName.isNotBlank() && folderId != null) {
+                            userViewModel.renameFolder(folderId, renameFolderName.trim())
+                            showRenameDialog = false
+                        }
+                    }) { Text("确定") }
+                }
             }
-        )
+        }
     }
 
     if (showDeleteConfirmDialog) {
-        AlertDialog(
-            onDismissRequest = { showDeleteConfirmDialog = false },
-            title = { Text("删除收藏夹") },
-            text = { Text("确定删除「${actionFolderName}」吗？\n注意：删除收藏夹不会删除其中的漫画，漫画会移至「全部」。") },
-            confirmButton = {
-                TextButton(onClick = {
-                    val folderId = actionFolderId
-                    if (folderId != null) {
-                        userViewModel.deleteFolder(folderId)
-                        showDeleteConfirmDialog = false
-                    }
-                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+        GlassConfirmDialog(
+            title = "删除收藏夹",
+            message = "确定删除「${actionFolderName}」吗？\n注意：删除收藏夹不会删除其中的漫画，漫画会移至「全部」。",
+            confirmText = "删除",
+            destructive = true,
+            surfaceId = "favorites-delete-folder-glass-confirm",
+            onConfirm = {
+                val folderId = actionFolderId
+                if (folderId != null) {
+                    userViewModel.deleteFolder(folderId)
+                    showDeleteConfirmDialog = false
+                }
             },
-            dismissButton = {
-                TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("取消") }
-            }
+            onDismiss = { showDeleteConfirmDialog = false },
         )
     }
 
     if (controller.deleteDialogVisible) {
-        AlertDialog(
-            onDismissRequest = controller::dismissDeleteDialog,
-            title = { Text("取消收藏") },
-            text = { Text("确定取消收藏 ${collectEditState.selectedComicIds.size} 部漫画吗？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    userViewModel.deleteCollectedComics(selectedComics)
-                    controller.dismissDeleteDialog()
-                }) { Text("取消收藏") }
+        GlassConfirmDialog(
+            title = "取消收藏",
+            message = "确定取消收藏 ${collectEditState.selectedComicIds.size} 部漫画吗？",
+            confirmText = "取消收藏",
+            surfaceId = "favorites-uncollect-glass-confirm",
+            onConfirm = {
+                userViewModel.deleteCollectedComics(selectedComics)
+                controller.dismissDeleteDialog()
             },
-            dismissButton = {
-                TextButton(onClick = controller::dismissDeleteDialog) { Text("取消") }
-            }
+            onDismiss = controller::dismissDeleteDialog,
         )
     }
 

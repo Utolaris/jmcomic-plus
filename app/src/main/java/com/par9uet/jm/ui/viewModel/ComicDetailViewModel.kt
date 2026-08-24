@@ -20,11 +20,15 @@ import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
 import com.par9uet.jm.ui.state.CommentSubmissionGate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+private const val COMMENT_ERROR_VISIBLE_MILLIS = 5_000L
 
 class ComicDetailViewModel(
     private val comicRepository: ComicRepository,
@@ -277,6 +281,32 @@ class ComicDetailViewModel(
     private val _commentComicState = MutableStateFlow(CommonUIState(data = null))
     val commentComicState = _commentComicState.asStateFlow()
     private val commentSubmissionGate = CommentSubmissionGate()
+    private var commentErrorClearJob: Job? = null
+
+    /**
+     * Inline comment errors are transient: each new error cancels the previous clear job and
+     * schedules a fresh ~5s timeout. Success and new submissions clear the message immediately.
+     */
+    private fun showTransientCommentError(message: String) {
+        commentErrorClearJob?.cancel()
+        _commentComicState.update {
+            it.copy(isError = true, errorMsg = message)
+        }
+        commentErrorClearJob = viewModelScope.launch {
+            delay(COMMENT_ERROR_VISIBLE_MILLIS)
+            _commentComicState.update {
+                it.copy(isError = false, errorMsg = "")
+            }
+        }
+    }
+
+    private fun clearCommentError() {
+        commentErrorClearJob?.cancel()
+        commentErrorClearJob = null
+        _commentComicState.update {
+            it.copy(isError = false, errorMsg = "")
+        }
+    }
 
     fun comment(
         content: String,
@@ -285,23 +315,15 @@ class ComicDetailViewModel(
         onSuccess: (() -> Unit)? = null
     ) {
         if (content.isBlank() || !commentSubmissionGate.tryAcquire()) return
+        clearCommentError()
         _commentComicState.update {
-            it.copy(
-                isLoading = true,
-                isError = false,
-                errorMsg = ""
-            )
+            it.copy(isLoading = true)
         }
         viewModelScope.launch {
             try {
                 when (val data = comicRepository.comment(content, comicId, commentId)) {
                     is NetWorkResult.Error -> {
-                        _commentComicState.update {
-                            it.copy(
-                                isError = true,
-                                errorMsg = data.message
-                            )
-                        }
+                        showTransientCommentError(data.message.ifBlank { "发送评论失败" })
                         toastManager.showAsync(data.message)
                     }
 
@@ -315,9 +337,7 @@ class ComicDetailViewModel(
                             onSuccess?.invoke()
                         } else {
                             val message = data.data.msg.ifBlank { "发送评论失败" }
-                            _commentComicState.update {
-                                it.copy(isError = true, errorMsg = message)
-                            }
+                            showTransientCommentError(message)
                             toastManager.showAsync(message)
                         }
                     }

@@ -59,6 +59,7 @@ import com.par9uet.jm.ui.screens.AppScreen
 import com.par9uet.jm.ui.screens.NsfwWarningDialog
 import com.par9uet.jm.ui.screens.WelcomeScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.koin.compose.getKoin
 
@@ -205,11 +206,16 @@ private fun MainAppContent(
     val snackbarHostState = remember { SnackbarHostState() }
     LaunchedEffect(Unit) {
         toastManager.message.collect { text ->
-            snackbarHostState.showSnackbar(
-                message = text,
-                actionLabel = null,
-                duration = SnackbarDuration.Short
-            )
+            // Central transient-feedback policy: every message is visible for ~5 seconds.
+            // Indefinite duration keeps the current snackbar on screen until the timeout
+            // cancels it, so queued messages display in order without overwriting.
+            withTimeoutOrNull(5_000L) {
+                snackbarHostState.showSnackbar(
+                    message = text,
+                    actionLabel = null,
+                    duration = SnackbarDuration.Indefinite,
+                )
+            }
         }
     }
 

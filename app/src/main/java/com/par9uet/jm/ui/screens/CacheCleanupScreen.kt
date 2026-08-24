@@ -14,7 +14,6 @@ import androidx.compose.material.icons.filled.Cached
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -45,6 +44,7 @@ import com.par9uet.jm.cache.getCommonPicDecodeCacheDir
 import com.par9uet.jm.cache.getDownloadDir
 import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.utils.formatBytes
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -165,63 +165,60 @@ fun CacheCleanupScreen(
 
     val totalSelected = cacheItems.filter { checkedMap[it.id] == true }.sumOf { it.sizeBytes }
 
-    if (showConfirmDialog) {
-        val selectedItems = cacheItems.filter { checkedMap[it.id] == true }
-        AlertDialog(
-            onDismissRequest = { showConfirmDialog = false },
-            title = { Text("确认清理") },
-            text = {
-                Text(
-                    "将清理 ${selectedItems.size} 项缓存，" +
-                        "共 ${formatBytes(totalSelected)}。\n\n" +
-                        selectedItems.joinToString("\n") { "• ${it.title}" }
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showConfirmDialog = false
-                        cleaning = true
-                        scope.launch {
-                            var freedBytes = 0L
-                            val effectiveItems = if (selectedItems.any { it.id == "total" }) {
-                                selectedItems.filter { it.id == "total" }
-                            } else {
-                                selectedItems
-                            }
-                            withContext(Dispatchers.IO) {
-                                effectiveItems.forEach { item ->
-                                    val dir = item.dir
-                                    freedBytes += dir?.let(::dirSize) ?: 0L
-                                    when (item.id) {
-                                        "reader_pages" -> readerImagePipeline.clearDiskCache()
-                                        "total" -> {
-                                            readerImagePipeline.clearDiskCache()
-                                            val readerPagesDir = File(context.cacheDir, "reader_pages")
-                                            dir?.listFiles().orEmpty()
-                                                .filterNot { it == readerPagesDir }
-                                                .forEach { it.deleteRecursively() }
-                                            readerPagesDir.mkdirs()
-                                        }
-                                        else -> dir?.deleteRecursively()
-                                    }
-                                }
-                            }
-                            selectedItems.forEach { checkedMap[it.id] = false }
-                            cacheItems = withContext(Dispatchers.IO) {
-                                cacheItems.map { item ->
-                                    item.copy(sizeBytes = item.dir?.let(::dirSize) ?: 0L)
-                                }
-                            }
-                            cleaning = false
-                            cleanResult = "已清理 ${formatBytes(freedBytes)}"
-                        }
-                    }
-                ) { Text("清理", color = MaterialTheme.colorScheme.error) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showConfirmDialog = false }) { Text("取消") }
+    val selectedItems = cacheItems.filter { checkedMap[it.id] == true }
+
+    fun performCacheCleanup(onDone: () -> Unit) {
+        scope.launch {
+            var freedBytes = 0L
+            val effectiveItems = if (selectedItems.any { it.id == "total" }) {
+                selectedItems.filter { it.id == "total" }
+            } else {
+                selectedItems
             }
+            withContext(Dispatchers.IO) {
+                effectiveItems.forEach { item ->
+                    val dir = item.dir
+                    freedBytes += dir?.let(::dirSize) ?: 0L
+                    when (item.id) {
+                        "reader_pages" -> readerImagePipeline.clearDiskCache()
+                        "total" -> {
+                            readerImagePipeline.clearDiskCache()
+                            val readerPagesDir = File(context.cacheDir, "reader_pages")
+                            dir?.listFiles().orEmpty()
+                                .filterNot { it == readerPagesDir }
+                                .forEach { it.deleteRecursively() }
+                            readerPagesDir.mkdirs()
+                        }
+                        else -> dir?.deleteRecursively()
+                    }
+                }
+            }
+            selectedItems.forEach { checkedMap[it.id] = false }
+            cacheItems = withContext(Dispatchers.IO) {
+                cacheItems.map { item ->
+                    item.copy(sizeBytes = item.dir?.let(::dirSize) ?: 0L)
+                }
+            }
+            cleaning = false
+            cleanResult = "已清理 ${formatBytes(freedBytes)}"
+        }
+        onDone()
+    }
+
+    if (showConfirmDialog) {
+        GlassConfirmDialog(
+            title = "确认清理",
+            message = "将清理 ${selectedItems.size} 项缓存，共 ${formatBytes(totalSelected)}。",
+            confirmText = "清理",
+            dismissText = "取消",
+            destructive = true,
+            surfaceId = "cache-cleanup-glass-confirm",
+            onDismiss = { showConfirmDialog = false },
+            onConfirm = {
+                showConfirmDialog = false
+                cleaning = true
+                performCacheCleanup {}
+            },
         )
     }
 
