@@ -1,6 +1,7 @@
 package com.par9uet.jm.ui.components
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -21,6 +22,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.AppGlassTopBarDefaults
@@ -36,6 +38,8 @@ fun CommonScaffold(
     navigationContent: (@Composable RowScope.() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
     bottomBar: @Composable () -> Unit = {},
+    overlayContent: @Composable BoxScope.() -> Unit = {},
+    variableTopBar: (@Composable (statusBarInset: Dp) -> Unit)? = null,
     content: @Composable (() -> Unit)? = null,
 ) {
     val mainNavController = LocalMainNavController.current
@@ -69,42 +73,47 @@ fun CommonScaffold(
         },
         overlayContent = {
             Box(modifier = Modifier.fillMaxSize()) {
-                AppGlassTopBar(
-                    surfaceId = "common-top-bar",
-                    statusBarInset = statusBarInset,
-                    modifier = Modifier.align(Alignment.TopCenter),
-                    navigationIcon = {
-                        if (navigationContent != null) {
-                            navigationContent()
-                        } else {
-                            IconButton(
-                                onClick = {
-                                    onNavigateBack?.invoke() ?: mainNavController.popBackStack()
-                                },
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = "返回上一页",
+                if (variableTopBar != null) {
+                    variableTopBar(statusBarInset)
+                } else {
+                    AppGlassTopBar(
+                        surfaceId = "common-top-bar",
+                        statusBarInset = statusBarInset,
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        navigationIcon = {
+                            if (navigationContent != null) {
+                                navigationContent()
+                            } else {
+                                IconButton(
+                                    onClick = {
+                                        onNavigateBack?.invoke() ?: mainNavController.popBackStack()
+                                    },
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = "返回上一页",
+                                    )
+                                }
+                            }
+                        },
+                        title = {
+                            if (titleContent != null) {
+                                titleContent()
+                            } else {
+                                Text(
+                                    text = title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface,
                                 )
                             }
-                        }
-                    },
-                    title = {
-                        if (titleContent != null) {
-                            titleContent()
-                        } else {
-                            Text(
-                                text = title,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurface,
-                            )
-                        }
-                    },
-                    actions = actions,
-                )
+                        },
+                        actions = actions,
+                    )
+                }
+                overlayContent()
             }
         },
     )

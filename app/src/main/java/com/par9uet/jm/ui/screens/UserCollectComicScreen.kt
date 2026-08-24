@@ -375,7 +375,11 @@ internal fun UserCollectComicScreen(
                                         actionFolderName = folderName
                                         showDeleteConfirmDialog = true
                                     }) {
-                                        Icon(Icons.Rounded.Delete, contentDescription = "删除")
+                                        Icon(
+                                            Icons.Rounded.Delete,
+                                            contentDescription = "删除",
+                                            tint = MaterialTheme.colorScheme.error,
+                                        )
                                     }
                                 }
                             }
@@ -437,7 +441,7 @@ internal fun UserCollectComicScreen(
                         userViewModel.deleteFolder(folderId)
                         showDeleteConfirmDialog = false
                     }
-                }) { Text("删除") }
+                }) { Text("删除", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("取消") }

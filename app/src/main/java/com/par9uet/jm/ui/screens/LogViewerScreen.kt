@@ -99,7 +99,7 @@ fun LogViewerScreen() {
                 ) {
                     Icon(Icons.Default.DeleteSweep, contentDescription = null)
                     Spacer(Modifier.width(4.dp))
-                    Text("清空")
+                    Text("清空", color = MaterialTheme.colorScheme.onError)
                 }
             }
 

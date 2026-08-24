@@ -210,7 +210,7 @@ fun DownloadRowItem(
                 Icon(
                     imageVector = Icons.Rounded.Close,
                     contentDescription = "删除缓存任务",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = MaterialTheme.colorScheme.error
                 )
             }
         }

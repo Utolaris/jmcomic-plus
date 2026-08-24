@@ -99,6 +99,7 @@ internal class GlassCaptureHostView(context: Context) :
     private data class RegisteredSurface(
         val style: GlassSurfaceStyle,
         val alpha: Float,
+        val scale: Float = 1f,
         val bounds: GlassSurfaceBounds? = null,
     )
 
@@ -225,33 +226,47 @@ internal class GlassCaptureHostView(context: Context) :
         surfaceId: String,
         style: GlassSurfaceStyle,
         alpha: Float,
+        scale: Float,
         bounds: GlassSurfaceBounds,
     ) {
         val next = RegisteredSurface(
             style = style,
             alpha = alpha.coerceIn(0f, 1f),
+            scale = scale.coerceAtLeast(0.1f),
             bounds = bounds,
         )
         if (registeredSurfaces[surfaceId] == next) return
         registeredSurfaces[surfaceId] = next
-        backdropViews[surfaceId]?.alpha = alpha.coerceIn(0f, 1f)
+        backdropViews[surfaceId]?.let { applySurfaceVisuals(it, next) }
         scheduleSurfaceSync()
     }
 
-    override fun updateSurfaceStyle(surfaceId: String, style: GlassSurfaceStyle, alpha: Float) {
+    override fun updateSurfaceStyle(
+        surfaceId: String,
+        style: GlassSurfaceStyle,
+        alpha: Float,
+        scale: Float,
+    ) {
         val previous = registeredSurfaces[surfaceId]
         val next = RegisteredSurface(
             style = style,
             alpha = alpha.coerceIn(0f, 1f),
+            scale = scale.coerceAtLeast(0.1f),
             bounds = previous?.bounds,
         )
         if (previous == next) return
         registeredSurfaces[surfaceId] = next
-        backdropViews[surfaceId]?.apply {
-            this.alpha = alpha.coerceIn(0f, 1f)
-            setSurfaceStyle(style)
-            setColors(colorsFor(style.material))
-        }
+        backdropViews[surfaceId]?.let { applySurfaceVisuals(it, next) }
+    }
+
+    private fun applySurfaceVisuals(view: GlassBackdropView, registration: RegisteredSurface) {
+        view.alpha = registration.alpha
+        view.scaleX = registration.scale
+        view.scaleY = registration.scale
+        view.pivotX = 0f
+        view.pivotY = 0f
+        view.setSurfaceStyle(registration.style)
+        view.setColors(colorsFor(registration.style.material))
     }
 
     override fun removeSurface(surfaceId: String) {
@@ -333,6 +348,10 @@ internal class GlassCaptureHostView(context: Context) :
             view.setSurfaceStyle(registration.style)
             view.setColors(colorsFor(registration.style.material))
             view.alpha = registration.alpha
+            view.scaleX = registration.scale
+            view.scaleY = registration.scale
+            view.pivotX = 0f
+            view.pivotY = 0f
 
             val left = (bounds.left - hostLocation[0]).roundToInt()
             val top = (bounds.top - hostLocation[1]).roundToInt()
