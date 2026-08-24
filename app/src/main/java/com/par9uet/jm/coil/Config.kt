@@ -4,6 +4,7 @@ import android.content.Context
 import coil.ImageLoader
 import coil.disk.DiskCache
 import com.par9uet.jm.cache.getCommonCacheDir
+import com.par9uet.jm.network.DohManager
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 
@@ -15,10 +16,11 @@ private val cdnHeaderInterceptor = Interceptor { chain ->
     chain.proceed(request)
 }
 
-fun createAsyncImageLoader(context: Context): ImageLoader {
+fun createAsyncImageLoader(context: Context, dohManager: DohManager): ImageLoader {
     return ImageLoader.Builder(context)
         .okHttpClient {
             OkHttpClient.Builder()
+                .dns(dohManager)
                 .addInterceptor(cdnHeaderInterceptor)
                 .build()
         }

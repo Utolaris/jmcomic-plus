@@ -27,6 +27,7 @@ import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudSync
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.DarkMode
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.GridView
 import androidx.compose.material.icons.rounded.History
@@ -202,10 +203,30 @@ fun LocalSettingScreen(
                 SettingsSection(title = "\u8fde\u63a5") {
                     SettingsRow(
                         Icons.Rounded.Api,
-                        "\u7f51\u7edc\u63a8\u8350\u8282\u70b9",
+                        "网络推荐节点",
                         localSetting.api
                     ) {
                         openSetting(SettingType.Api)
+                    }
+                    SettingsRow(
+                        Icons.Rounded.Dns,
+                        "DoH 加密 DNS",
+                        if (localSetting.dohEnabled) {
+                            if (localSetting.dohEnabled && localSetting.dohAutoStart) {
+                                val serverName = com.par9uet.jm.network.resolveDohServer(
+                                    localSetting.dohServerId,
+                                    localSetting.dohCustomServerName,
+                                    localSetting.dohCustomServerUrl,
+                                ).name
+                                "已启用 · $serverName"
+                            } else {
+                                "已开启（未自启）"
+                            }
+                        } else {
+                            "已关闭"
+                        }
+                    ) {
+                        mainNavController.navigate("dohSetting")
                     }
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Recommend,

@@ -52,6 +52,30 @@ class LocalSettingManager(
 
     fun updateTheme(theme: String) = updateSetting { it.copy(theme = theme) }
 
+    fun updateDohEnabled(enabled: Boolean) =
+        updateSetting { it.copy(dohEnabled = enabled) }
+
+    fun updateDohAutoStart(enabled: Boolean) =
+        updateSetting { it.copy(dohAutoStart = enabled) }
+
+    fun updateDohServer(id: String) =
+        updateSetting { it.copy(dohServerId = id) }
+
+    fun updateDohCustomServer(name: String, url: String) =
+        updateSetting {
+            it.copy(
+                dohServerId = "custom",
+                dohCustomServerName = name.trim(),
+                dohCustomServerUrl = url.trim(),
+            )
+        }
+
+    fun updateDohUseDeviceCertificates(enabled: Boolean) =
+        updateSetting { it.copy(dohUseDeviceCertificates = enabled) }
+
+    fun updateDohPreferIpv6(enabled: Boolean) =
+        updateSetting { it.copy(dohPreferIpv6 = enabled) }
+
     fun updatePrefetchCount(prefetchCount: String) =
         updateSetting { it.copy(prefetchCount = prefetchCount.toInt()) }
 

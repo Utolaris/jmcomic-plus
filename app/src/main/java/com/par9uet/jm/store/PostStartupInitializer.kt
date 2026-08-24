@@ -2,6 +2,7 @@ package com.par9uet.jm.store
 
 import com.par9uet.jm.utils.ensureAppNotificationChannels
 import com.par9uet.jm.utils.log
+import com.par9uet.jm.network.DohManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -22,6 +23,10 @@ class PostStartupInitializer(
     fun start() {
         if (!started.compareAndSet(false, true)) return
 
+        // DoH must be active before the first authenticated/network request resolves DNS.
+        launchTask("DoH 网络配置") {
+            koin.get<DohManager>().init()
+        }
         launchTask("远程应用设置") {
             koin.get<RemoteSettingManager>().refresh()
         }

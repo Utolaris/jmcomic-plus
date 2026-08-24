@@ -49,9 +49,10 @@ data class AppUpdateDownloadState(
 class AppUpdateDownloadManager(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val toastManager: ToastManager
+    private val toastManager: ToastManager,
+    private val dohManager: com.par9uet.jm.network.DohManager,
 ) {
-    private val client = OkHttpClient()
+    private val client = OkHttpClient.Builder().dns(dohManager).build()
     private var job: Job? = null
     private var paused = false
     private var canceled = false

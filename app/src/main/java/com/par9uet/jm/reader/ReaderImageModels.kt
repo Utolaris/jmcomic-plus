@@ -114,7 +114,9 @@ internal fun readerCacheKey(
     profile: ReaderDecodeProfile? = null,
 ): String {
     val profileToken = profile?.cacheToken ?: "source"
-    val namespace = if (kind == "decoded") "reader-v3" else "reader-v2"
+    // reader-v4: the full-bitmap unscramble decoder replaced strip assembly; decoded WebP
+    // files from older namespaces can contain strip-seam artifacts and must never be reused.
+    val namespace = if (kind == "decoded") "reader-v4" else "reader-v2"
     val value = "$namespace|$kind|$profileToken|${page.stableIdentity()}"
     return sha256(value)
 }

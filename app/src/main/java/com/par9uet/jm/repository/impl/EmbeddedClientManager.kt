@@ -44,6 +44,7 @@ import java.util.concurrent.atomic.AtomicReference
  */
 class EmbeddedClientManager(
     private val cookieStorage: CookieStorage,
+    private val dohManager: com.par9uet.jm.network.DohManager,
 ) {
     sealed class EmbeddedLoginResult {
         /**
@@ -203,7 +204,10 @@ class EmbeddedClientManager(
         val context = OkHttpBuilder.build(config)
         val domainManager = context.domainManager
         val clientRef = AtomicReference<JmApiClient?>(null)
+        // Route every JMComic API request through the shared DoH resolver while keeping the
+        // library's own domain manager, session generation, cookies and AVS handling intact.
         val clientWithCookieInjection = context.client.newBuilder()
+            .dns(dohManager)
             .addInterceptor { chain ->
                 // 兜底：当 CookieJar 因域名不匹配未能附带 cookie 时，显式注入持久化会话头。
                 // （OkHttp BridgeInterceptor 在应用拦截器之后运行：jar 非空时会覆盖该头，

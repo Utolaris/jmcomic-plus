@@ -45,8 +45,36 @@ class ComicDetailViewModel(
     )
     val comicDetailState = _comicDetailState.asStateFlow()
 
+    /** Comic id whose FULL detail has been fetched; a seed-only comic is not enough. */
+    private var fullDetailComicId: Int? = null
+    private var currentDetailLoadJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * Seeds the state with the list-item the user just tapped so cover/title/author render on
+     * the FIRST frame, then refreshes full detail in the background.
+     */
+    fun prepareDetail(comic: Comic) {
+        currentDetailLoadJob?.cancel()
+        _comicDetailState.value = CommonUIState(
+            data = comic,
+            isLoading = true,
+        )
+        ensureFullComicDetail(comic.id)
+    }
+
+    /** Fetches full detail unless it is already loaded for this exact comic id. */
+    private fun ensureFullComicDetail(id: Int) {
+        if (fullDetailComicId == id && _comicDetailState.value.data?.id == id &&
+            !_comicDetailState.value.isLoading
+        ) {
+            return
+        }
+        getComicDetail(id)
+    }
+
     fun getComicDetail(id: Int) {
-        viewModelScope.launch {
+        currentDetailLoadJob?.cancel()
+        currentDetailLoadJob = viewModelScope.launch {
             _comicDetailState.update {
                 it.copy(
                     isLoading = true,
@@ -56,15 +84,25 @@ class ComicDetailViewModel(
             }
             when (val data = comicRepository.getComicDetail(id)) {
                 is NetWorkResult.Error -> {
+                    val hasSeed = _comicDetailState.value.data != null
                     _comicDetailState.update {
-                        it.copy(
-                            isError = true,
-                            errorMsg = data.message
-                        )
+                        if (hasSeed) {
+                            // Keep the seeded page visible; surface the failure non-blockingly.
+                            it.copy(
+                                isLoading = false,
+                                errorMsg = data.message,
+                            )
+                        } else {
+                            it.copy(
+                                isError = true,
+                                errorMsg = data.message,
+                            )
+                        }
                     }
                 }
 
                 is NetWorkResult.Success<ComicDetailResponse> -> {
+                    fullDetailComicId = id
                     _comicDetailState.update {
                         it.copy(
                             data = data.data.toComic()
@@ -247,6 +285,8 @@ class ComicDetailViewModel(
         if (id != null && id == _comicDetailState.value.data?.id) {
             return
         }
+        currentDetailLoadJob?.cancel()
+        fullDetailComicId = null
         _comicDetailState.update {
             CommonUIState(
                 isLoading = true,

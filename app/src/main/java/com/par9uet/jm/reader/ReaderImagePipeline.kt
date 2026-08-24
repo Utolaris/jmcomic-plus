@@ -9,6 +9,7 @@ import com.par9uet.jm.BuildConfig
 import com.par9uet.jm.image.ImageHostFailureKind
 import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.image.classifyImageHostFailure
+import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.utils.compressWebpCompat
 import kotlinx.coroutines.CancellationException
@@ -72,6 +73,7 @@ class ReaderImagePipeline internal constructor(
     context: Context,
     private val localSettingManager: LocalSettingManager,
     imageHostHealthManager: JmImageHostHealthManager,
+    dohManager: DohManager,
 ) {
     private val appContext = context.applicationContext
     private val activityManager = appContext.getSystemService(ActivityManager::class.java)
@@ -146,7 +148,10 @@ class ReaderImagePipeline internal constructor(
         onBufferOverflow = BufferOverflow.DROP_LATEST,
     )
 
+    // DoH is injected as the shared Dns provider; smart CDN host selection stays upstream of
+    // DNS resolution and keeps working unchanged.
     private val httpClient = OkHttpClient.Builder()
+        .dns(dohManager)
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .callTimeout(40, TimeUnit.SECONDS)

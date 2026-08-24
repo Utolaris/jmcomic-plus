@@ -47,7 +47,9 @@ fun Comic(
                 if (editing && onToggleSelected != null) {
                     onToggleSelected()
                 } else {
-                    comicDetailViewModel.reset(comic.id)
+                    // Seed the detail state with this list item so cover/title render on
+                    // the first frame while full detail loads in the background.
+                    comicDetailViewModel.prepareDetail(comic)
                     mainNavController.navigate("comicDetail/${comic.id}")
                 }
             },

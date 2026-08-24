@@ -26,6 +26,7 @@ import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.SessionReadinessHolder
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.utils.LauncherDisguiseApplier
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -38,6 +39,8 @@ import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val appModule = module {
+    single { DohManager(get()) }
+
     single {
         CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, throwable ->
             log("全局协程捕获到了异常: $throwable")
@@ -71,7 +74,7 @@ val appModule = module {
     single { ToastManager() }
     single { DownloadToastAggregator(get()) }
     single { PostStartupInitializer(get(), GlobalContext.get()) }
-    single { AppUpdateDownloadManager(get(), get(), get()) }
+    single { AppUpdateDownloadManager(get(), get(), get(), get()) }
 
     single<Gson> { GsonBuilder().setStrictness(Strictness.LENIENT).serializeNulls().create() }
 }

@@ -127,6 +127,43 @@ class LocalSettingStorage(
                         saved.customColorError
                     } else {
                         null
+                    },
+                    // DoH defaults to ENABLED, but only for users who never persisted a
+                    // choice; an explicit opt-out survives every restart.
+                    dohEnabled = if (savedJson.hasField("dohEnabled")) {
+                        saved.dohEnabled
+                    } else {
+                        true
+                    },
+                    dohAutoStart = if (savedJson.hasField("dohAutoStart")) {
+                        saved.dohAutoStart
+                    } else {
+                        true
+                    },
+                    dohServerId = if (savedJson.hasField("dohServerId")) {
+                        saved.dohServerId.takeIf { it.isNotBlank() } ?: "tencent"
+                    } else {
+                        "tencent"
+                    },
+                    dohCustomServerName = if (savedJson.hasField("dohCustomServerName")) {
+                        saved.dohCustomServerName.orEmpty()
+                    } else {
+                        ""
+                    },
+                    dohCustomServerUrl = if (savedJson.hasField("dohCustomServerUrl")) {
+                        saved.dohCustomServerUrl.orEmpty()
+                    } else {
+                        ""
+                    },
+                    dohUseDeviceCertificates = if (savedJson.hasField("dohUseDeviceCertificates")) {
+                        saved.dohUseDeviceCertificates
+                    } else {
+                        true
+                    },
+                    dohPreferIpv6 = if (savedJson.hasField("dohPreferIpv6")) {
+                        saved.dohPreferIpv6
+                    } else {
+                        false
                     }
                 )
             }

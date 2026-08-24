@@ -61,6 +61,15 @@ data class LocalSetting(
     val customColorSecondary: String? = null,
     val customColorTertiary: String? = null,
     val customColorError: String? = null,
+    // DoH（DNS over HTTPS）：默认启用。dohAutoStart 控制进程启动时自动激活。
+    val dohEnabled: Boolean = true,
+    val dohAutoStart: Boolean = true,
+    val dohServerId: String = "tencent",
+    val dohCustomServerName: String = "",
+    val dohCustomServerUrl: String = "",
+    // DoH 端点 TLS 校验时是否信任用户安装的设备证书
+    val dohUseDeviceCertificates: Boolean = true,
+    val dohPreferIpv6: Boolean = false,
     // 网格列数：0 表示自适应，2-6 表示固定列数
     val homeGridColumns: Int = 0,
     val collectGridColumns: Int = 0,

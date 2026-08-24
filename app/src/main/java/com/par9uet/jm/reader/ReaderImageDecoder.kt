@@ -2,7 +2,6 @@ package com.par9uet.jm.reader
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.graphics.BitmapRegionDecoder
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Rect
@@ -18,8 +17,14 @@ internal data class DecodedReaderImage(
 
 private const val MAX_SOURCE_BYTES = 40L * 1024L * 1024L
 private const val MAX_SOURCE_PIXELS = 80_000_000L
-private const val MAX_REGION_STRIP_HEIGHT = 2_048
-private const val MAX_REGION_STRIP_PIXELS = 4_000_000
+
+/** Full-resolution decode options; scramble reorder requires original pixel geometry. */
+private fun fullSizeOptions(profile: ReaderDecodeProfile): BitmapFactory.Options =
+    BitmapFactory.Options().apply {
+        inSampleSize = 1
+        inScaled = false
+        inPreferredConfig = if (profile.useRgb565) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888
+    }
 
 /** Performs a cheap format/bounds check before a temporary source becomes durable cache. */
 internal fun validateReaderSourceFile(file: File): Pair<Int, Int> {
@@ -34,14 +39,12 @@ internal fun decodeReaderRawFile(
 ): DecodedReaderImage {
     require(file.isFile && file.length() in 1..MAX_SOURCE_BYTES) { "图片源文件无效" }
     val bounds = readBounds(file)
-    return try {
-        val decoder = BitmapRegionDecoder.newInstance(file.absolutePath, false)
-        decodeWithRegionDecoder(decoder, bounds, page, profile)
-    } catch (error: OutOfMemoryError) {
-        throw error
-    } catch (_: Exception) {
-        decodeBitmapFactory(file, bounds, page, profile)
-    }
+    // Full-size decode first: scramble reorder must happen in ORIGINAL pixel space, and the
+    // old strip pipeline's per-strip FILTER_BITMAP rescaling produced horizontal seam lines.
+    val bitmap = BitmapFactory.decodeFile(file.absolutePath, fullSizeOptions(profile))
+        ?: error("图片解码为空")
+    // Reorder in ORIGINAL pixel space (1:1 integer rects), then one whole-image scale.
+    return reorderAndScaleFallback(bitmap, bounds, page, profile)
 }
 
 internal fun decodeReaderRawBytes(
@@ -51,14 +54,9 @@ internal fun decodeReaderRawBytes(
 ): DecodedReaderImage {
     require(bytes.isNotEmpty() && bytes.size.toLong() <= MAX_SOURCE_BYTES) { "图片源数据无效" }
     val bounds = readBounds(bytes)
-    return try {
-        val decoder = BitmapRegionDecoder.newInstance(bytes, 0, bytes.size, false)
-        decodeWithRegionDecoder(decoder, bounds, page, profile)
-    } catch (error: OutOfMemoryError) {
-        throw error
-    } catch (_: Exception) {
-        decodeBitmapFactory(bytes, bounds, page, profile)
-    }
+    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, fullSizeOptions(profile))
+        ?: error("图片解码为空")
+    return reorderAndScaleFallback(bitmap, bounds, page, profile)
 }
 
 internal fun decodeReaderDecodedFile(
@@ -73,123 +71,6 @@ internal fun decodeReaderDecodedFile(
             ?: return null
         DecodedReaderImage(bitmap, bounds.first.toFloat() / bounds.second.toFloat())
     }.getOrNull()
-}
-
-private fun decodeWithRegionDecoder(
-    decoder: BitmapRegionDecoder,
-    bounds: Pair<Int, Int>,
-    page: ReaderPage,
-    profile: ReaderDecodeProfile,
-): DecodedReaderImage {
-    val (sourceWidth, sourceHeight) = bounds
-    val aspectRatio = sourceWidth.toFloat() / sourceHeight.toFloat()
-    val segments = readerScrambleSegmentCount(
-        comicId = page.comicId,
-        scrambleId = page.scrambleId,
-        speed = page.speed,
-        originSrc = page.originSrc,
-    )
-    require(segments == 0 || segments <= sourceHeight) { "图片分段数量无效" }
-    val ranges = if (segments == 0) {
-        ordinarySourceRanges(sourceWidth, sourceHeight)
-    } else {
-        scrambledSourceRanges(sourceHeight, segments)
-    }
-    return decodeRegionPage(
-        decoder = decoder,
-        sourceWidth = sourceWidth,
-        sourceHeight = sourceHeight,
-        sourceRanges = ranges,
-        profile = profile,
-        aspectRatio = aspectRatio,
-    )
-}
-
-/** Decode each source strip directly into the final bitmap; no full sampled + assembled pair. */
-private fun decodeRegionPage(
-    decoder: BitmapRegionDecoder,
-    sourceWidth: Int,
-    sourceHeight: Int,
-    sourceRanges: List<ReaderSourceRange>,
-    profile: ReaderDecodeProfile,
-    aspectRatio: Float,
-): DecodedReaderImage {
-    require(sourceRanges.isNotEmpty()) { "图片分段为空" }
-    require(
-        sourceRanges.all { it.top >= 0 && it.bottom <= sourceHeight && it.bottom > it.top } &&
-            sourceRanges.sumOf(ReaderSourceRange::height) == sourceHeight
-    ) { "图片分段范围无效" }
-
-    val targetSize = readerDecodedPageSize(
-        width = sourceWidth,
-        height = sourceHeight,
-        maxPixels = profile.maxPixels,
-        maxWidth = profile.maxWidth,
-    )
-    val sampleSize = readerRegionSampleSize(
-        width = sourceWidth,
-        height = sourceHeight,
-        maxPixels = profile.maxPixels,
-        maxWidth = profile.maxWidth,
-    )
-    val strips = splitSourceRanges(sourceRanges, sourceWidth)
-    val ordered = createBitmap(
-        targetSize.first,
-        targetSize.second,
-        if (profile.useRgb565) Bitmap.Config.RGB_565 else Bitmap.Config.ARGB_8888,
-    )
-    val canvas = Canvas(ordered)
-    val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.DITHER_FLAG)
-    var outputOffset = 0
-    try {
-        strips.forEach { range ->
-            val destinationTop = scaledBoundary(outputOffset, sourceHeight, targetSize.second)
-            val destinationBottom = scaledBoundary(
-                outputOffset + range.height,
-                sourceHeight,
-                targetSize.second,
-            )
-            if (destinationBottom > destinationTop) {
-                val segment = decoder.decodeRegion(
-                    Rect(0, range.top, sourceWidth, range.bottom),
-                    decodeOptions(sampleSize, profile),
-                ) ?: error("区域解码为空")
-                try {
-                    canvas.drawBitmap(
-                        segment,
-                        null,
-                        Rect(0, destinationTop, targetSize.first, destinationBottom),
-                        paint,
-                    )
-                } finally {
-                    segment.recycle()
-                }
-            }
-            outputOffset += range.height
-        }
-        require(outputOffset == sourceHeight) { "图片分段重排高度不一致" }
-        return DecodedReaderImage(ordered, aspectRatio)
-    } catch (error: Throwable) {
-        ordered.recycle()
-        throw error
-    } finally {
-        decoder.recycle()
-    }
-}
-
-private fun splitSourceRanges(
-    sourceRanges: List<ReaderSourceRange>,
-    sourceWidth: Int,
-): List<ReaderSourceRange> {
-    val stripHeight = min(
-        MAX_REGION_STRIP_HEIGHT,
-        (MAX_REGION_STRIP_PIXELS / sourceWidth).coerceAtLeast(1),
-    )
-    return sourceRanges.flatMap { range ->
-        (range.top until range.bottom step stripHeight).map { top ->
-            ReaderSourceRange(top, min(range.bottom, top + stripHeight))
-        }
-    }
 }
 
 private fun decodeBitmapFactory(
