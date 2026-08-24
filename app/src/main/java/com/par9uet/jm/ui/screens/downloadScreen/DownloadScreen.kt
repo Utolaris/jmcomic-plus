@@ -1,5 +1,13 @@
 package com.par9uet.jm.ui.screens.downloadScreen
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -10,13 +18,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DownloadDone
 import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -29,20 +36,25 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.glass.AppGlassTopBar
+import com.par9uet.jm.ui.glass.ChromeMode
+import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.DownloadComicGroup
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
@@ -65,26 +77,35 @@ fun DownloadScreen(
     var activeExpanded by rememberSaveable { mutableStateOf(true) }
     var errorExpanded by rememberSaveable { mutableStateOf(true) }
 
-    CommonScaffold(title = "下载") {
+    // 仅当选中项中存在"正在缓存"分组时才显示暂停/继续按钮
+    val activeItemIds = remember(activeGroups) {
+        activeGroups.flatMap { it.itemIds }.toSet()
+    }
+    val showPauseResume = remember(editState.selectedIds, activeItemIds) {
+        editState.selectedIds.any { it in activeItemIds }
+    }
+
+    BackHandler(enabled = editState.editing) {
+        downloadViewModel.clearSelection()
+    }
+
+    CommonScaffold(
+        title = "下载",
+        variableTopBar = { statusBarInset ->
+            DownloadVariableTopBar(
+                statusBarInset = statusBarInset,
+                editing = editState.editing,
+                selectedCount = editState.selectedIds.size,
+                showPauseResume = showPauseResume,
+                onExitSelection = downloadViewModel::clearSelection,
+                onPause = downloadViewModel::pauseSelected,
+                onStart = downloadViewModel::startSelected,
+                onRedownload = downloadViewModel::redownloadSelected,
+                onDelete = downloadViewModel::deleteSelected,
+            )
+        },
+    ) {
         Column {
-            if (editState.editing) {
-                // 仅当选中项中存在"正在缓存"分组时才显示暂停/继续按钮
-                val activeItemIds = remember(activeGroups) {
-                    activeGroups.flatMap { it.itemIds }.toSet()
-                }
-                val showPauseResume = remember(editState.selectedIds, activeItemIds) {
-                    editState.selectedIds.any { it in activeItemIds }
-                }
-                DownloadEditBar(
-                    selectedCount = editState.selectedIds.size,
-                    showPauseResume = showPauseResume,
-                    onClose = downloadViewModel::clearSelection,
-                    onDelete = downloadViewModel::deleteSelected,
-                    onPause = downloadViewModel::pauseSelected,
-                    onStart = downloadViewModel::startSelected,
-                    onRedownload = downloadViewModel::redownloadSelected
-                )
-            }
             val activeCount = activeGroups.size
             val errorCount = errorGroups.size
             val completeCount = completeGroups.size
@@ -102,7 +123,7 @@ fun DownloadScreen(
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     if (activeCount > 0) {
-                        item {
+                        item(key = "active_header") {
                             DownloadSectionHeader(
                                 title = "正在缓存",
                                 count = activeCount,
@@ -112,29 +133,39 @@ fun DownloadScreen(
                                 icon = Icons.Rounded.Schedule
                             )
                         }
-                        if (activeExpanded) {
-                            items(activeGroups, key = { "active_${it.id}" }) { group ->
-                                DownloadRowItem(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    group = group,
-                                    editing = editState.editing,
-                                    selected = editState.selectedIds.containsAll(group.itemIds),
-                                    onClick = {
-                                        if (editState.editing) {
-                                            downloadViewModel.toggleSelected(group.itemIds)
-                                        } else {
-                                            mainNavController.navigate("downloadComicDetail/${group.id}")
+                        item(key = "active_content") {
+                            AnimatedVisibility(
+                                visible = activeExpanded,
+                                enter = expandVertically(tween(200)) + fadeIn(tween(200)),
+                                exit = shrinkVertically(tween(160)) + fadeOut(tween(160)),
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    activeGroups.forEach { group ->
+                                        key(group.id) {
+                                            DownloadRowItem(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                group = group,
+                                                editing = editState.editing,
+                                                selected = editState.selectedIds.containsAll(group.itemIds),
+                                                onClick = {
+                                                    if (editState.editing) {
+                                                        downloadViewModel.toggleSelected(group.itemIds)
+                                                    } else {
+                                                        mainNavController.navigate("downloadComicDetail/${group.id}")
+                                                    }
+                                                },
+                                                onLongClick = { downloadViewModel.enterEdit(group.itemIds) },
+                                                onCancel = { downloadViewModel.deleteMany(group.itemIds) }
+                                            )
                                         }
-                                    },
-                                    onLongClick = { downloadViewModel.enterEdit(group.itemIds) },
-                                    onCancel = { downloadViewModel.deleteMany(group.itemIds) }
-                                )
+                                    }
+                                }
                             }
                         }
                     }
 
                     if (completeCount > 0) {
-                        item {
+                        item(key = "complete_header") {
                             DownloadSectionHeader(
                                 title = "缓存完成",
                                 count = completeCount,
@@ -144,8 +175,12 @@ fun DownloadScreen(
                                 icon = Icons.Rounded.DownloadDone
                             )
                         }
-                        if (completeExpanded) {
-                            item {
+                        item(key = "complete_content") {
+                            AnimatedVisibility(
+                                visible = completeExpanded,
+                                enter = expandVertically(tween(200)) + fadeIn(tween(200)),
+                                exit = shrinkVertically(tween(160)) + fadeOut(tween(160)),
+                            ) {
                                 CompletedGrid(
                                     groups = completeGroups,
                                     editing = editState.editing,
@@ -167,7 +202,7 @@ fun DownloadScreen(
                     }
 
                     if (errorCount > 0) {
-                        item {
+                        item(key = "error_header") {
                             DownloadSectionHeader(
                                 title = "缓存失败",
                                 count = errorCount,
@@ -177,28 +212,121 @@ fun DownloadScreen(
                                 icon = Icons.Rounded.ErrorOutline
                             )
                         }
-                        if (errorExpanded) {
-                            items(errorGroups, key = { "error_${it.id}" }) { group ->
-                                DownloadRowItem(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    group = group,
-                                    editing = editState.editing,
-                                    selected = editState.selectedIds.containsAll(group.itemIds),
-                                    onClick = {
-                                        if (editState.editing) {
-                                            downloadViewModel.toggleSelected(group.itemIds)
-                                        } else {
-                                            mainNavController.navigate("downloadComicDetail/${group.id}")
+                        item(key = "error_content") {
+                            AnimatedVisibility(
+                                visible = errorExpanded,
+                                enter = expandVertically(tween(200)) + fadeIn(tween(200)),
+                                exit = shrinkVertically(tween(160)) + fadeOut(tween(160)),
+                            ) {
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    errorGroups.forEach { group ->
+                                        key(group.id) {
+                                            DownloadRowItem(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                group = group,
+                                                editing = editState.editing,
+                                                selected = editState.selectedIds.containsAll(group.itemIds),
+                                                onClick = {
+                                                    if (editState.editing) {
+                                                        downloadViewModel.toggleSelected(group.itemIds)
+                                                    } else {
+                                                        mainNavController.navigate("downloadComicDetail/${group.id}")
+                                                    }
+                                                },
+                                                onLongClick = { downloadViewModel.enterEdit(group.itemIds) },
+                                                onCancel = { downloadViewModel.deleteMany(group.itemIds) }
+                                            )
                                         }
-                                    },
-                                    onLongClick = { downloadViewModel.enterEdit(group.itemIds) },
-                                    onCancel = { downloadViewModel.deleteMany(group.itemIds) }
-                                )
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DownloadVariableTopBar(
+    statusBarInset: Dp,
+    editing: Boolean,
+    selectedCount: Int,
+    showPauseResume: Boolean,
+    onExitSelection: () -> Unit,
+    onPause: () -> Unit,
+    onStart: () -> Unit,
+    onRedownload: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val mainNavController = LocalMainNavController.current
+    val mode = if (editing) ChromeMode.SELECTION else ChromeMode.NORMAL
+    GlassTopBarModeTransition(
+        targetState = mode,
+        statusBarInset = statusBarInset,
+        modifier = Modifier.fillMaxWidth(),
+    ) { targetMode, surfaceAlpha ->
+        when (targetMode) {
+            ChromeMode.NORMAL -> AppGlassTopBar(
+                surfaceId = "download-top-bar-normal",
+                statusBarInset = statusBarInset,
+                surfaceAlpha = surfaceAlpha,
+                navigationIcon = {
+                    IconButton(onClick = { mainNavController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回上一页")
+                    }
+                },
+                title = {
+                    Text(
+                        text = "下载",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
+            )
+
+            ChromeMode.SELECTION -> AppGlassTopBar(
+                surfaceId = "download-top-bar-selection",
+                statusBarInset = statusBarInset,
+                surfaceAlpha = surfaceAlpha,
+                navigationIcon = {
+                    IconButton(onClick = onExitSelection) {
+                        Icon(Icons.Rounded.Close, contentDescription = "退出编辑")
+                    }
+                },
+                title = {
+                    Text(
+                        text = "已选择 $selectedCount 项",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
+                actions = {
+                    if (showPauseResume) {
+                        IconButton(onClick = onStart, modifier = Modifier.size(44.dp)) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = "继续")
+                        }
+                        IconButton(onClick = onPause, modifier = Modifier.size(44.dp)) {
+                            Icon(Icons.Rounded.Pause, contentDescription = "暂停")
+                        }
+                    }
+                    IconButton(onClick = onRedownload, modifier = Modifier.size(44.dp)) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = "重下")
+                    }
+                    IconButton(onClick = onDelete, modifier = Modifier.size(44.dp)) {
+                        Icon(
+                            Icons.Rounded.Delete,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
+                    }
+                },
+            )
         }
     }
 }
@@ -240,6 +368,11 @@ private fun DownloadSectionHeader(
     accentColor: androidx.compose.ui.graphics.Color,
     icon: androidx.compose.ui.graphics.vector.ImageVector
 ) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = tween(200),
+        label = "download-section-icon-rotation",
+    )
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -286,8 +419,9 @@ private fun DownloadSectionHeader(
                 }
             ) {}
             Icon(
-                imageVector = if (expanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                imageVector = Icons.Rounded.ExpandMore,
                 contentDescription = if (expanded) "收起" else "展开",
+                modifier = Modifier.rotate(rotation),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
@@ -331,84 +465,6 @@ private fun CompletedGrid(
                 }
                 repeat(columns - row.size) {
                     Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun DownloadEditBar(
-    selectedCount: Int,
-    showPauseResume: Boolean,
-    onClose: () -> Unit,
-    onDelete: () -> Unit,
-    onPause: () -> Unit,
-    onStart: () -> Unit,
-    onRedownload: () -> Unit
-) {
-    Surface(
-        tonalElevation = 3.dp,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                IconButton(onClick = onClose) {
-                    Icon(Icons.Rounded.Close, contentDescription = "退出编辑")
-                }
-                Text(
-                    modifier = Modifier.weight(1f),
-                    text = "已选择 $selectedCount 项",
-                    style = MaterialTheme.typography.titleSmall
-                )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                if (showPauseResume) {
-                    TextButton(onClick = onStart) {
-                        Icon(
-                            Icons.Rounded.PlayArrow,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Text("继续")
-                    }
-                    TextButton(onClick = onPause) {
-                        Icon(
-                            Icons.Rounded.Pause,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.size(4.dp))
-                        Text("暂停")
-                    }
-                }
-                TextButton(onClick = onRedownload) {
-                    Icon(
-                        Icons.Rounded.Refresh,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.size(4.dp))
-                    Text("重下")
-                }
-                TextButton(onClick = onDelete) {
-                    Icon(
-                        Icons.Rounded.Delete,
-                        contentDescription = null,
-                        modifier = Modifier.size(18.dp),
-                        tint = MaterialTheme.colorScheme.error
-                    )
-                    Spacer(modifier = Modifier.size(4.dp))
-                    Text("删除", color = MaterialTheme.colorScheme.error)
                 }
             }
         }

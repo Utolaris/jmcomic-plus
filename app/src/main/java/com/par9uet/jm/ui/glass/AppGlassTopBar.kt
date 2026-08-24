@@ -24,6 +24,7 @@ internal fun AppGlassTopBar(
     surfaceId: String,
     statusBarInset: Dp,
     modifier: Modifier = Modifier,
+    surfaceAlpha: Float = 1f,
     navigationIcon: @Composable RowScope.() -> Unit = {},
     title: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
@@ -34,6 +35,7 @@ internal fun AppGlassTopBar(
             .fillMaxWidth()
             .height(statusBarInset + AppGlassTopBarDefaults.ContentHeight),
         style = GlassSurfaceStyle(cornerRadius = 0.dp),
+        surfaceAlpha = surfaceAlpha,
     ) {
         Row(
             modifier = Modifier

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Download
@@ -17,6 +18,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,7 +30,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.par9uet.jm.ui.components.Comic
@@ -36,6 +40,9 @@ import com.par9uet.jm.ui.components.ComicSkeleton
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
+import com.par9uet.jm.ui.glass.AppGlassTopBar
+import com.par9uet.jm.ui.glass.ChromeMode
+import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
 import com.par9uet.jm.store.LocalSettingManager
 import org.koin.compose.getKoin
 import com.par9uet.jm.ui.viewModel.UserViewModel
@@ -86,31 +93,24 @@ fun UserHistoryComicScreen(
         userViewModel.clearHistorySelection()
     }
 
+    // Exactly one refresh per genuine destination resume: presented items stay visible while the
+    // new generation loads, and recomposition never re-triggers this lifecycle effect.
+    LifecycleResumeEffect(Unit) {
+        historyComicLazyPagingItems.refresh()
+        onPauseOrDispose { }
+    }
+
     CommonScaffold(
         title = "历史浏览",
-        titleContent = if (historyEditState.editing) {
-            { Text("已选择 ${historyEditState.selectedComicIds.size} 项") }
-        } else {
-            null
-        },
-        navigationContent = if (historyEditState.editing) {
-            {
-                IconButton(onClick = userViewModel::clearHistorySelection) {
-                    Icon(Icons.Rounded.Close, contentDescription = "退出编辑")
-                }
-            }
-        } else {
-            null
-        },
-        actions = {
-            if (historyEditState.editing) {
-                IconButton(onClick = { userViewModel.cacheHistoryComics(selectedComics) }) {
-                    Icon(Icons.Rounded.Download, contentDescription = "缓存")
-                }
-                IconButton(onClick = { showDeleteConfirmDialog = true }) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "删除")
-                }
-            }
+        variableTopBar = { statusBarInset ->
+            HistoryVariableTopBar(
+                statusBarInset = statusBarInset,
+                editing = historyEditState.editing,
+                selectedCount = historyEditState.selectedComicIds.size,
+                onExitSelection = userViewModel::clearHistorySelection,
+                onDownload = { userViewModel.cacheHistoryComics(selectedComics) },
+                onDelete = { showDeleteConfirmDialog = true },
+            )
         },
     ) {
         Column(
@@ -160,5 +160,73 @@ fun UserHistoryComicScreen(
                 TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("取消") }
             }
         )
+    }
+}
+
+@Composable
+private fun HistoryVariableTopBar(
+    statusBarInset: Dp,
+    editing: Boolean,
+    selectedCount: Int,
+    onExitSelection: () -> Unit,
+    onDownload: () -> Unit,
+    onDelete: () -> Unit,
+) {
+    val mainNavController = LocalMainNavController.current
+    val mode = if (editing) ChromeMode.SELECTION else ChromeMode.NORMAL
+    GlassTopBarModeTransition(
+        targetState = mode,
+        statusBarInset = statusBarInset,
+        modifier = Modifier.fillMaxWidth(),
+    ) { targetMode, surfaceAlpha ->
+        when (targetMode) {
+            ChromeMode.NORMAL -> AppGlassTopBar(
+                surfaceId = "history-top-bar-normal",
+                statusBarInset = statusBarInset,
+                surfaceAlpha = surfaceAlpha,
+                navigationIcon = {
+                    IconButton(onClick = { mainNavController.popBackStack() }) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回上一页")
+                    }
+                },
+                title = {
+                    Text(
+                        text = "历史浏览",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
+            )
+
+            ChromeMode.SELECTION -> AppGlassTopBar(
+                surfaceId = "history-top-bar-selection",
+                statusBarInset = statusBarInset,
+                surfaceAlpha = surfaceAlpha,
+                navigationIcon = {
+                    IconButton(onClick = onExitSelection) {
+                        Icon(Icons.Rounded.Close, contentDescription = "退出编辑")
+                    }
+                },
+                title = {
+                    Text(
+                        text = "已选择 $selectedCount 项",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                },
+                actions = {
+                    IconButton(onClick = onDownload) {
+                        Icon(Icons.Rounded.Download, contentDescription = "缓存")
+                    }
+                    IconButton(onClick = onDelete) {
+                        Icon(Icons.Rounded.Delete, contentDescription = "删除")
+                    }
+                },
+            )
+        }
     }
 }

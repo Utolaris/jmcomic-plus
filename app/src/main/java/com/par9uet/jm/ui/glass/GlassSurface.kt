@@ -9,6 +9,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
@@ -29,10 +31,11 @@ internal interface GlassSurfaceRegistry {
         surfaceId: String,
         style: GlassSurfaceStyle,
         alpha: Float,
+        scale: Float,
         bounds: GlassSurfaceBounds,
     )
 
-    fun updateSurfaceStyle(surfaceId: String, style: GlassSurfaceStyle, alpha: Float)
+    fun updateSurfaceStyle(surfaceId: String, style: GlassSurfaceStyle, alpha: Float, scale: Float)
 
     fun removeSurface(surfaceId: String)
 }
@@ -50,11 +53,13 @@ fun GlassSurface(
     modifier: Modifier = Modifier,
     style: GlassSurfaceStyle = GlassSurfaceStyle.Default,
     surfaceAlpha: Float = 1f,
+    surfaceScale: Float = 1f,
     content: @Composable BoxScope.() -> Unit,
 ) {
     val registry = LocalGlassSurfaceRegistry.current
     val currentStyle = rememberUpdatedState(style)
     val currentAlpha = rememberUpdatedState(surfaceAlpha.coerceIn(0f, 1f))
+    val currentScale = rememberUpdatedState(surfaceScale.coerceAtLeast(0.1f))
 
     DisposableEffect(registry, surfaceId) {
         onDispose {
@@ -63,19 +68,25 @@ fun GlassSurface(
     }
     SideEffect {
         registry?.let {
-            // Alpha and material can animate without changing layout coordinates.
-            it.updateSurfaceStyle(surfaceId, currentStyle.value, currentAlpha.value)
+            // Alpha, material and scale can animate without changing layout coordinates.
+            it.updateSurfaceStyle(surfaceId, currentStyle.value, currentAlpha.value, currentScale.value)
         }
     }
 
     Box(
         modifier = modifier
             .alpha(currentAlpha.value)
+            .graphicsLayer {
+                scaleX = currentScale.value
+                scaleY = currentScale.value
+                transformOrigin = TransformOrigin(0f, 0f)
+            }
             .onGloballyPositioned { coordinates ->
                 registry?.updateSurface(
                     surfaceId = surfaceId,
                     style = currentStyle.value,
                     alpha = currentAlpha.value,
+                    scale = currentScale.value,
                     bounds = coordinates.toGlassSurfaceBounds(),
                 )
             },

@@ -538,4 +538,39 @@ class ComicViewModelHomeLoadingTest {
             vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.map { it.id },
         )
     }
+
+    @Test
+    fun searchOrderChangeUpdatesFilterAndClearsPendingComicId() = runTest(scheduler) {
+        val vm = ComicViewModel(FakeComicRepository(), FakeSettings())
+
+        assertEquals(ComicSearchOrderFilter.NEWEST, vm.searchComicFilterState.value.order)
+
+        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT)
+        assertEquals(ComicSearchOrderFilter.MOST_COLLECT_COUNT, vm.searchComicFilterState.value.order)
+        assertNull(vm.searchComicIdState.value)
+
+        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_PIC_COUNT)
+        assertEquals(ComicSearchOrderFilter.MOST_PIC_COUNT, vm.searchComicFilterState.value.order)
+        assertNull(vm.searchComicIdState.value)
+
+        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_LIKE_COUNT)
+        assertEquals(ComicSearchOrderFilter.MOST_LIKE_COUNT, vm.searchComicFilterState.value.order)
+        assertNull(vm.searchComicIdState.value)
+
+        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.NEWEST)
+        assertEquals(ComicSearchOrderFilter.NEWEST, vm.searchComicFilterState.value.order)
+    }
+
+    @Test
+    fun searchOrderChangeKeepsSearchCriteria() = runTest(scheduler) {
+        val vm = ComicViewModel(FakeComicRepository(), FakeSettings())
+        vm.changeSearchComicContent("neko", listOf("tag1", "tag2"))
+
+        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_PIC_COUNT)
+
+        val filter = vm.searchComicFilterState.value
+        assertEquals("neko", filter.searchContent)
+        assertEquals(listOf("tag1", "tag2"), filter.excludedTags)
+        assertEquals(ComicSearchOrderFilter.MOST_PIC_COUNT, filter.order)
+    }
 }

@@ -1,6 +1,11 @@
 package com.par9uet.jm.ui.glass
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.MutableTransitionState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateInt
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberTransition
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -117,12 +122,34 @@ internal fun GlassAnchoredMenu(
     menuMaxHeight: Dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    if (!state.expanded) return
     val anchorBounds = state.anchorBounds ?: return
+    val visibleState = remember {
+        MutableTransitionState(initialState = false)
+    }
+    visibleState.targetState = state.expanded
+    val visibleTransition = rememberTransition(
+        transitionState = visibleState,
+        label = "glass-menu-visible",
+    )
+    val density = LocalDensity.current
+    val slidePx = with(density) { 5.dp.roundToPx() }
+    val surfaceAlpha by visibleTransition.animateFloat(
+        transitionSpec = { tween(180) },
+        label = "glass-menu-alpha",
+    ) { if (it) 1f else 0f }
+    val surfaceScale by visibleTransition.animateFloat(
+        transitionSpec = { tween(180) },
+        label = "glass-menu-scale",
+    ) { if (it) 1f else 0.96f }
+    val slideOffset by visibleTransition.animateInt(
+        transitionSpec = { tween(180) },
+        label = "glass-menu-slide",
+    ) { if (it) 0 else slidePx }
+    if (!visibleTransition.isRunning && !visibleState.currentState) return
+
     BackHandler(onBack = state::dismiss)
 
     BoxWithConstraints(modifier.fillMaxSize()) {
-        val density = LocalDensity.current
         val rootSize = with(density) { IntSize(maxWidth.roundToPx(), maxHeight.roundToPx()) }
         val widthPx = with(density) { width.roundToPx() }
         val maxHeightPx = with(density) { menuMaxHeight.roundToPx() }
@@ -153,12 +180,13 @@ internal fun GlassAnchoredMenu(
             surfaceId = surfaceId,
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .offset { position }
+                .offset { IntOffset(position.x, position.y + slideOffset) }
                 .width(width)
                 .heightIn(max = menuMaxHeight)
                 .onSizeChanged { measuredMenuSize = it },
             style = GlassSurfaceStyle(cornerRadius = 22.dp),
-            surfaceAlpha = if (measuredMenuSize == IntSize.Zero) 0f else 1f,
+            surfaceAlpha = surfaceAlpha * if (measuredMenuSize == IntSize.Zero) 0f else 1f,
+            surfaceScale = surfaceScale,
         ) {
             Column(
                 modifier = Modifier

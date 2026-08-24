@@ -1,6 +1,14 @@
 package com.par9uet.jm.ui.screens
 
+import androidx.activity.compose.BackHandler
 import android.net.Uri
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -30,6 +38,7 @@ import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
@@ -53,9 +62,9 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -67,6 +76,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -288,6 +298,7 @@ fun ComicDetailScreen(
 ) {
     val mainNavController = LocalMainNavController.current
     val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scrollState = rememberScrollState()
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
     val readHistory by readHistoryManager.readHistoryState.collectAsState()
@@ -297,12 +308,26 @@ fun ComicDetailScreen(
     var showDownloadChapterDialog by remember { mutableStateOf(false) }
     var selectedChapterIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
     var replyComment by remember(id) { mutableStateOf<Comment?>(null) }
-    var commentComposerFocused by remember(id) { mutableStateOf(false) }
-    var commentComposerRevealed by remember(id) { mutableStateOf(false) }
-    val shouldRevealCommentComposer by remember {
-        derivedStateOf {
-            scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue / 2
-        }
+    var detailBottomState by remember(id) { mutableStateOf(DetailBottomModeState()) }
+    var commentFocusRequestTick by remember(id) { mutableIntStateOf(0) }
+
+    fun enterCommentMode() {
+        replyComment = null
+        detailBottomState = detailBottomState.enterComment()
+        commentFocusRequestTick++
+    }
+
+    fun enterReplyMode(comment: Comment) {
+        replyComment = comment
+        detailBottomState = detailBottomState.enterReply(comment.id)
+        commentFocusRequestTick++
+    }
+
+    fun exitCommentMode() {
+        replyComment = null
+        detailBottomState = detailBottomState.cancel()
+        focusManager.clearFocus()
+        keyboardController?.hide()
     }
 
     fun requireLogin(action: () -> Unit) {
@@ -323,9 +348,6 @@ fun ComicDetailScreen(
             comicDetailViewModel.getComicDetail(id)
         }
     }
-    LaunchedEffect(shouldRevealCommentComposer) {
-        if (shouldRevealCommentComposer) commentComposerRevealed = true
-    }
     val navigationBarInset = with(LocalDensity.current) {
         WindowInsets.navigationBars.getBottom(this).toDp()
     }
@@ -336,6 +358,18 @@ fun ComicDetailScreen(
     val detailBarHeight = 64.dp
     val detailBarBottomPadding = 8.dp + navigationBarInset
     val detailContentBottomPadding = detailBarHeight + detailBarBottomPadding
+
+    // COMMENT mode consumes Back so it never pops ComicDetail; ACTIONS falls through to
+    // normal navigation Back behavior.
+    BackHandler(enabled = detailBottomState.mode == DetailBottomMode.COMMENT) {
+        exitCommentMode()
+    }
+    LaunchedEffect(detailBottomState.mode, commentFocusRequestTick) {
+        if (detailBottomState.mode == DetailBottomMode.COMMENT) {
+            keyboardController?.show()
+            commentInputFocusRequester.requestFocus()
+        }
+    }
 
     GlassCaptureHost(
         modifier = Modifier.fillMaxSize(),
@@ -414,10 +448,7 @@ fun ComicDetailScreen(
                                                 commentLazyPagingItems = commentLazyPagingItems,
                                                 authState = authState,
                                                 onLogin = { mainNavController.navigate("login") },
-                                                onReply = {
-                                                    replyComment = it
-                                                    commentComposerRevealed = true
-                                                },
+                                                onReply = ::enterReplyMode,
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .height(viewportHeight),
@@ -446,10 +477,7 @@ fun ComicDetailScreen(
                                                 commentLazyPagingItems = commentLazyPagingItems,
                                                 authState = authState,
                                                 onLogin = { mainNavController.navigate("login") },
-                                                onReply = {
-                                                    replyComment = it
-                                                    commentComposerRevealed = true
-                                                },
+                                                onReply = ::enterReplyMode,
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .height(viewportHeight),
@@ -501,82 +529,98 @@ fun ComicDetailScreen(
                             fontWeight = FontWeight.Bold,
                         )
                     },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                when (authState) {
+                                    SessionReadiness.Authenticated -> enterCommentMode()
+                                    SessionReadiness.Unauthenticated ->
+                                        mainNavController.navigate("login")
+                                    SessionReadiness.Unknown,
+                                    SessionReadiness.Restoring -> Unit
+                                }
+                            },
+                        ) {
+                            Icon(
+                                Icons.Outlined.ChatBubbleOutline,
+                                contentDescription = "评论",
+                            )
+                        }
+                    },
                 )
                 if (comic != null) {
-                    if (!commentComposerFocused) {
+                    AnimatedContent(
+                        targetState = detailBottomState.mode,
+                        transitionSpec = {
+                            (fadeIn(tween(260)) + slideInHorizontally(tween(260)) { it / 14 }) togetherWith
+                                (fadeOut(tween(220)) + slideOutHorizontally(tween(220)) { -it / 14 })
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                        label = "comic-detail-bottom-mode",
+                    ) { targetMode ->
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .padding(bottom = detailBarBottomPadding),
                         ) {
-                            ComicDetailBottomBar(
-                                modifier = Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .widthIn(max = 600.dp)
-                                    .height(detailBarHeight),
-                                comic = comic,
-                                readHistoryManager = readHistoryManager,
-                                readHistory = readHistory,
-                                onCollect = {
-                                    requireLogin {
-                                        if (comic.isCollect) {
-                                            comicDetailViewModel.unCollect(comic.id)
-                                        } else {
-                                            comicDetailViewModel.refreshFolderList()
-                                            comicDetailViewModel.showFolderPicker()
+                            when (targetMode) {
+                                DetailBottomMode.ACTIONS -> ComicDetailBottomBar(
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .widthIn(max = 600.dp)
+                                        .height(detailBarHeight),
+                                    comic = comic,
+                                    readHistoryManager = readHistoryManager,
+                                    readHistory = readHistory,
+                                    onCollect = {
+                                        requireLogin {
+                                            if (comic.isCollect) {
+                                                comicDetailViewModel.unCollect(comic.id)
+                                            } else {
+                                                comicDetailViewModel.refreshFolderList()
+                                                comicDetailViewModel.showFolderPicker()
+                                            }
                                         }
-                                    }
-                                },
-                                onRelated = { mainNavController.navigate("comicRelate") },
-                                onDownload = {
-                                    if (comic.comicChapterList.isEmpty()) {
-                                        downloadManager.downloadComic(comic)
-                                    } else {
-                                        selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
-                                        showDownloadChapterDialog = true
-                                    }
-                                },
-                                onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
-                                onChapters = {
-                                    val currentChapterId =
-                                        readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
-                                    mainNavController.navigate(
-                                        "comicChapter?currentChapterId=$currentChapterId"
-                                    )
-                                },
-                            )
+                                    },
+                                    onRelated = { mainNavController.navigate("comicRelate") },
+                                    onDownload = {
+                                        if (comic.comicChapterList.isEmpty()) {
+                                            downloadManager.downloadComic(comic)
+                                        } else {
+                                            selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
+                                            showDownloadChapterDialog = true
+                                        }
+                                    },
+                                    onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
+                                    onChapters = {
+                                        val currentChapterId =
+                                            readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
+                                        mainNavController.navigate(
+                                            "comicChapter?currentChapterId=$currentChapterId"
+                                        )
+                                    },
+                                )
+
+                                DetailBottomMode.COMMENT -> CommentComposer(
+                                    comicId = comic.id,
+                                    authState = authState,
+                                    replyComment = replyComment,
+                                    onCancel = ::exitCommentMode,
+                                    commentLazyPagingItems = commentLazyPagingItems,
+                                    commentInputFocusRequester = commentInputFocusRequester,
+                                    comicDetailViewModel = comicDetailViewModel,
+                                    onLogin = { mainNavController.navigate("login") },
+                                    onSuccess = ::exitCommentMode,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .widthIn(max = 600.dp)
+                                        .padding(horizontal = ComicDetailHorizontalPadding),
+                                    surfaceIdPrefix = "comic-detail-comment",
+                                )
+                            }
                         }
-                    }
-                    if (commentComposerRevealed) {
-                        val composerBottomPadding = if (commentComposerFocused) {
-                            detailBarBottomPadding
-                        } else {
-                            detailBarHeight + detailBarBottomPadding + 8.dp
-                        }
-                        CommentComposer(
-                            comicId = comic.id,
-                            authState = authState,
-                            replyComment = replyComment,
-                            onReplyCancel = { replyComment = null },
-                            commentLazyPagingItems = commentLazyPagingItems,
-                            commentInputFocusRequester = commentInputFocusRequester,
-                            comicDetailViewModel = comicDetailViewModel,
-                            onLogin = { mainNavController.navigate("login") },
-                            onSuccess = {
-                                replyComment = null
-                                commentComposerFocused = false
-                                focusManager.clearFocus()
-                            },
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(horizontal = ComicDetailHorizontalPadding)
-                                .padding(bottom = composerBottomPadding)
-                                .fillMaxWidth()
-                                .widthIn(max = 600.dp),
-                            glassSurfaceId = "comic-detail-comment-composer",
-                            onFocusedChange = { commentComposerFocused = it },
-                        )
                     }
                 }
             }

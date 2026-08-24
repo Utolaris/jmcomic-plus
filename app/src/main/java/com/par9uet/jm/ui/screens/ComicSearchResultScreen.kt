@@ -14,10 +14,11 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -27,6 +28,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -38,6 +40,11 @@ import com.par9uet.jm.ui.components.ComicSkeleton
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
+import com.par9uet.jm.ui.glass.GlassAnchoredMenu
+import com.par9uet.jm.ui.glass.GlassMenuAlignment
+import com.par9uet.jm.ui.glass.GlassMenuItem
+import com.par9uet.jm.ui.glass.glassMenuAnchor
+import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.utils.serializeExcludedTags
@@ -76,6 +83,8 @@ fun ComicSearchResultScreen(
     val comicSearchLazyPagingItems = comicViewModel.searchComicPager.collectAsLazyPagingItems()
     val comicSearchFilterState by comicViewModel.searchComicFilterState.collectAsState()
     val searchComicIdState by comicViewModel.searchComicIdState.collectAsState()
+    val sortMenuState = rememberGlassAnchoredMenuState()
+    val sortMenuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
 
     fun editRoute(): String {
         val encodedSearchContent = Uri.encode(comicSearchFilterState.searchContent)
@@ -124,12 +133,36 @@ fun ComicSearchResultScreen(
                 style = MaterialTheme.typography.headlineSmall,
             )
         },
+        actions = {
+            IconButton(
+                onClick = { sortMenuState.open() },
+                modifier = Modifier.glassMenuAnchor(sortMenuState),
+            ) {
+                Icon(Icons.Rounded.MoreVert, contentDescription = "排序")
+            }
+        },
+        overlayContent = {
+            GlassAnchoredMenu(
+                state = sortMenuState,
+                surfaceId = "search-sort-glass-menu",
+                alignment = GlassMenuAlignment.END,
+                width = 190.dp,
+                menuMaxHeight = sortMenuMaxHeight,
+            ) {
+                ComicSearchOrderFilter.entries.forEach { order ->
+                    GlassMenuItem(
+                        text = order.label,
+                        selected = order.value == comicSearchFilterState.order.value,
+                        onClick = {
+                            sortMenuState.dismiss()
+                            comicViewModel.changeSearchComicOrderFilter(order)
+                        },
+                    )
+                }
+            }
+        },
     ) {
         Column {
-            OrderFilterRow(
-                currentOrder = comicSearchFilterState.order,
-                onOrderChange = { comicViewModel.changeSearchComicOrderFilter(it) }
-            )
             AnimatedVisibility(visible = isLoading, enter = fadeIn(), exit = fadeOut()) {
                 LinearProgressIndicator(
                     modifier = Modifier
@@ -167,34 +200,6 @@ fun ComicSearchResultScreen(
             ) {
                 Comic(it)
             }
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun OrderFilterRow(
-    currentOrder: ComicSearchOrderFilter,
-    onOrderChange: (ComicSearchOrderFilter) -> Unit
-) {
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        ComicSearchOrderFilter.entries.forEach { item ->
-            FilterChip(
-                selected = item.value == currentOrder.value,
-                onClick = { onOrderChange(item) },
-                label = { Text(item.label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                shape = RoundedCornerShape(12.dp),
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
-                )
-            )
         }
     }
 }

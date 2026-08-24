@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +53,7 @@ import com.par9uet.jm.store.PostStartupInitializer
 import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.JmCoverImage
+import com.par9uet.jm.ui.components.AppSnackbarHost
 import com.par9uet.jm.ui.screens.AppLockScreen
 import com.par9uet.jm.ui.screens.AppScreen
 import com.par9uet.jm.ui.screens.NsfwWarningDialog
@@ -208,7 +208,6 @@ private fun MainAppContent(
             snackbarHostState.showSnackbar(
                 message = text,
                 actionLabel = null,
-                withDismissAction = true,
                 duration = SnackbarDuration.Short
             )
         }
@@ -222,7 +221,7 @@ private fun MainAppContent(
                 .then(if (showNsfwDialog && canBlur) Modifier.blur(32.dp) else Modifier)
         ) {
             AppScreen(externalNavController = mainNavController)
-            SnackbarHost(
+            AppSnackbarHost(
                 hostState = snackbarHostState,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)

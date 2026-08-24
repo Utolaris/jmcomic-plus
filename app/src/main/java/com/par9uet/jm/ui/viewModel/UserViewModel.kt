@@ -468,6 +468,14 @@ class UserViewModel(
 
     private val _historyRefreshVersion = MutableStateFlow(0)
 
+    /**
+     * Bumps the history pager generation. Used by the delete-success path (immediate refresh)
+     * and, on the screen side, by the entry/resume lifecycle refresh.
+     */
+    fun refreshHistoryComicPager() {
+        _historyRefreshVersion.update { it + 1 }
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     val historyComicPager = combine(
         localSettingManager.localSettingState,
