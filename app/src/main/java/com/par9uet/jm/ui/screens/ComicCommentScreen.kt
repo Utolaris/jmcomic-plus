@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -491,11 +492,16 @@ private fun CommentInputCapsule(
     modifier: Modifier = Modifier,
 ) {
     val inputContent: @Composable () -> Unit = {
-        Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.CenterStart,
+        ) {
             BasicTextField(
                 state = state,
                 modifier = Modifier
-                    .fillMaxSize()
+                    // Wrap content height so the single line centers inside the capsule;
+                    // the raw foundation text field draws from its own top otherwise.
+                    .height(IntrinsicSize.Min)
                     .focusRequester(focusRequester),
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface,
@@ -508,9 +514,7 @@ private fun CommentInputCapsule(
             if (state.text.isEmpty()) {
                 Text(
                     text = if (replyComment == null) "发表评论" else "回复 ${replyComment.username}",
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(horizontal = 16.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp),
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,

@@ -12,13 +12,11 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.dp
 /** Simple two-state chrome language shared by the History / Download selection top bars. */
 internal enum class ChromeMode {
     NORMAL,
@@ -53,11 +51,7 @@ internal fun GlassTopBarModeTransition(
             transitionSpec = { tween(260) },
             label = "glass-top-bar-alpha",
         ) { if (it == mode) 1f else 0f }
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = statusBarInset, start = 8.dp, end = 8.dp),
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
             content(mode, surfaceAlpha)
         }
     }
