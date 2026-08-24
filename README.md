@@ -2,6 +2,8 @@
 
 本项目是 [HongShi2333/jmcomic-next](https://github.com/HongShi2333/jmcomic-next) 的 Fork，基于上游 v1.2.3 持续维护，并加入了大量性能、稳定性和体验优化。
 
+本项目的核心 API 依赖 [JUKOMU/JMComic-Api-Java](https://github.com/JUKOMU/JMComic-Api-Java)（`io.github.jukomu:jmcomic-api`），提供漫画数据解析与接口能力。
+
 ## v1.3.0 更新内容
 
 - 重构漫画阅读图片链路：增加优先级调度、并发控制、请求去重、内存缓存、图片解码与预加载优化。
