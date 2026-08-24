@@ -189,11 +189,13 @@ class FavoriteSyncService(
             var expectedTotal = 0
             var continuePaging = true
             while (continuePaging) {
-                val favoritePage = authenticatedEmbeddedClient.withClient { client ->
-                    client.getFavorites(
-                        FavoriteQuery.Builder().folderId(folderId).page(page).build()
-                    )
-                }
+                val favoritePage = requireNotNull(
+                    authenticatedEmbeddedClient.withClient { client ->
+                        client.getFavorites(
+                            FavoriteQuery.Builder().folderId(folderId).page(page).build()
+                        )
+                    }
+                )
                 val pageItems = favoritePage.content().orEmpty().mapNotNull { it.toFavoriteRemoteItem() }
                 items += pageItems
                 favoritePage.folderList().orEmpty().forEach { (id, name) ->
@@ -278,9 +280,11 @@ class FavoriteSyncService(
     }
 
     private suspend fun fetchFavoriteMetadata(albumId: Int): FavoriteMetadataPayload =
-        authenticatedEmbeddedClient.withClient { client ->
+        requireNotNull(
+            authenticatedEmbeddedClient.withClient { client ->
             client.getAlbum(albumId.toString()).toFavoriteMetadataPayload()
         }
+        )
 
     private fun JmAlbumMeta.toFavoriteRemoteItem(): FavoriteRemoteItem? {
         val albumId = id().toIntOrNull() ?: return null

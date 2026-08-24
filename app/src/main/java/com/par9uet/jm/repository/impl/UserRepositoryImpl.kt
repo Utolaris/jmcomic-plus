@@ -152,20 +152,24 @@ class UserRepositoryImpl(
     ): NetWorkResult<UserCollectComicListResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
-                    val query = FavoriteQuery.Builder()
-                        .folderId(folderId)
-                        .page(page)
-                        .build()
-                    val favPage = client.getFavorites(query)
-                    val metas = favPage.content().orEmpty()
-                    UserCollectComicListResponse(
-                        count = favPage.totalItems(),
-                        folder_list = favPage.folderList(),
-                        list = metas.map { it.toListItem() },
-                        total = favPage.totalItems()
+                NetWorkResult.Success(
+                    requireNotNull(
+                        authenticatedEmbeddedClient.withClient { client ->
+                            val query = FavoriteQuery.Builder()
+                                .folderId(folderId)
+                                .page(page)
+                                .build()
+                            val favPage = client.getFavorites(query)
+                            val metas = favPage.content().orEmpty()
+                            UserCollectComicListResponse(
+                                count = favPage.totalItems(),
+                                folder_list = favPage.folderList(),
+                                list = metas.map { it.toListItem() },
+                                total = favPage.totalItems()
+                            )
+                        }
                     )
-                })
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -222,13 +226,17 @@ class UserRepositoryImpl(
     override suspend fun getHistoryComicList(page: Int): NetWorkResult<UserHistoryComicListResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
-                    val albumMetas = client.getWatchHistory(page)
-                    UserHistoryComicListResponse(
-                        list = albumMetas.map { it.toHistoryListItem() },
-                        total = albumMetas.size
+                NetWorkResult.Success(
+                    requireNotNull(
+                        authenticatedEmbeddedClient.withClient { client ->
+                            val albumMetas = client.getWatchHistory(page)
+                            UserHistoryComicListResponse(
+                                list = albumMetas.map { it.toHistoryListItem() },
+                                total = albumMetas.size
+                            )
+                        }
                     )
-                })
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -259,16 +267,20 @@ class UserRepositoryImpl(
     ): NetWorkResult<UserHistoryCommentListResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
-                    val query = ForumQuery.user(userId.toString())
+                NetWorkResult.Success(
+                    requireNotNull(
+                        authenticatedEmbeddedClient.withClient { client ->
+                            val query = ForumQuery.user(userId.toString())
                         .page(page)
                         .build()
-                    val commentList = client.getComments(query)
-                    UserHistoryCommentListResponse(
-                        list = commentList.list.map { it.toHistoryCommentListItem() },
-                        total = commentList.total
+                            val commentList = client.getComments(query)
+                            UserHistoryCommentListResponse(
+                                list = commentList.list.map { it.toHistoryCommentListItem() },
+                                total = commentList.total
+                            )
+                        }
                     )
-                })
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -280,10 +292,14 @@ class UserRepositoryImpl(
     override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
-                    val status = client.getDailyCheckInStatus(userId.toString())
-                    status.toSignInDataResponse()
-                })
+                NetWorkResult.Success(
+                    requireNotNull(
+                        authenticatedEmbeddedClient.withClient { client ->
+                            val status = client.getDailyCheckInStatus(userId.toString())
+                            status.toSignInDataResponse()
+                        }
+                    )
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -323,7 +339,7 @@ class UserRepositoryImpl(
             name = name(),
             content = content(),
             photo = photo() ?: "",
-            spoiler = spoiler(),
+            spoiler = spoiler().toString(),
             replys = replys()?.map { it.toHistoryCommentListItem() }
         )
     }

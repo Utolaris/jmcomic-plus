@@ -26,7 +26,7 @@ ksp = "2.3.4"
 room = "2.8.4"
 workRuntimeKtx = "2.11.1"
 desugarJdkLibs = "2.1.4"
-jmcomicApiJava = "1.1.6"
+jmcomicApiJava = "1.1.8"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

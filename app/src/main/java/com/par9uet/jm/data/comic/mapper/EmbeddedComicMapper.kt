@@ -99,7 +99,7 @@ internal fun JmComment.toCommentListItem(): CommentListResponse.ListItem {
         name = nickname(),
         content = content(),
         photo = photo() ?: "",
-        spoiler = spoiler(),
+        spoiler = spoiler().toString(),
         replys = replys().orEmpty().map { it.toCommentListItem() },
     )
 }

@@ -362,6 +362,8 @@ class EmbeddedComicDataSource(
         commentId: Int?,
     ): NetWorkResult<CommentComicResponse> = withContext(Dispatchers.IO) {
         try {
+            // Upstream 1.1.8 throws after a successful POST when a restored session has no
+            // in-memory username; withClient maps that exact failure to success (null result).
             authenticatedEmbeddedClient.withClient { client ->
                 if (commentId != null) {
                     client.replyToComment(comicId.toString(), content, commentId.toString())
