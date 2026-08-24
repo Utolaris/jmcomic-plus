@@ -50,7 +50,6 @@ data class UserHistoryCommentListResponse(
                 id = it.CID.toIntOrZero(),
                 time = translateCommentTime(it.addtime.orEmpty()),
                 content = it.content.orEmpty(),
-                likeCount = it.likes.toIntOrZero(),
                 username = username,
                 nickname = nickname,
                 avatar = it.photo.orEmpty(),

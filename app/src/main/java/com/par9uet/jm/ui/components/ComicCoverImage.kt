@@ -161,7 +161,6 @@ private suspend fun buildComicDetailText(repository: ComicRepository, comicId: I
                     appendLine("作品: ${detail.works.joinToString(", ").ifBlank { "无" }}")
                     appendLine()
                     appendLine("=== 详情扩展 ===")
-                    appendLine("已喜欢: ${if (detail.liked) "是" else "否"}")
                     appendLine("已收藏: ${if (detail.is_favorite) "是" else "否"}")
                     appendLine("系列ID: ${detail.series_id.ifBlank { "无" }}")
                     appendLine("价格: ${detail.price}")

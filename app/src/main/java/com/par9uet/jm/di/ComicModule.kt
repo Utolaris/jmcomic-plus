@@ -1,10 +1,11 @@
 package com.par9uet.jm.di
 
 import com.par9uet.jm.data.comic.ComicEmbeddedDataSource
-import com.par9uet.jm.data.comic.ComicNetworkDataSource
 import com.par9uet.jm.data.comic.EmbeddedComicDataSource
-import com.par9uet.jm.data.comic.NetworkComicDataSource
+import com.par9uet.jm.data.comic.NetworkHomeDataSource
+import com.par9uet.jm.data.comic.RetrofitNetworkHomeDataSource
 import com.par9uet.jm.repository.ComicRepository
+import com.par9uet.jm.repository.impl.AuthenticatedEmbeddedClient
 import com.par9uet.jm.repository.impl.ComicRepositoryImpl
 import com.par9uet.jm.repository.impl.EmbeddedClientManager
 import com.par9uet.jm.reader.ReaderImagePipeline
@@ -17,8 +18,9 @@ import org.koin.dsl.module
 
 val comicModule = module {
     single { EmbeddedClientManager(get()) }
-    single { NetworkComicDataSource(get()) } bind ComicNetworkDataSource::class
-    single { EmbeddedComicDataSource(get()) } bind ComicEmbeddedDataSource::class
+    single { AuthenticatedEmbeddedClient(get(), get()) }
+    single { RetrofitNetworkHomeDataSource(get()) } bind NetworkHomeDataSource::class
+    single { EmbeddedComicDataSource(get(), get()) } bind ComicEmbeddedDataSource::class
     single { ComicRepositoryImpl(get(), get()) } bind ComicRepository::class
     single { ReaderImagePipeline(get(), get(), get()) }
 

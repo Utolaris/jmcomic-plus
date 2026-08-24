@@ -9,8 +9,6 @@ import com.par9uet.jm.store.FavoriteRemoteItem
 import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.store.FavoriteSyncProgress
 import com.par9uet.jm.store.FavoriteSyncReport
-import com.par9uet.jm.store.SessionReadinessHolder
-import com.par9uet.jm.store.awaitReady
 import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
@@ -33,8 +31,7 @@ import kotlinx.coroutines.withContext
 
 /** Coordinates persistent favorite synchronization without owning favorite persistence. */
 class FavoriteSyncService(
-    private val embeddedClientManager: EmbeddedClientManager,
-    private val sessionReadinessHolder: SessionReadinessHolder,
+    private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
     private val userStorage: UserStorage,
     private val favoriteStore: FavoriteStore,
     private val applicationScope: CoroutineScope,
@@ -82,7 +79,6 @@ class FavoriteSyncService(
         val startedAt = SystemClock.elapsedRealtime()
         log("FavoritesSync", "start account=$accountId folder=$folderId force=$force order=$order")
         return try {
-            awaitAuthenticatedSessionReady()
             if (!isActiveFavoriteAccount(accountId)) return NetWorkResult.Error("登录账号已变化")
             val snapshot = fetchRemoteFavoriteSnapshot(
                 folderId = folderId,
@@ -193,9 +189,11 @@ class FavoriteSyncService(
             var expectedTotal = 0
             var continuePaging = true
             while (continuePaging) {
-                val favoritePage = embeddedClientManager.getClient().getFavorites(
-                    FavoriteQuery.Builder().folderId(folderId).page(page).build()
-                )
+                val favoritePage = authenticatedEmbeddedClient.withClient { client ->
+                    client.getFavorites(
+                        FavoriteQuery.Builder().folderId(folderId).page(page).build()
+                    )
+                }
                 val pageItems = favoritePage.content().orEmpty().mapNotNull { it.toFavoriteRemoteItem() }
                 items += pageItems
                 favoritePage.folderList().orEmpty().forEach { (id, name) ->
@@ -280,12 +278,9 @@ class FavoriteSyncService(
     }
 
     private suspend fun fetchFavoriteMetadata(albumId: Int): FavoriteMetadataPayload =
-        embeddedClientManager.getClient().getAlbum(albumId.toString()).toFavoriteMetadataPayload()
-
-    private suspend fun awaitAuthenticatedSessionReady() {
-        if (embeddedClientManager.hasPersistedSession()) return
-        sessionReadinessHolder.awaitReady()
-    }
+        authenticatedEmbeddedClient.withClient { client ->
+            client.getAlbum(albumId.toString()).toFavoriteMetadataPayload()
+        }
 
     private fun JmAlbumMeta.toFavoriteRemoteItem(): FavoriteRemoteItem? {
         val albumId = id().toIntOrNull() ?: return null

@@ -14,7 +14,6 @@ data class WeekRecommendComicResponse(
         val image: String,
         val category: Category,
         val category_sub: Category,
-        val liked: Boolean,
         val is_favorite: Boolean,
         val update_at: Int,
     ) {
@@ -40,7 +39,6 @@ data class WeekRecommendComicResponse(
                 ).filter { title -> title.isNotBlank() }.distinct(),
                 roleList = listOf(),
                 workList = listOf(),
-                isLike = false,
                 isCollect = false,
                 relateComicList = listOf(),
                 comicChapterList = listOf(),

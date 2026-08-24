@@ -17,16 +17,23 @@ import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.UserStorage
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runTest
 import okhttp3.Cookie
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -35,6 +42,73 @@ import org.junit.Test
  * 陈旧验证结果不能覆盖更新的登录/登出，临时失败保留身份，InvalidCredentials 才清除。
  */
 class UserManagerSessionTest {
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun restoringSessionNeverFallsThroughToAuthenticatedWorkOnTimeout() = runTest {
+        val readiness = SessionReadinessHolder().apply {
+            set(SessionReadiness.Restoring)
+        }
+        val gate = AuthenticatedSessionGate(readiness)
+        var requestCalls = 0
+        val request = launch {
+            gate.run { requestCalls++ }
+        }
+
+        advanceTimeBy(5_000)
+        assertFalse(request.isCompleted)
+        assertEquals(0, requestCalls)
+
+        readiness.set(SessionReadiness.Authenticated)
+        request.join()
+        assertEquals(1, requestCalls)
+    }
+
+    @Test
+    fun canceledAuthenticatedWaitNeverExecutesTheRequest() = runTest {
+        val readiness = SessionReadinessHolder().apply {
+            set(SessionReadiness.Restoring)
+        }
+        val gate = AuthenticatedSessionGate(readiness)
+        var requestCalls = 0
+        val request = launch {
+            gate.run { requestCalls++ }
+        }
+
+        request.cancelAndJoin()
+        readiness.set(SessionReadiness.Authenticated)
+
+        assertTrue(request.isCancelled)
+        assertEquals(0, requestCalls)
+    }
+
+    @Test
+    fun unauthenticatedSessionRejectsRequestWithoutCallingIt() {
+        val readiness = SessionReadinessHolder().apply {
+            set(SessionReadiness.Unauthenticated)
+        }
+        val gate = AuthenticatedSessionGate(readiness)
+        var requestCalls = 0
+
+        assertThrows(AuthenticatedSessionRequiredException::class.java) {
+            runBlocking { gate.run { requestCalls++ } }
+        }
+        assertEquals(0, requestCalls)
+    }
+
+    @Test
+    fun authenticatedGatePropagatesCancellation() {
+        val readiness = SessionReadinessHolder().apply {
+            set(SessionReadiness.Authenticated)
+        }
+        val gate = AuthenticatedSessionGate(readiness)
+
+        assertThrows(CancellationException::class.java) {
+            runBlocking {
+                gate.run<Unit> { throw CancellationException("stop") }
+            }
+        }
+    }
 
     private class FakeUserStorage(initial: User = User.create()) : UserStorage {
         private val state = MutableStateFlow(initial)
@@ -385,7 +459,32 @@ class UserManagerSessionTest {
         assertEquals(1, manager.userState.value.data?.id)
         assertEquals("accountA", manager.userState.value.data?.username)
         assertEquals("session-A", cookieStorage.get().single().value)
-        // 后台验证尚未运行，就绪状态为 Restoring，认证请求会做有界等待。
-        assertEquals(SessionReadiness.Restoring, readiness.state.value)
+        // 持久化 cookie 可被 EmbeddedClientManager 同步恢复，认证功能可立即使用。
+        assertEquals(SessionReadiness.Authenticated, readiness.state.value)
+        assertEquals(SessionReadiness.Authenticated, manager.authState.value)
+    }
+
+    @Test
+    fun cachedIdentityWithoutRestoredSessionIsRestoringNotLoggedOut() {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        val readiness = SessionReadinessHolder()
+
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+
+        assertEquals(1, manager.userState.value.data?.id)
+        assertEquals(SessionReadiness.Restoring, manager.authState.value)
+        assertFalse(manager.authState.value == SessionReadiness.Unauthenticated)
+    }
+
+    @Test
+    fun noCachedIdentityIsUnauthenticatedAfterConstruction() {
+        val userStorage = FakeUserStorage()
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+
+        assertEquals(SessionReadiness.Unauthenticated, manager.authState.value)
     }
 }

@@ -37,7 +37,6 @@ data class UserHistoryComicListResponse (
                 ).filter { title -> title.isNotBlank() }.distinct(),
                 roleList = listOf(),
                 workList = listOf(),
-                isLike = false,
                 isCollect = false,
                 relateComicList = listOf(),
                 comicChapterList = listOf(),

@@ -14,8 +14,6 @@ data class Comic(
     val roleList: List<String>,
     // 相关作品
     val workList: List<String>,
-    // 是否喜爱
-    val isLike: Boolean = false,
     // 是否收藏
     val isCollect: Boolean = false,
     // 相关漫画
@@ -45,7 +43,6 @@ data class Comic(
                 tagList = listOf(),
                 roleList = listOf(),
                 workList = listOf(),
-                isLike = false,
                 isCollect = false,
                 relateComicList = listOf(),
                 comicChapterList = listOf(),

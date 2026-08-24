@@ -59,6 +59,7 @@ import com.kizitonwose.calendar.core.OutDateStyle
 import com.kizitonwose.calendar.core.daysOfWeek
 import com.kizitonwose.calendar.core.yearMonth
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin
@@ -95,7 +96,7 @@ fun SignInScreen(
     userManager: UserManager = getKoin().get()
 ) {
     val mainNavController = LocalMainNavController.current
-    val isLogin by userManager.isLoginState.collectAsState(false)
+    val authState by userManager.authState.collectAsState()
     val today = remember { LocalDate.now() }
     val daysOfWeek = remember { daysOfWeek() }
     val currentMonth = remember(today) { today.yearMonth }
@@ -116,11 +117,12 @@ fun SignInScreen(
             }?.get(0) ?: 0
         }
     }
-    LaunchedEffect(isLogin) {
-        if (isLogin) {
-            userViewModel.getSignInData()
-        } else {
-            mainNavController.navigate("login")
+    LaunchedEffect(authState) {
+        when (authState) {
+            SessionReadiness.Authenticated -> userViewModel.getSignInData()
+            SessionReadiness.Unauthenticated -> mainNavController.navigate("login")
+            SessionReadiness.Unknown,
+            SessionReadiness.Restoring -> Unit
         }
     }
 
@@ -130,10 +132,11 @@ fun SignInScreen(
                 .fillMaxSize(),
             isRefreshing = signDataState.isLoading,
             onRefresh = {
-                if (isLogin) {
-                    userViewModel.getSignInData()
-                } else {
-                    mainNavController.navigate("login")
+                when (authState) {
+                    SessionReadiness.Authenticated -> userViewModel.getSignInData()
+                    SessionReadiness.Unauthenticated -> mainNavController.navigate("login")
+                    SessionReadiness.Unknown,
+                    SessionReadiness.Restoring -> Unit
                 }
             }
         ) {
@@ -311,10 +314,11 @@ fun SignInScreen(
                                 .height(52.dp),
                             shape = MaterialTheme.shapes.large,
                             onClick = {
-                                if (isLogin) {
-                                    userViewModel.signIn()
-                                } else {
-                                    mainNavController.navigate("login")
+                                when (authState) {
+                                    SessionReadiness.Authenticated -> userViewModel.signIn()
+                                    SessionReadiness.Unauthenticated -> mainNavController.navigate("login")
+                                    SessionReadiness.Unknown,
+                                    SessionReadiness.Restoring -> Unit
                                 }
                             }
                         ) {

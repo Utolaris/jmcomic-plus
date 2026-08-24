@@ -50,6 +50,7 @@ import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
 import com.par9uet.jm.ui.interaction.PullDownSearchIndicator
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.navigation.NavigationMotion
 import com.par9uet.jm.ui.navigation.shouldIgnoreTabSelection
@@ -77,7 +78,9 @@ fun TabScreen(
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
-    val isLogin by userManager.isLoginState.collectAsState(false)
+    val authState by userManager.authState.collectAsState()
+    val isAuthenticated = authState == SessionReadiness.Authenticated
+    val canShowAuthenticatedUi = authState != SessionReadiness.Unauthenticated
     val homeState by comicViewModel.homeState.collectAsState()
     val homeTitle = resolveHomeCategoryTitle(homeState.categories, homeState.selectedCategoryId)
     val onHomeSearch = { mainNavController.navigate("comicSearch") }
@@ -85,10 +88,11 @@ fun TabScreen(
     val onHomeWeekly = { mainNavController.navigate("comicRecommend") }
     val onHomeExtract = { mainNavController.navigate("extractCode") }
     val onHomeSign = {
-        if (isLogin) {
-            mainNavController.navigate("sign")
-        } else {
-            mainNavController.navigate("login")
+        when (authState) {
+            SessionReadiness.Authenticated -> mainNavController.navigate("sign")
+            SessionReadiness.Unauthenticated -> mainNavController.navigate("login")
+            SessionReadiness.Unknown,
+            SessionReadiness.Restoring -> Unit
         }
     }
     val initialTab = MainTab.fromRoute(tabName) ?: MainTab.Home
@@ -156,8 +160,8 @@ fun TabScreen(
         }
     }
 
-    LaunchedEffect(pagerState.settledPage, isLogin) {
-        if (pagerState.settledPage == MainTab.Collect.index && !isLogin) {
+    LaunchedEffect(pagerState.settledPage, authState) {
+        if (pagerState.settledPage == MainTab.Collect.index && authState == SessionReadiness.Unauthenticated) {
             mainNavController.navigate("login")
         }
     }
@@ -165,9 +169,9 @@ fun TabScreen(
     // Favorites entry is an actual pager transition, not composition: the three primary
     // pages stay composed, so recomposition/prefetch must never count as entering.
     var previousSettledPage by rememberSaveable { mutableIntStateOf(initialTab.index) }
-    LaunchedEffect(pagerState.settledPage, isLogin) {
+    LaunchedEffect(pagerState.settledPage, isAuthenticated) {
         val currentlySettledPage = pagerState.settledPage
-        if (isLogin &&
+        if (isAuthenticated &&
             shouldTriggerFavoriteEntrySync(
                 previousSettledPage = previousSettledPage,
                 currentSettledPage = currentlySettledPage,
@@ -188,12 +192,12 @@ fun TabScreen(
     }
 
     // Logging in while already settled on Favorites must also trigger one eligible auto sync.
-    var previousIsLogin by rememberSaveable { mutableStateOf(isLogin) }
+    var previousIsLogin by rememberSaveable { mutableStateOf(isAuthenticated) }
     var initialCollectSyncRequested by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(isLogin) {
+    LaunchedEffect(isAuthenticated) {
         if (shouldTriggerFavoriteSyncAfterLogin(
                 previousIsLogin = previousIsLogin,
-                isLogin = isLogin,
+                isLogin = isAuthenticated,
                 settledPage = pagerState.settledPage,
                 favoritesPage = MainTab.Collect.index,
             )
@@ -201,7 +205,7 @@ fun TabScreen(
             initialCollectSyncRequested = true
             userViewModel.requestFavoriteAutoSync()
         }
-        previousIsLogin = isLogin
+        previousIsLogin = isAuthenticated
     }
 
     // Booting directly onto the Favorites route while authenticated gets one initial sync.
@@ -209,7 +213,7 @@ fun TabScreen(
         if (shouldRequestInitialFavoriteSync(
                 initialPage = initialTab.index,
                 favoritesPage = MainTab.Collect.index,
-                isLogin = isLogin,
+                isLogin = isAuthenticated,
                 alreadyRequested = initialCollectSyncRequested,
             )
         ) {
@@ -268,7 +272,7 @@ fun TabScreen(
                         pullDownState = homePullDownState,
                         onPullDownSearch = onHomeSearch,
                     )
-                    MainTab.Collect -> if (isLogin) {
+                    MainTab.Collect -> if (canShowAuthenticatedUi) {
                         UserCollectComicScreen(
                             useScaffold = false,
                             uiController = favoritesController,
@@ -350,7 +354,7 @@ fun TabScreen(
                                         topOffset = statusBarInset + AppGlassTopBarDefaults.ContentHeight,
                                         modifier = Modifier.align(Alignment.TopCenter),
                                     )
-                                } else if (selectedTab == MainTab.Collect && isLogin) {
+                                } else if (selectedTab == MainTab.Collect && canShowAuthenticatedUi) {
                                     FavoritesVariableGlassTopBar(
                                         statusBarInset = statusBarInset,
                                         controller = favoritesController,
@@ -438,7 +442,7 @@ fun TabScreen(
                                             },
                                         )
                                     }
-                                } else if (selectedTab == MainTab.Collect && isLogin) {
+                                } else if (selectedTab == MainTab.Collect && canShowAuthenticatedUi) {
                                     GlassAnchoredMenu(
                                         state = favoritesFolderMenuState,
                                         surfaceId = "favorites-folder-glass-menu",

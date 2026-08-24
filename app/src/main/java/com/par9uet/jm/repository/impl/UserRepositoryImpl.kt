@@ -4,8 +4,6 @@ import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.repository.VerifiedCredentials
-import com.par9uet.jm.store.SessionReadinessHolder
-import com.par9uet.jm.store.awaitReady
 import com.par9uet.jm.utils.logError
 import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
@@ -26,7 +24,6 @@ import io.github.jukomu.jmcomic.api.model.JmCategoryMeta
 import io.github.jukomu.jmcomic.api.model.JmComment
 import io.github.jukomu.jmcomic.api.model.JmDailyCheckInStatus
 import io.github.jukomu.jmcomic.api.model.JmUserInfo
-import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -37,7 +34,7 @@ import java.net.UnknownHostException
 
 class UserRepositoryImpl(
     private val embeddedClientManager: EmbeddedClientManager,
-    private val sessionReadinessHolder: SessionReadinessHolder,
+    private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
     private val favoriteStore: FavoriteStore,
     private val favoriteSyncService: FavoriteSyncService,
 ) : UserRepository {
@@ -153,24 +150,22 @@ class UserRepositoryImpl(
         @Suppress("UNUSED_PARAMETER") order: CollectComicOrderFilter,
         folderId: Int,
     ): NetWorkResult<UserCollectComicListResponse> {
-        awaitAuthenticatedSessionReady()
         return withContext(Dispatchers.IO) {
             try {
-                val client = embeddedClientManager.getClient()
-                val query = FavoriteQuery.Builder()
-                    .folderId(folderId)
-                    .page(page)
-                    .build()
-                val favPage = client.getFavorites(query)
-                val metas = favPage.content().orEmpty()
-                NetWorkResult.Success(
+                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
+                    val query = FavoriteQuery.Builder()
+                        .folderId(folderId)
+                        .page(page)
+                        .build()
+                    val favPage = client.getFavorites(query)
+                    val metas = favPage.content().orEmpty()
                     UserCollectComicListResponse(
                         count = favPage.totalItems(),
                         folder_list = favPage.folderList(),
                         list = metas.map { it.toListItem() },
                         total = favPage.totalItems()
                     )
-                )
+                })
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -225,10 +220,9 @@ class UserRepositoryImpl(
     }
 
     override suspend fun getHistoryComicList(page: Int): NetWorkResult<UserHistoryComicListResponse> {
-        awaitAuthenticatedSessionReady()
         return withContext(Dispatchers.IO) {
             try {
-                NetWorkResult.Success(withEmbeddedClient { client ->
+                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
                     val albumMetas = client.getWatchHistory(page)
                     UserHistoryComicListResponse(
                         list = albumMetas.map { it.toHistoryListItem() },
@@ -244,10 +238,9 @@ class UserRepositoryImpl(
     }
 
     override suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit> {
-        awaitAuthenticatedSessionReady()
         return withContext(Dispatchers.IO) {
             try {
-                withEmbeddedClient { client ->
+                authenticatedEmbeddedClient.withClient { client ->
                     client.deleteWatchHistory(id.toString())
                 }
                 NetWorkResult.Success(Unit)
@@ -264,10 +257,9 @@ class UserRepositoryImpl(
         page: Int,
         userId: Int
     ): NetWorkResult<UserHistoryCommentListResponse> {
-        awaitAuthenticatedSessionReady()
         return withContext(Dispatchers.IO) {
             try {
-                NetWorkResult.Success(withEmbeddedClient { client ->
+                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
                     val query = ForumQuery.user(userId.toString())
                         .page(page)
                         .build()
@@ -286,10 +278,9 @@ class UserRepositoryImpl(
     }
 
     override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> {
-        awaitAuthenticatedSessionReady()
         return withContext(Dispatchers.IO) {
             try {
-                NetWorkResult.Success(withEmbeddedClient { client ->
+                NetWorkResult.Success(authenticatedEmbeddedClient.withClient { client ->
                     val status = client.getDailyCheckInStatus(userId.toString())
                     status.toSignInDataResponse()
                 })
@@ -302,10 +293,9 @@ class UserRepositoryImpl(
     }
 
     override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<SignInResponse> {
-        awaitAuthenticatedSessionReady()
         return withContext(Dispatchers.IO) {
             try {
-                withEmbeddedClient { client ->
+                authenticatedEmbeddedClient.withClient { client ->
                     client.doDailyCheckin(userId.toString(), dailyId.toString())
                 }
                 NetWorkResult.Success(SignInResponse(msg = "签到成功"))
@@ -315,20 +305,6 @@ class UserRepositoryImpl(
                 NetWorkResult.Error("内置API签到失败：${e.message ?: "未知错误"}")
             }
         }
-    }
-
-    /**
-     * 启动阶段的后台会话恢复尚未完成时，认证类请求做有界等待（默认 2 秒），
-     * 避免用未恢复/未验证的会话发出注定 401 的请求。公开接口不调用此方法。
-     * 若已有持久化会话（恢复是瞬时的），直接放行，不等后台验证。
-     */
-    private suspend fun awaitAuthenticatedSessionReady() {
-        if (embeddedClientManager.hasPersistedSession()) return
-        sessionReadinessHolder.awaitReady()
-    }
-
-    private fun <T> withEmbeddedClient(block: (JmApiClient) -> T): T {
-        return block(embeddedClientManager.getClient())
     }
 
     private fun JmComment.toHistoryCommentListItem(): UserHistoryCommentListResponse.ListItem {

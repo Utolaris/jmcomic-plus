@@ -33,7 +33,6 @@ import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.RemoveRedEye
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
@@ -54,6 +53,7 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -63,17 +63,21 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.Comment
 import com.par9uet.jm.storage.ComicReadHistory
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.ReadHistoryManager
+import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
 import com.par9uet.jm.ui.components.ComicContentTag
@@ -87,8 +91,11 @@ import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.utils.shimmer
+import androidx.paging.compose.collectAsLazyPagingItems
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
+
+internal val ComicDetailHorizontalPadding = 10.dp
 
 @Composable
 private fun ComicInfoListItem(
@@ -145,7 +152,7 @@ private fun ComicDetailSkeleton(topContentPadding: Dp) {
                 .shimmer()
         )
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp),
+            modifier = Modifier.padding(horizontal = ComicDetailHorizontalPadding),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
@@ -280,16 +287,30 @@ fun ComicDetailScreen(
     userManager: UserManager = getKoin().get()
 ) {
     val mainNavController = LocalMainNavController.current
+    val focusManager = LocalFocusManager.current
     val scrollState = rememberScrollState()
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
-    val likeRequestInFlightComicIds by comicDetailViewModel.likeRequestInFlightComicIds.collectAsState()
     val readHistory by readHistoryManager.readHistoryState.collectAsState()
-    val isLogin by userManager.isLoginState.collectAsState(false)
+    val authState by userManager.authState.collectAsState()
+    val commentLazyPagingItems = comicDetailViewModel.commentPager.collectAsLazyPagingItems()
+    val commentInputFocusRequester = remember { FocusRequester() }
     var showDownloadChapterDialog by remember { mutableStateOf(false) }
     var selectedChapterIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var replyComment by remember(id) { mutableStateOf<Comment?>(null) }
+    var commentComposerFocused by remember(id) { mutableStateOf(false) }
+    var commentComposerRevealed by remember(id) { mutableStateOf(false) }
+    val shouldRevealCommentComposer by remember {
+        derivedStateOf {
+            scrollState.maxValue > 0 && scrollState.value >= scrollState.maxValue / 2
+        }
+    }
 
     fun requireLogin(action: () -> Unit) {
-        if (isLogin) action() else mainNavController.navigate("login")
+        if (authState == SessionReadiness.Unauthenticated) {
+            mainNavController.navigate("login")
+        } else {
+            action()
+        }
     }
 
     fun searchTag(tag: String) {
@@ -297,9 +318,13 @@ fun ComicDetailScreen(
     }
 
     LaunchedEffect(id) {
+        comicDetailViewModel.changeCommentComicId(id)
         if (comicDetailState.data?.id != id) {
             comicDetailViewModel.getComicDetail(id)
         }
+    }
+    LaunchedEffect(shouldRevealCommentComposer) {
+        if (shouldRevealCommentComposer) commentComposerRevealed = true
     }
     val navigationBarInset = with(LocalDensity.current) {
         WindowInsets.navigationBars.getBottom(this).toDp()
@@ -380,15 +405,23 @@ fun ComicDetailScreen(
                                             modifier = Modifier
                                                 .weight(0.58f)
                                                 .verticalScroll(scrollState)
+                                                .padding(horizontal = ComicDetailHorizontalPadding)
                                                 .padding(bottom = detailContentBottomPadding),
                                             verticalArrangement = Arrangement.spacedBy(16.dp),
                                         ) {
                                             ComicMetadataContent(comic, ::searchTag)
-                                            ComicCommentArea(
-                                                comicId = comic.id,
+                                            ComicCommentContent(
+                                                commentLazyPagingItems = commentLazyPagingItems,
+                                                authState = authState,
+                                                onLogin = { mainNavController.navigate("login") },
+                                                onReply = {
+                                                    replyComment = it
+                                                    commentComposerRevealed = true
+                                                },
                                                 modifier = Modifier
                                                     .fillMaxWidth()
                                                     .height(viewportHeight),
+                                                listBottomPadding = detailBarHeight + detailBarBottomPadding + 100.dp,
                                             )
                                         }
                                     }
@@ -405,17 +438,24 @@ fun ComicDetailScreen(
                                     ) {
                                         ComicCoverImage(comic = comic, showIdChip = true)
                                         Column(
-                                            modifier = Modifier.padding(horizontal = 10.dp),
+                                            modifier = Modifier.padding(horizontal = ComicDetailHorizontalPadding),
                                             verticalArrangement = Arrangement.spacedBy(16.dp),
                                         ) {
                                             ComicMetadataContent(comic, ::searchTag)
+                                            ComicCommentContent(
+                                                commentLazyPagingItems = commentLazyPagingItems,
+                                                authState = authState,
+                                                onLogin = { mainNavController.navigate("login") },
+                                                onReply = {
+                                                    replyComment = it
+                                                    commentComposerRevealed = true
+                                                },
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(viewportHeight),
+                                                listBottomPadding = detailBarHeight + detailBarBottomPadding + 100.dp,
+                                            )
                                         }
-                                        ComicCommentArea(
-                                            comicId = comic.id,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(viewportHeight),
-                                        )
                                     }
                                 }
                             }
@@ -463,53 +503,79 @@ fun ComicDetailScreen(
                     },
                 )
                 if (comic != null) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = detailBarBottomPadding),
-                    ) {
-                        ComicDetailBottomBar(
+                    if (!commentComposerFocused) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(bottom = detailBarBottomPadding),
+                        ) {
+                            ComicDetailBottomBar(
+                                modifier = Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .widthIn(max = 600.dp)
+                                    .height(detailBarHeight),
+                                comic = comic,
+                                readHistoryManager = readHistoryManager,
+                                readHistory = readHistory,
+                                onCollect = {
+                                    requireLogin {
+                                        if (comic.isCollect) {
+                                            comicDetailViewModel.unCollect(comic.id)
+                                        } else {
+                                            comicDetailViewModel.refreshFolderList()
+                                            comicDetailViewModel.showFolderPicker()
+                                        }
+                                    }
+                                },
+                                onRelated = { mainNavController.navigate("comicRelate") },
+                                onDownload = {
+                                    if (comic.comicChapterList.isEmpty()) {
+                                        downloadManager.downloadComic(comic)
+                                    } else {
+                                        selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
+                                        showDownloadChapterDialog = true
+                                    }
+                                },
+                                onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
+                                onChapters = {
+                                    val currentChapterId =
+                                        readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
+                                    mainNavController.navigate(
+                                        "comicChapter?currentChapterId=$currentChapterId"
+                                    )
+                                },
+                            )
+                        }
+                    }
+                    if (commentComposerRevealed) {
+                        val composerBottomPadding = if (commentComposerFocused) {
+                            detailBarBottomPadding
+                        } else {
+                            detailBarHeight + detailBarBottomPadding + 8.dp
+                        }
+                        CommentComposer(
+                            comicId = comic.id,
+                            authState = authState,
+                            replyComment = replyComment,
+                            onReplyCancel = { replyComment = null },
+                            commentLazyPagingItems = commentLazyPagingItems,
+                            commentInputFocusRequester = commentInputFocusRequester,
+                            comicDetailViewModel = comicDetailViewModel,
+                            onLogin = { mainNavController.navigate("login") },
+                            onSuccess = {
+                                replyComment = null
+                                commentComposerFocused = false
+                                focusManager.clearFocus()
+                            },
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
+                                .padding(horizontal = ComicDetailHorizontalPadding)
+                                .padding(bottom = composerBottomPadding)
                                 .fillMaxWidth()
-                                .widthIn(max = 600.dp)
-                                .height(detailBarHeight),
-                            comic = comic,
-                            likeEnabled = !comic.isLike && comic.id !in likeRequestInFlightComicIds,
-                            readHistoryManager = readHistoryManager,
-                            readHistory = readHistory,
-                            onLike = {
-                                requireLogin {
-                                    comicDetailViewModel.likeComic(comic.id)
-                                }
-                            },
-                            onCollect = {
-                                requireLogin {
-                                    if (comic.isCollect) {
-                                        comicDetailViewModel.unCollect(comic.id)
-                                    } else {
-                                        comicDetailViewModel.refreshFolderList()
-                                        comicDetailViewModel.showFolderPicker()
-                                    }
-                                }
-                            },
-                            onRelated = { mainNavController.navigate("comicRelate") },
-                            onDownload = {
-                                if (comic.comicChapterList.isEmpty()) {
-                                    downloadManager.downloadComic(comic)
-                                } else {
-                                    selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
-                                    showDownloadChapterDialog = true
-                                }
-                            },
-                            onRead = { targetId -> mainNavController.navigate("comicRead/$targetId") },
-                            onChapters = {
-                                val currentChapterId =
-                                    readHistoryManager.lastReadChapterId(comic, readHistory) ?: -1
-                                mainNavController.navigate(
-                                    "comicChapter?currentChapterId=$currentChapterId"
-                                )
-                            },
+                                .widthIn(max = 600.dp),
+                            glassSurfaceId = "comic-detail-comment-composer",
+                            onFocusedChange = { commentComposerFocused = it },
                         )
                     }
                 }
@@ -567,10 +633,8 @@ private fun FolderPickerSheet(
 private fun ComicDetailBottomBar(
     modifier: Modifier = Modifier,
     comic: Comic,
-    likeEnabled: Boolean,
     readHistoryManager: ReadHistoryManager,
     readHistory: Map<Int, ComicReadHistory>,
-    onLike: () -> Unit,
     onCollect: () -> Unit,
     onRelated: () -> Unit,
     onDownload: () -> Unit,
@@ -591,7 +655,7 @@ private fun ComicDetailBottomBar(
         BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
             val iconCellSize = 48.dp
             val readButtonWidth = (
-                maxWidth - 16.dp - iconCellSize * 5
+                maxWidth - 16.dp - iconCellSize * 4
             ).coerceAtLeast(100.dp)
 
             Row(
@@ -611,14 +675,6 @@ private fun ComicDetailBottomBar(
                     Text(if (lastReadChapterId != null) "\u7ee7\u7eed\u9605\u8bfb" else "\u9605\u8bfb")
                 }
 
-                DetailIconAction(
-                    icon = if (comic.isLike) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                    contentDescription = if (comic.isLike) "\u5df2\u559c\u6b22" else "\u559c\u6b22",
-                    enabled = likeEnabled,
-                    tint = if (comic.isLike) MaterialTheme.colorScheme.error else null,
-                    size = iconCellSize,
-                    onClick = onLike,
-                )
                 DetailIconAction(
                     icon = if (comic.isCollect) Icons.Filled.Bookmark else Icons.Filled.BookmarkBorder,
                     contentDescription = if (comic.isCollect) "\u5df2\u6536\u85cf" else "\u6536\u85cf",

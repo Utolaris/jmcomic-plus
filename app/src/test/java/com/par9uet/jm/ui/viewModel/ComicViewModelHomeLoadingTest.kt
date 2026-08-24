@@ -10,7 +10,6 @@ import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
@@ -86,9 +85,6 @@ class ComicViewModelHomeLoadingTest {
         override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
             NetWorkResult.Error("stub")
 
-        override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> =
-            NetWorkResult.Error("stub")
-
         override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> =
             NetWorkResult.Error("stub")
 
@@ -126,9 +122,6 @@ class ComicViewModelHomeLoadingTest {
             commentId: Int?
         ): NetWorkResult<CommentComicResponse> = NetWorkResult.Error("stub")
 
-        override suspend fun likeComment(commentId: Int): NetWorkResult<CommentComicResponse> =
-            NetWorkResult.Error("stub")
-
         override suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit> =
             NetWorkResult.Error("stub")
 
@@ -153,7 +146,6 @@ class ComicViewModelHomeLoadingTest {
             image = "",
             category = HomeSwiperComicListItemResponse.ListItem.Category(null, null),
             category_sub = HomeSwiperComicListItemResponse.ListItem.Category(null, null),
-            liked = false,
             is_favorite = false,
             update_at = 0,
         )

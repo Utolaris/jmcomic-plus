@@ -25,7 +25,6 @@ internal fun JmAlbum.toComicDetailResponse(): ComicDetailResponse {
         actors = actors().orEmpty(),
         works = works().orEmpty(),
         is_favorite = isFavorite,
-        liked = liked(),
         related_list = relatedAlbums().orEmpty().map {
             ComicDetailRelatedListItemResponse(
                 id = it.id().orEmpty(),
@@ -65,7 +64,6 @@ internal fun JmAlbumMeta.toContentListItem(): ComicListResponse.ContentListItem 
         image = image().orEmpty(),
         category = category().toContentCategory(),
         category_sub = subCategory().toContentCategory(),
-        liked = false,
         is_favorite = false,
         update_at = 0,
     )
@@ -80,7 +78,6 @@ internal fun JmAlbumMeta.toHomeListItem(): HomeSwiperComicListItemResponse.ListI
         image = image().orEmpty(),
         category = category().toHomeCategory(),
         category_sub = subCategory().toHomeCategory(),
-        liked = false,
         is_favorite = false,
         update_at = 0,
     )

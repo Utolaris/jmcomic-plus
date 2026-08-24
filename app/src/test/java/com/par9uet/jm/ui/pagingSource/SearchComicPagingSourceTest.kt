@@ -12,7 +12,6 @@ import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
@@ -80,7 +79,6 @@ class SearchComicPagingSourceTest {
             error("getComicIdsByTag should not be used for search exclusions")
         }
 
-        override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> = unused()
 
         override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> = unused()
 
@@ -112,8 +110,6 @@ class SearchComicPagingSourceTest {
             commentId: Int?
         ): NetWorkResult<CommentComicResponse> = unused()
 
-        override suspend fun likeComment(commentId: Int): NetWorkResult<CommentComicResponse> = unused()
-
         override suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit> = unused()
 
         override suspend fun deleteFavoriteFolder(folderId: String): NetWorkResult<Unit> = unused()
@@ -132,7 +128,6 @@ class SearchComicPagingSourceTest {
                 image = "",
                 category = category,
                 category_sub = category,
-                liked = false,
                 is_favorite = false,
                 update_at = 0,
                 tags = null
@@ -152,7 +147,6 @@ class SearchComicPagingSourceTest {
                 actors = emptyList(),
                 works = emptyList(),
                 is_favorite = false,
-                liked = false,
                 related_list = emptyList<ComicDetailRelatedListItemResponse>(),
                 series = emptyList(),
                 series_id = "",

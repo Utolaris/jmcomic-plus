@@ -15,7 +15,6 @@ data class ComicDetailResponse(
     val actors: List<String>,
     val works: List<String>,
     val is_favorite: Boolean,
-    val liked: Boolean,
     val related_list: List<ComicDetailRelatedListItemResponse>,
     val series: List<ComicDetailSeriesListItemResponse>,
     val series_id: String,
@@ -34,7 +33,6 @@ data class ComicDetailResponse(
             tagList = tags,
             roleList = actors,
             workList = works,
-            isLike = liked,
             isCollect = is_favorite,
             relateComicList = related_list.map {
                 Comic.create(

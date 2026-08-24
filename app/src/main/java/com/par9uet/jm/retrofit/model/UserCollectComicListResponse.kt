@@ -50,7 +50,6 @@ data class UserCollectComicListResponse(
                 },
                 roleList = listOf(),
                 workList = listOf(),
-                isLike = false,
                 isCollect = false,
                 relateComicList = listOf(),
                 comicChapterList = listOf(),

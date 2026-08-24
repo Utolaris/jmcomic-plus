@@ -70,6 +70,7 @@ import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ReadHistoryManager
+import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.glass.GlassCaptureHost
 import com.par9uet.jm.ui.glass.GlassSurface
@@ -96,7 +97,7 @@ fun ComicReadScreen(
     val size = comicReadViewModel.size
     var currentIndexState by comicReadViewModel.currentIndexState
     val localSetting by localSettingManager.localSettingState.collectAsState()
-    val isLogin by userManager.isLoginState.collectAsState(false)
+    val authState by userManager.authState.collectAsState()
     val comicPicState by comicReadViewModel.comicPicState.collectAsState()
     val comicDetailState by comicReadViewModel.comicDetailState.collectAsState()
     val localChapterList by comicReadViewModel.localChapterList.collectAsState()
@@ -311,7 +312,7 @@ fun ComicReadScreen(
                             chapterEnabled = readableChapters.isNotEmpty(),
                             surfaceAlpha = glassAlpha,
                             onToggleCollect = {
-                                if (!isLogin) {
+                                if (authState == SessionReadiness.Unauthenticated) {
                                     mainNavController.navigate("login")
                                 } else {
                                     comic?.let { currentComic ->
@@ -335,7 +336,7 @@ fun ComicReadScreen(
                                 }
                             },
                             onComment = {
-                                if (!isLogin) {
+                                if (authState == SessionReadiness.Unauthenticated) {
                                     mainNavController.navigate("login")
                                 } else {
                                     mainNavController.navigate("comment/$comicId")

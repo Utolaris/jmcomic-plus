@@ -56,6 +56,7 @@ import com.par9uet.jm.R
 import com.par9uet.jm.data.models.User
 import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
@@ -324,12 +325,14 @@ fun UserScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     val userState by userManager.userState.collectAsState()
-    val isLogin by userManager.isLoginState.collectAsState(false)
+    val authState by userManager.authState.collectAsState()
+    val hasCachedIdentity = authState != SessionReadiness.Unauthenticated &&
+        (userState.data?.id ?: 0) > 0
     val remoteSetting by remoteSettingManager.remoteSettingState.collectAsState()
     val mainNavController = LocalMainNavController.current
 
     fun checkLoginThenDo(onDo: () -> Unit) {
-        if (!isLogin) {
+        if (authState == SessionReadiness.Unauthenticated) {
             mainNavController.navigate("login")
             return
         }
@@ -341,7 +344,7 @@ fun UserScreen(
         state = rememberPullToRefreshState(),
         onRefresh = {
             val user = userState.data
-            if (isLogin && user != null) {
+            if (authState == SessionReadiness.Authenticated && user != null) {
                 coroutineScope.launch {
                     userManager.autoLogin(user.username, user.password)
                 }
@@ -362,7 +365,7 @@ fun UserScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             val user = userState.data
-            if (isLogin && user != null) {
+            if (hasCachedIdentity && user != null) {
                 UserHeader(
                     user = user,
                     imgHost = remoteSetting.imgHost
@@ -417,7 +420,7 @@ fun UserScreen(
                     label = "标签排除",
                     onClick = { mainNavController.navigate("blockedTags") }
                 )
-                if (isLogin) {
+                if (hasCachedIdentity) {
                     MenuDivider()
                     MenuItem(
                         icon = Icons.AutoMirrored.Filled.Logout,

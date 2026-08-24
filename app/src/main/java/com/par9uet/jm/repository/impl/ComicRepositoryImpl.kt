@@ -1,7 +1,7 @@
 package com.par9uet.jm.repository.impl
 
 import com.par9uet.jm.data.comic.ComicEmbeddedDataSource
-import com.par9uet.jm.data.comic.ComicNetworkDataSource
+import com.par9uet.jm.data.comic.NetworkHomeDataSource
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.CollectComicResponse
@@ -11,7 +11,6 @@ import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
@@ -21,14 +20,11 @@ import com.par9uet.jm.retrofit.model.WeekResponse
  * optional Home recommendation exception and never participates in normal business routing.
  */
 class ComicRepositoryImpl(
-    private val networkDataSource: ComicNetworkDataSource,
+    private val networkHomeDataSource: NetworkHomeDataSource,
     private val embeddedDataSource: ComicEmbeddedDataSource,
 ) : ComicRepository {
     override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
         embeddedDataSource.getComicDetail(id)
-
-    override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> =
-        embeddedDataSource.likeComic(id)
 
     override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> =
         embeddedDataSource.collectComic(id)
@@ -42,7 +38,7 @@ class ComicRepositoryImpl(
         embeddedDataSource.getHomeCategory(categoryId)
 
     override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> =
-        networkDataSource.getHomePage()
+        networkHomeDataSource.getHomePage()
 
     override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPicListResponse> =
         embeddedDataSource.getComicPicList(id)
@@ -79,9 +75,6 @@ class ComicRepositoryImpl(
         commentId: Int?,
     ): NetWorkResult<CommentComicResponse> =
         embeddedDataSource.comment(content, comicId, commentId)
-
-    override suspend fun likeComment(commentId: Int): NetWorkResult<CommentComicResponse> =
-        networkDataSource.likeComment(commentId)
 
     override suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit> =
         embeddedDataSource.createFavoriteFolder(name)

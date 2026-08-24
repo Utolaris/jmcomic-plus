@@ -8,18 +8,12 @@ import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
 
 interface ComicRepository {
     suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse>
-    /**
-     * 喜欢漫画。JM 当前使用的 /like 接口是单向点赞接口，已喜欢的漫画不能通过再次调用
-     * 取消喜欢；本地状态只能在服务端确认成功后变为已喜欢。
-     */
-    suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse>
     suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse>
     suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse>
     /** Embedded API: load one Home category lazily. */
@@ -52,8 +46,6 @@ interface ComicRepository {
         comicId: Int,
         commentId: Int?
     ): NetWorkResult<CommentComicResponse>
-
-    suspend fun likeComment(commentId: Int): NetWorkResult<CommentComicResponse>
 
     suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit>
     suspend fun deleteFavoriteFolder(folderId: String): NetWorkResult<Unit>

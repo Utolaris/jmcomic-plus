@@ -18,7 +18,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -46,7 +45,8 @@ class UserManager(
     private val _userState = MutableStateFlow(CommonUIState<User>())
     val userState = _userState.asStateFlow()
 
-    val isLoginState = _userState.map { (it.data?.id ?: 0) > 0 }
+    /** Authoritative UI authentication state; Compose callers must not supply a fake false initial value. */
+    val authState = sessionReadinessHolder.state
     private val loginMutex = Mutex()
     private val sessionGeneration = AtomicLong(0L)
 
@@ -61,14 +61,7 @@ class UserManager(
         // Restoring the local identity is cheap and keeps the first frame consistent with the
         // last session. Network verification is deliberately started after the UI is ready.
         _userState.value = _userState.value.copy(data = runCatching { userStorage.get() }.getOrNull())
-        val cached = _userState.value.data
-        sessionReadinessHolder.set(
-            if (cached != null && cached.id > 0 && cached.username.isNotEmpty() && cached.password.isNotEmpty()) {
-                SessionReadiness.Restoring
-            } else {
-                SessionReadiness.Unauthenticated
-            }
-        )
+        sessionReadinessHolder.set(readinessForCachedUser(_userState.value.data))
     }
 
     /** Compatibility entry point for callers that replace the active identity directly. */
@@ -76,6 +69,7 @@ class UserManager(
         sessionGeneration.incrementAndGet()
         _userState.update { it.copy(data = user) }
         userStorage.set(user)
+        sessionReadinessHolder.set(readinessForCachedUser(user))
     }
 
     suspend fun clearUser() {
@@ -314,6 +308,22 @@ class UserManager(
         userRepository.clearSession()
         userStorage.remove()
         cookieStorage.remove()
+    }
+
+    private fun readinessForCachedUser(user: User?): SessionReadiness {
+        val hasIdentity = user != null &&
+            user.id > 0 &&
+            user.username.isNotEmpty() &&
+            user.password.isNotEmpty()
+        if (!hasIdentity) return SessionReadiness.Unauthenticated
+        val hasEmbeddedAuthCookie = cookieStorage.get().any {
+            it.name.equals("AVS", ignoreCase = true)
+        }
+        return if (hasEmbeddedAuthCookie) {
+            SessionReadiness.Authenticated
+        } else {
+            SessionReadiness.Restoring
+        }
     }
 
     private fun isCurrentSession(snapshot: SessionSnapshot): Boolean {

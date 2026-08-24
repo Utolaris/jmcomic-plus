@@ -1,7 +1,7 @@
 package com.par9uet.jm.repository.impl
 
 import com.par9uet.jm.data.comic.ComicEmbeddedDataSource
-import com.par9uet.jm.data.comic.ComicNetworkDataSource
+import com.par9uet.jm.data.comic.NetworkHomeDataSource
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.retrofit.model.CollectComicResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
@@ -10,7 +10,6 @@ import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
@@ -21,16 +20,13 @@ import org.junit.Test
 private fun <T> routingStub(): NetWorkResult<T> = NetWorkResult.Error("stub")
 
 class ComicRepositoryRoutingTest {
-    private class NetworkFake : ComicNetworkDataSource {
+    private class NetworkFake : NetworkHomeDataSource {
         var homeCalls = 0
 
         override suspend fun getHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> {
             homeCalls++
             return NetWorkResult.Error("network")
         }
-
-        override suspend fun likeComment(commentId: Int): NetWorkResult<CommentComicResponse> =
-            routingStub()
     }
 
     private class EmbeddedFake : ComicEmbeddedDataSource {
@@ -43,7 +39,6 @@ class ComicRepositoryRoutingTest {
             return NetWorkResult.Error("embedded")
         }
 
-        override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> = routingStub()
         override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> = routingStub()
         override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> = routingStub()
 

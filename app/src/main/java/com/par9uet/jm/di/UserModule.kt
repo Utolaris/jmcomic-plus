@@ -11,7 +11,7 @@ import org.koin.dsl.module
 val userModule = module {
     single {
         FavoriteSyncService(
-            get(), get(), get(), get(), get(),
+            get(), get(), get(), get(),
         )
     }
     single { UserRepositoryImpl(get(), get(), get(), get()) } bind UserRepository::class

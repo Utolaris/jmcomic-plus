@@ -45,7 +45,6 @@ data class CommentListResponse(
             id = CID.toIntOrZero(),
             time = translateCommentTime(addtime.orEmpty()),
             content = content.orEmpty(),
-            likeCount = likes.toIntOrZero(),
             username = username.orEmpty(),
             nickname = nickname.orEmpty().ifBlank { username.orEmpty() },
             avatar = photo.orEmpty(),

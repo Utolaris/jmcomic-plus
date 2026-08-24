@@ -12,16 +12,13 @@ import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.model.CollectComicResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
-import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
-import com.par9uet.jm.ui.state.ComicLikeState
-import com.par9uet.jm.ui.state.LikeRequestGate
-import com.par9uet.jm.utils.log
+import com.par9uet.jm.ui.state.CommentSubmissionGate
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -75,78 +72,6 @@ class ComicDetailViewModel(
                 it.copy(
                     isLoading = false
                 )
-            }
-        }
-    }
-
-    private val _likeComicState = MutableStateFlow(CommonUIState(data = null))
-    val likeComicState = _likeComicState.asStateFlow()
-    private val likeRequestGate = LikeRequestGate()
-    private val _likeRequestInFlightComicIds = MutableStateFlow<Set<Int>>(emptySet())
-    val likeRequestInFlightComicIds = _likeRequestInFlightComicIds.asStateFlow()
-
-    /**
-     * 提交单向喜欢请求。已喜欢的漫画不再请求；状态只在服务端成功后更新。
-     * 同一漫画的请求在途期间，重复点击直接忽略。
-     */
-    fun likeComic(id: Int) {
-        val currentData = _comicDetailState.value.data
-        if (
-            currentData == null ||
-            currentData.id != id ||
-            !ComicLikeState.canSubmitLike(currentData.isLike)
-        ) return
-        if (!likeRequestGate.tryAcquire(id)) return
-        _likeRequestInFlightComicIds.update { it + id }
-        viewModelScope.launch {
-            try {
-                _likeComicState.update {
-                    it.copy(
-                        isLoading = true,
-                        isError = false,
-                        errorMsg = ""
-                    )
-                }
-                when (val data = comicRepository.likeComic(id)) {
-                    is NetWorkResult.Error -> {
-                        // 失败保留原有 isLike / likeCount，仅提示错误
-                        _likeComicState.update {
-                            it.copy(
-                                isError = true,
-                                errorMsg = data.message
-                            )
-                        }
-                        toastManager.showAsync(data.message)
-                    }
-
-                    is NetWorkResult.Success<LikeComicResponse> -> {
-                        _comicDetailState.update { state ->
-                            val currentData = state.data
-                            if (currentData != null && currentData.id == id) {
-                                val (newIsLike, newLikeCount) = ComicLikeState.applyLikeResult(
-                                    isLike = currentData.isLike,
-                                    likeCount = currentData.likeCount,
-                                    succeeded = true,
-                                )
-                                state.copy(
-                                    data = currentData.copy(
-                                        isLike = newIsLike,
-                                        likeCount = newLikeCount
-                                    )
-                                )
-                            } else {
-                                state
-                            }
-                        }
-                        toastManager.showAsync("喜欢成功")
-                    }
-                }
-            } finally {
-                likeRequestGate.release(id)
-                _likeRequestInFlightComicIds.update { it - id }
-                _likeComicState.update {
-                    it.copy(isLoading = _likeRequestInFlightComicIds.value.isNotEmpty())
-                }
             }
         }
     }
@@ -351,74 +276,59 @@ class ComicDetailViewModel(
 
     private val _commentComicState = MutableStateFlow(CommonUIState(data = null))
     val commentComicState = _commentComicState.asStateFlow()
+    private val commentSubmissionGate = CommentSubmissionGate()
+
     fun comment(
         content: String,
         comicId: Int,
         commentId: Int? = null,
         onSuccess: (() -> Unit)? = null
     ) {
+        if (content.isBlank() || !commentSubmissionGate.tryAcquire()) return
+        _commentComicState.update {
+            it.copy(
+                isLoading = true,
+                isError = false,
+                errorMsg = ""
+            )
+        }
         viewModelScope.launch {
-            _commentComicState.update {
-                it.copy(
-                    isLoading = true,
-                    isError = false,
-                    errorMsg = ""
-                )
-            }
-            when (val data = comicRepository.comment(content, comicId, commentId)) {
-                is NetWorkResult.Error -> {
-                    _commentComicState.update {
-                        it.copy(
-                            isError = true,
-                            errorMsg = data.message
-                        )
-                    }
-                    toastManager.showAsync(data.message)
-                }
-
-                is NetWorkResult.Success<CommentComicResponse> -> {
-                    log("commentArg $content, $comicId, $commentId")
-                    val status = data.data.status.trim()
-                    val isSuccess = status.isBlank()
-                        || status.equals("ok", ignoreCase = true)
-                        || status.equals("success", ignoreCase = true)
-                    if (isSuccess) {
-                        toastManager.showAsync(data.data.msg.ifBlank { "发送成功" })
-                        onSuccess?.invoke()
-                    } else {
-                        val message = data.data.msg.ifBlank { "发送评论失败" }
+            try {
+                when (val data = comicRepository.comment(content, comicId, commentId)) {
+                    is NetWorkResult.Error -> {
                         _commentComicState.update {
-                            it.copy(isError = true, errorMsg = message)
+                            it.copy(
+                                isError = true,
+                                errorMsg = data.message
+                            )
                         }
-                        toastManager.showAsync(message)
+                        toastManager.showAsync(data.message)
+                    }
+
+                    is NetWorkResult.Success<CommentComicResponse> -> {
+                        val status = data.data.status.trim()
+                        val isSuccess = status.isBlank()
+                            || status.equals("ok", ignoreCase = true)
+                            || status.equals("success", ignoreCase = true)
+                        if (isSuccess) {
+                            toastManager.showAsync(data.data.msg.ifBlank { "发送成功" })
+                            onSuccess?.invoke()
+                        } else {
+                            val message = data.data.msg.ifBlank { "发送评论失败" }
+                            _commentComicState.update {
+                                it.copy(isError = true, errorMsg = message)
+                            }
+                            toastManager.showAsync(message)
+                        }
                     }
                 }
-            }
-            _commentComicState.update {
-                it.copy(
-                    isLoading = false,
-                )
-            }
-        }
-    }
-
-    // 评论点赞：记录已点赞的评论ID，避免重复点赞
-    private val _likedCommentIds = MutableStateFlow<Set<Int>>(emptySet())
-    val likedCommentIds = _likedCommentIds.asStateFlow()
-
-    fun likeComment(commentId: Int, onResult: (Boolean) -> Unit = {}) {
-        viewModelScope.launch {
-            when (val data = comicRepository.likeComment(commentId)) {
-                is NetWorkResult.Error -> {
-                    toastManager.showAsync("点赞失败：${data.message}")
-                    onResult(false)
-                }
-
-                is NetWorkResult.Success<CommentComicResponse> -> {
-                    _likedCommentIds.update { it + commentId }
-                    onResult(true)
+            } finally {
+                commentSubmissionGate.release()
+                _commentComicState.update {
+                    it.copy(isLoading = false)
                 }
             }
         }
     }
+
 }

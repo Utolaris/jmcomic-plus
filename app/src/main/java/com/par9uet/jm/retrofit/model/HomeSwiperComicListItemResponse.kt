@@ -19,7 +19,6 @@ class HomeSwiperComicListItemResponse(
         val image: String,
         val category: Category,
         val category_sub: Category,
-        val liked: Boolean,
         val is_favorite: Boolean,
         val update_at: Int,
     ) {
@@ -40,7 +39,6 @@ class HomeSwiperComicListItemResponse(
                 tagList = listOf(),
                 roleList = listOf(),
                 workList = listOf(),
-                isLike = false,
                 isCollect = false,
                 relateComicList = listOf(),
                 comicChapterList = listOf(),

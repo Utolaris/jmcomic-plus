@@ -4,11 +4,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.ensureActive
+import kotlin.coroutines.coroutineContext
 
 /**
  * 认证会话就绪状态。只描述“已登录身份对应的会话是否已就绪 / 正在后台恢复”，
- * 供需要认证的请求（收藏、收藏夹、历史、签到等）在启动阶段做有界等待；
+ * 供需要认证的请求（评论、收藏、收藏夹、历史、签到等）等待真实恢复结果；
  * Home / 搜索等公开接口不感知该状态，也不会被它阻塞。
  */
 enum class SessionReadiness {
@@ -36,12 +37,35 @@ class SessionReadinessHolder {
 }
 
 /**
- * 认证类请求在启动阶段的窄等待：仅在后台会话恢复正在进行时做有界等待；
- * 会话已就绪 / 未登录（无需等待）时立即返回。Home、搜索等公开接口不调用此函数。
+ * Wait until session restoration reaches a terminal authentication state. Authenticated work
+ * must never fall through merely because restoration is taking longer than an arbitrary timeout.
  */
-suspend fun SessionReadinessHolder.awaitReady(timeoutMs: Long = 2000) {
-    if (state.value != SessionReadiness.Restoring) return
-    withTimeoutOrNull(timeoutMs) {
-        state.first { it != SessionReadiness.Restoring }
+suspend fun SessionReadinessHolder.awaitReady(): SessionReadiness {
+    val current = state.value
+    if (current == SessionReadiness.Authenticated || current == SessionReadiness.Unauthenticated) {
+        return current
+    }
+    return state.first {
+        it == SessionReadiness.Authenticated || it == SessionReadiness.Unauthenticated
+    }
+}
+
+class AuthenticatedSessionRequiredException(
+    message: String = "请先登录",
+    cause: Throwable? = null,
+) : IllegalStateException(message, cause)
+
+/** Shared ordering gate for every authenticated Embedded request. */
+class AuthenticatedSessionGate(
+    private val readinessHolder: SessionReadinessHolder,
+) {
+    suspend fun <T> run(block: () -> T): T {
+        if (readinessHolder.awaitReady() != SessionReadiness.Authenticated) {
+            throw AuthenticatedSessionRequiredException()
+        }
+        coroutineContext.ensureActive()
+        val result = block()
+        coroutineContext.ensureActive()
+        return result
     }
 }

@@ -63,6 +63,7 @@ import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin
@@ -93,7 +94,8 @@ fun WelcomeScreen(
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
     val localSetting by localSettingManager.localSettingState.collectAsState()
-    val isLogin by userManager.isLoginState.collectAsState(false)
+    val authState by userManager.authState.collectAsState()
+    val isLogin = authState != SessionReadiness.Unauthenticated
     val loginState by userViewModel.loginState.collectAsState()
 
     var step by remember { mutableStateOf(0) }

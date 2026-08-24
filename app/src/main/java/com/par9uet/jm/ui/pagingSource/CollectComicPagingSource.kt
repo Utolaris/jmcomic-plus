@@ -47,7 +47,6 @@ private fun FavoriteComicEntity.toComic(): Comic = Comic(
     tagList = tagList,
     roleList = roleList,
     workList = workList,
-    isLike = false,
     isCollect = true,
     relateComicList = emptyList(),
     comicChapterList = emptyList(),

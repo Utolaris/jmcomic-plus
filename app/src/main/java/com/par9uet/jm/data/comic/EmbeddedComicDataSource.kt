@@ -7,6 +7,7 @@ import com.par9uet.jm.data.comic.mapper.toContentListItem
 import com.par9uet.jm.data.comic.mapper.toHomeListItem
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.repository.BaseRepository
+import com.par9uet.jm.repository.impl.AuthenticatedEmbeddedClient
 import com.par9uet.jm.repository.impl.EmbeddedClientManager
 import com.par9uet.jm.retrofit.model.CollectComicResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
@@ -15,7 +16,6 @@ import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.LikeComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
@@ -40,7 +40,6 @@ import java.util.concurrent.TimeUnit
 
 interface ComicEmbeddedDataSource {
     suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse>
-    suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse>
     suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse>
     suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse>
     suspend fun getHomeCategory(
@@ -78,6 +77,7 @@ interface ComicEmbeddedDataSource {
 
 class EmbeddedComicDataSource(
     private val embeddedClientManager: EmbeddedClientManager,
+    private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
 ) : BaseRepository(), ComicEmbeddedDataSource {
     companion object {
         private val imageCache = mutableMapOf<Int, List<JmImage>>()
@@ -103,22 +103,12 @@ class EmbeddedComicDataSource(
             }
         }
 
-    override suspend fun likeComic(id: Int): NetWorkResult<LikeComicResponse> =
-        withContext(Dispatchers.IO) {
-            try {
-                withEmbeddedClient { client -> client.toggleAlbumLike(id.toString()) }
-                NetWorkResult.Success(LikeComicResponse(code = 200, msg = "success", status = "ok"))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置 API 点赞失败：${e.message ?: "未知错误"}")
-            }
-        }
-
     override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> =
         withContext(Dispatchers.IO) {
             try {
-                withEmbeddedClient { client -> client.toggleAlbumFavorite(id.toString(), "0") }
+                authenticatedEmbeddedClient.withClient { client ->
+                    client.toggleAlbumFavorite(id.toString(), "0")
+                }
                 NetWorkResult.Success(CollectComicResponse(msg = "success", status = "ok", type = "collect"))
             } catch (e: CancellationException) {
                 throw e
@@ -130,7 +120,9 @@ class EmbeddedComicDataSource(
     override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> =
         withContext(Dispatchers.IO) {
             try {
-                withEmbeddedClient { client -> client.toggleAlbumFavorite(id.toString(), "0") }
+                authenticatedEmbeddedClient.withClient { client ->
+                    client.toggleAlbumFavorite(id.toString(), "0")
+                }
                 NetWorkResult.Success(CollectComicResponse(msg = "success", status = "ok", type = "uncollect"))
             } catch (e: CancellationException) {
                 throw e
@@ -328,7 +320,6 @@ class EmbeddedComicDataSource(
                                 id = albumMeta.subCategory()?.id(),
                                 title = albumMeta.subCategory()?.title(),
                             ),
-                            liked = false,
                             is_favorite = false,
                             update_at = 0,
                         )
@@ -371,7 +362,7 @@ class EmbeddedComicDataSource(
         commentId: Int?,
     ): NetWorkResult<CommentComicResponse> = withContext(Dispatchers.IO) {
         try {
-            withEmbeddedClient { client ->
+            authenticatedEmbeddedClient.withClient { client ->
                 if (commentId != null) {
                     client.replyToComment(comicId.toString(), content, commentId.toString())
                 } else {
@@ -496,7 +487,7 @@ class EmbeddedComicDataSource(
         comicId: String = "",
     ): NetWorkResult<Unit> = withContext(Dispatchers.IO) {
         try {
-            withEmbeddedClient { client ->
+            authenticatedEmbeddedClient.withClient { client ->
                 client.manageFavoriteFolder(type, folderId, name, comicId)
             }
             NetWorkResult.Success(Unit)

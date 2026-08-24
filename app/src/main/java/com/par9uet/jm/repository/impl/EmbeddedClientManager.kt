@@ -77,9 +77,6 @@ class EmbeddedClientManager(
         return getSharedClient().client
     }
 
-    /** 是否存在可直接恢复的持久化会话（无需等待后台验证即可发认证请求）。 */
-    fun hasPersistedSession(): Boolean = cookieStorage.get().isNotEmpty()
-
     private fun getSharedClient(): SharedClient {
         return sharedClient ?: synchronized(this) {
             sharedClient ?: run {

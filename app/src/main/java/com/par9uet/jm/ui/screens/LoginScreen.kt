@@ -47,6 +47,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.R
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin
@@ -62,7 +63,7 @@ fun LoginScreen(
     val mainNavController = LocalMainNavController.current
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
-    val isLogin by userManager.isLoginState.collectAsState(false)
+    val authState by userManager.authState.collectAsState()
     val loginState by userViewModel.loginState.collectAsState()
 
     // 返回：若无可返回的页面则退回主页 tab
@@ -75,8 +76,8 @@ fun LoginScreen(
         }
     }
 
-    LaunchedEffect(isLogin) {
-        if (isLogin) {
+    LaunchedEffect(authState) {
+        if (authState == SessionReadiness.Authenticated) {
             mainNavController.navigate("tab/user") {
                 popUpTo("login") { inclusive = true }
             }
