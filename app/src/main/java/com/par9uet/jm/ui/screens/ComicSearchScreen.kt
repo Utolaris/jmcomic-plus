@@ -160,10 +160,11 @@ fun ComicSearchScreen(
                             Icon(
                                 Icons.Rounded.DeleteSweep,
                                 contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(Modifier.size(4.dp))
-                            Text("清空")
+                            Text("清空", color = MaterialTheme.colorScheme.error)
                         }
                     }
                 }

@@ -499,6 +499,7 @@ private fun CommentInputCapsule(
             BasicTextField(
                 state = state,
                 modifier = Modifier
+                    .padding(horizontal = 16.dp)
                     // Wrap content height so the single line centers inside the capsule;
                     // the raw foundation text field draws from its own top otherwise.
                     .height(IntrinsicSize.Min)

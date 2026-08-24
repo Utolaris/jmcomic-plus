@@ -370,7 +370,11 @@ private fun TemplateListItem(
                         Text("编辑")
                     }
                     IconButton(onClick = onDelete) {
-                        Icon(Icons.Rounded.DeleteSweep, contentDescription = "删除模板")
+                        Icon(
+                            Icons.Rounded.DeleteSweep,
+                            contentDescription = "删除模板",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }

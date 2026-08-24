@@ -86,7 +86,7 @@ fun SearchExclusionEditor(
                     enabled = excludedTags.isNotEmpty(),
                     onClick = onClearTags
                 ) {
-                    Text("清空")
+                    Text("清空", color = MaterialTheme.colorScheme.error)
                 }
             }
 
@@ -115,7 +115,11 @@ fun SearchExclusionEditor(
                     trailingIcon = {
                         if (inputText.isNotEmpty()) {
                             IconButton(onClick = { inputText = "" }) {
-                                Icon(Icons.Rounded.Close, contentDescription = "清空")
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "清空",
+                                    tint = MaterialTheme.colorScheme.error,
+                                )
                             }
                         }
                     }

@@ -568,6 +568,7 @@ private fun HomeExcludedTagsDialog(
                                     Icon(
                                         Icons.Rounded.Close,
                                         contentDescription = "删除",
+                                        tint = MaterialTheme.colorScheme.error,
                                         modifier = Modifier
                                             .size(16.dp)
                                             .clickable {

@@ -154,7 +154,9 @@ fun UserHistoryComicScreen(
                 TextButton(onClick = {
                     userViewModel.deleteHistoryComics(selectedComics)
                     showDeleteConfirmDialog = false
-                }) { Text("删除") }
+                }) {
+                    Text("删除", color = MaterialTheme.colorScheme.error)
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirmDialog = false }) { Text("取消") }
@@ -223,7 +225,11 @@ private fun HistoryVariableTopBar(
                         Icon(Icons.Rounded.Download, contentDescription = "缓存")
                     }
                     IconButton(onClick = onDelete) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "删除")
+                        Icon(
+                            Icons.Rounded.Delete,
+                            contentDescription = "删除",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
                     }
                 },
             )

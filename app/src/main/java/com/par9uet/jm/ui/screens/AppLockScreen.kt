@@ -282,7 +282,7 @@ private fun NumericKeypad(
         Row(horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             Spacer(modifier = Modifier.size(68.dp))
             KeyButton(0, keyColor, contentColor, onDigit)
-            DeleteButton(keyColor, contentColor, onDelete)
+            DeleteButton(keyColor, MaterialTheme.colorScheme.error, onDelete)
         }
     }
 }

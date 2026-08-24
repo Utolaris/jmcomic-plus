@@ -561,7 +561,11 @@ private fun FavoritesSelectionGlassContent(
                     Icon(Icons.AutoMirrored.Rounded.DriveFileMove, contentDescription = "移动")
                 }
                 IconButton(onClick = onDelete, modifier = Modifier.weight(1f)) {
-                    Icon(Icons.Rounded.Delete, contentDescription = "取消收藏")
+                    Icon(
+                        Icons.Rounded.Delete,
+                        contentDescription = "取消收藏",
+                        tint = MaterialTheme.colorScheme.error,
+                    )
                 }
             }
         }
@@ -677,7 +681,11 @@ internal fun FavoritesMaterialTopBar(
                         Icon(Icons.AutoMirrored.Rounded.DriveFileMove, contentDescription = "移动")
                     }
                     IconButton(onClick = controller::showDeleteDialog) {
-                        Icon(Icons.Rounded.Delete, contentDescription = "取消收藏")
+                        Icon(
+                            Icons.Rounded.Delete,
+                            contentDescription = "取消收藏",
+                            tint = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }
