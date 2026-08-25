@@ -22,6 +22,7 @@ val retrofitModule = module {
             get(),
             get(),
             get(),
+            get(),
             get()
         )
     } bind ActiveSessionCookieStore::class

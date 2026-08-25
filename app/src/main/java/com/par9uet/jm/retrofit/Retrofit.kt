@@ -32,7 +32,8 @@ class Retrofit(
     private val scalarsConverterFactory: ScalarsConverterFactory,
     private val responseConverterFactory: ResponseConverterFactory,
     private val primitiveToRequestBodyConverterFactory: PrimitiveToRequestBodyConverterFactory,
-    private val cookieStorage: CookieStorage
+    private val cookieStorage: CookieStorage,
+    dohManager: com.par9uet.jm.network.DohManager,
 ) : ActiveSessionCookieStore {
     @Volatile
     private var cookieList = listOf<Cookie>()
@@ -88,6 +89,8 @@ class Retrofit(
     }
     private val okHttpClient by lazy {
         OkHttpClient.Builder()
+            // Retrofit (network Home recommendation) shares the app-wide DoH resolver.
+            .dns(dohManager)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)

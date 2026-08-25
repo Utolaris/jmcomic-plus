@@ -161,6 +161,7 @@ class DohManager(
         val key = setting.dohResolverKey(sessionEnabled)
         resolverKey = key
         resolverFailure = ""
+        val previousResolver = resolver
         resolver = if (sessionEnabled && setting.dohEnabled) {
             runCatching {
                 DohResolver(
@@ -174,6 +175,13 @@ class DohManager(
             }.getOrNull()
         } else {
             null
+        }
+        // Retire the previous resolver AFTER the swap so in-flight lookups finish on it while
+        // new lookups use the replacement; closing eagerly would abort those calls.
+        if (previousResolver != null && previousResolver !== resolver) {
+            Thread {
+                runCatching { previousResolver.close() }
+            }.apply { isDaemon = true }.start()
         }
         publishStatus(lastError = resolverFailure)
     }

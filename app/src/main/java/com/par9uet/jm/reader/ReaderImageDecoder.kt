@@ -41,9 +41,12 @@ internal fun decodeReaderRawFile(
     val bounds = readBounds(file)
     // Full-size decode first: scramble reorder must happen in ORIGINAL pixel space, and the
     // old strip pipeline's per-strip FILTER_BITMAP rescaling produced horizontal seam lines.
-    val bitmap = BitmapFactory.decodeFile(file.absolutePath, fullSizeOptions(profile))
-        ?: error("图片解码为空")
-    // Reorder in ORIGINAL pixel space (1:1 integer rects), then one whole-image scale.
+    // On OOM, retry once with an aggressive sample size rather than crashing the reader.
+    val bitmap = try {
+        BitmapFactory.decodeFile(file.absolutePath, fullSizeOptions(profile)) ?: error("图片解码为空")
+    } catch (error: OutOfMemoryError) {
+        decodeSampledForSeamRecovery(file.absolutePath, bounds, profile)
+    }
     return reorderAndScaleFallback(bitmap, bounds, page, profile)
 }
 
@@ -54,9 +57,40 @@ internal fun decodeReaderRawBytes(
 ): DecodedReaderImage {
     require(bytes.isNotEmpty() && bytes.size.toLong() <= MAX_SOURCE_BYTES) { "图片源数据无效" }
     val bounds = readBounds(bytes)
-    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, fullSizeOptions(profile))
-        ?: error("图片解码为空")
+    val bitmap = try {
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, fullSizeOptions(profile)) ?: error("图片解码为空")
+    } catch (error: OutOfMemoryError) {
+        decodeSampledBytesForSeamRecovery(bytes, bounds, profile)
+    }
     return reorderAndScaleFallback(bitmap, bounds, page, profile)
+}
+
+/** OOM fallback: a sampled decode still allows 1:1 reorder without per-segment filtering. */
+private fun decodeSampledForSeamRecovery(path: String, bounds: Pair<Int, Int>, profile: ReaderDecodeProfile): Bitmap {
+    System.gc()
+    val recoverySample = readerRegionSampleSize(
+        width = bounds.first,
+        height = bounds.second,
+        maxPixels = MAX_SOURCE_PIXELS / 4,
+        maxWidth = profile.maxWidth,
+    ).coerceAtLeast(2)
+    return BitmapFactory.decodeFile(path, decodeOptions(recoverySample, profile)) ?: error("图片解码为空")
+}
+
+private fun decodeSampledBytesForSeamRecovery(
+    bytes: ByteArray,
+    bounds: Pair<Int, Int>,
+    profile: ReaderDecodeProfile,
+): Bitmap {
+    System.gc()
+    val recoverySample = readerRegionSampleSize(
+        width = bounds.first,
+        height = bounds.second,
+        maxPixels = MAX_SOURCE_PIXELS / 4,
+        maxWidth = profile.maxWidth,
+    ).coerceAtLeast(2)
+    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, decodeOptions(recoverySample, profile))
+        ?: error("图片解码为空")
 }
 
 internal fun decodeReaderDecodedFile(

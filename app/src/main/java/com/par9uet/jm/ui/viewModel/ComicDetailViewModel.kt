@@ -282,7 +282,12 @@ class ComicDetailViewModel(
     }
 
     fun reset(id: Int?) {
-        if (id != null && id == _comicDetailState.value.data?.id) {
+        val currentDataId = _comicDetailState.value.data?.id
+        // A seed whose full fetch FAILED stays valid for this id (non-blocking error page);
+        // any other mismatched/stale seed must be dropped so the next comic cannot flash it.
+        if (id != null && currentDataId == id &&
+            (fullDetailComicId == id || _comicDetailState.value.isLoading)
+        ) {
             return
         }
         currentDetailLoadJob?.cancel()
