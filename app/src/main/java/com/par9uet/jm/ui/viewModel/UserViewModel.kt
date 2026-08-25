@@ -62,6 +62,12 @@ data class HistoryEditState(
     val selectedComicIds: Set<Int> = emptySet()
 )
 
+/** Saved scroll position of the favorites grid for the current list context. */
+data class FavoriteViewportState(
+    val firstVisibleItemIndex: Int = 0,
+    val firstVisibleItemScrollOffset: Int = 0,
+)
+
 private data class CollectPagerKey(
     val accountId: Int,
     val blockedTagList: List<String>,
@@ -136,6 +142,19 @@ class UserViewModel(
     val selectedFolderId = _selectedFolderId.asStateFlow()
     private val _collectEditState = MutableStateFlow(CollectEditState())
     val collectEditState = _collectEditState.asStateFlow()
+    private val _favoriteViewport = MutableStateFlow(FavoriteViewportState())
+    val favoriteViewport = _favoriteViewport.asStateFlow()
+
+    fun saveFavoriteViewport(firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int) {
+        _favoriteViewport.value = FavoriteViewportState(firstVisibleItemIndex, firstVisibleItemScrollOffset)
+    }
+
+    fun resetFavoriteViewport() {
+        if (_favoriteViewport.value != FavoriteViewportState()) {
+            _favoriteViewport.value = FavoriteViewportState()
+        }
+    }
+
     private val _favoriteSyncState = MutableStateFlow(FavoriteSyncUiState())
     val favoriteSyncState = _favoriteSyncState.asStateFlow()
     private val autoSyncCoordinator = FavoriteAutoSyncCoordinator()
@@ -148,6 +167,7 @@ class UserViewModel(
         viewModelScope.launch {
             accountIdFlow.distinctUntilChanged().collect {
                 _selectedFolderId.value = 0
+                resetFavoriteViewport()
                 _favoriteSyncState.value = FavoriteSyncUiState()
                 autoSyncCoordinator.reset()
                 trailingAutoSyncJob?.cancel()
@@ -208,23 +228,40 @@ class UserViewModel(
     }.cachedIn(viewModelScope)
 
     fun updateCollectSearchText(value: String) {
+        val previous = _collectComicFilter.value.searchText
         _collectComicFilter.update { it.copy(searchText = value) }
+        if (previous != value) {
+            resetFavoriteViewport()
+        }
     }
 
     fun updateCollectSelectedTags(tags: Set<String>) {
+        val previous = _collectComicFilter.value.selectedTags
         _collectComicFilter.update { it.copy(selectedTags = tags) }
+        if (previous != tags) {
+            resetFavoriteViewport()
+        }
     }
 
     fun updateCollectTagLogic(logic: TagFilterLogic) {
+        val previous = _collectComicFilter.value.tagLogic
         _collectComicFilter.update { it.copy(tagLogic = logic) }
+        if (previous != logic) {
+            resetFavoriteViewport()
+        }
     }
 
     fun updateCollectSelectedAuthors(authors: Set<String>) {
+        val previous = _collectComicFilter.value.selectedAuthors
         _collectComicFilter.update { it.copy(selectedAuthors = authors) }
+        if (previous != authors) {
+            resetFavoriteViewport()
+        }
     }
 
     fun changeFolder(folderId: Int) {
         clearCollectSelection()
+        resetFavoriteViewport()
         _selectedFolderId.update { folderId }
         requestFavoriteAutoSync(folderId)
     }

@@ -143,7 +143,29 @@ fun LocalSettingScreen(
         }
     }
 
-    CommonScaffold(title = "\u8bbe\u7f6e") { topContentPadding, bottomContentPadding ->
+    CommonScaffold(
+        title = "\u8bbe\u7f6e",
+        overlayContent = {
+            if (isOpenSettingSelectDialog) {
+                SettingSelectDialogContent(
+                    settingType = settingType,
+                    localSetting = localSetting,
+                    localSettingManager = localSettingManager,
+                    onDismiss = { isOpenSettingSelectDialog = false }
+                )
+            }
+            if (showHomeExcludedTagsDialog) {
+                HomeExcludedTagsDialog(
+                    tags = localSetting.homeExcludedTags,
+                    onConfirm = { tags ->
+                        localSettingManager.updateHomeExcludedTags(tags)
+                        showHomeExcludedTagsDialog = false
+                    },
+                    onDismiss = { showHomeExcludedTagsDialog = false }
+                )
+            }
+        },
+    ) { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -326,25 +348,6 @@ fun LocalSettingScreen(
                     }
                 }
             }
-        }
-
-        if (isOpenSettingSelectDialog) {
-            SettingSelectDialogContent(
-                settingType = settingType,
-                localSetting = localSetting,
-                localSettingManager = localSettingManager,
-                onDismiss = { isOpenSettingSelectDialog = false }
-            )
-        }
-        if (showHomeExcludedTagsDialog) {
-            HomeExcludedTagsDialog(
-                tags = localSetting.homeExcludedTags,
-                onConfirm = { tags ->
-                    localSettingManager.updateHomeExcludedTags(tags)
-                    showHomeExcludedTagsDialog = false
-                },
-                onDismiss = { showHomeExcludedTagsDialog = false }
-            )
         }
     }
 }

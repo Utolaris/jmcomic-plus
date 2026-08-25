@@ -53,6 +53,8 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -149,7 +151,20 @@ internal fun UserCollectComicScreen(
         onDispose { controller.unbindSelectedComics(selectedComicsProvider) }
     }
 
-    val gridState = rememberLazyGridState()
+    // Restore the saved viewport from the FIRST frame; no visible jump back to top.
+    val savedViewport by userViewModel.favoriteViewport.collectAsState()
+    val gridState = rememberLazyGridState(
+        initialFirstVisibleItemIndex = savedViewport.firstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = savedViewport.firstVisibleItemScrollOffset,
+    )
+    // Persist the viewport on every settled scroll change; distinctUntilChanged keeps this cheap.
+    LaunchedEffect(gridState) {
+        snapshotFlow {
+            gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
+        }.distinctUntilChanged().collect { (index, offset) ->
+            userViewModel.saveFavoriteViewport(index, offset)
+        }
+    }
     val pullRevealPadding = 36.dp * pullDownState.progress
     val gridModifier = Modifier
         .fillMaxSize()

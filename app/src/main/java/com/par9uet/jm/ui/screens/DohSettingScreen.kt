@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -18,7 +19,6 @@ import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -49,6 +49,9 @@ import com.par9uet.jm.network.builtinDohServers
 import com.par9uet.jm.network.isValidDohUrl
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.glass.GlassModal
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.height
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
 
@@ -64,6 +67,8 @@ fun DohSettingScreen(
     var testingAll by remember { mutableStateOf(false) }
     var showCustomDialog by remember { mutableStateOf(false) }
     var customError by remember { mutableStateOf("") }
+    var customName by remember { mutableStateOf(localSetting.dohCustomServerName) }
+    var customUrl by remember { mutableStateOf(localSetting.dohCustomServerUrl) }
 
     val customServer = remember(localSetting.dohCustomServerName, localSetting.dohCustomServerUrl) {
         DohServer(
@@ -74,7 +79,52 @@ fun DohSettingScreen(
     }
     val servers = remember(customServer) { builtinDohServers + customServer }
 
-    CommonScaffold(title = "DoH") { topContentPadding, bottomContentPadding ->
+    CommonScaffold(
+        title = "DoH",
+        overlayContent = {
+            GlassModal(
+                visible = showCustomDialog,
+                onDismissRequest = { showCustomDialog = false },
+                surfaceId = "doh-custom-server-glass-modal",
+                modifier = Modifier.widthIn(max = 460.dp),
+            ) {
+                Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                    Text("自定义 DoH", style = MaterialTheme.typography.titleLarge)
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = customName,
+                        onValueChange = { customName = it },
+                        label = { Text("名称") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = customUrl,
+                        onValueChange = { customUrl = it },
+                        label = { Text("HTTPS 地址") },
+                        singleLine = true,
+                        supportingText = { if (customError.isNotBlank()) Text(customError, color = MaterialTheme.colorScheme.error) },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    ) {
+                        TextButton(onClick = { showCustomDialog = false }) { Text("取消") }
+                        TextButton(onClick = {
+                            if (!isValidDohUrl(customUrl)) {
+                                customError = "请输入有效的 HTTPS DoH 地址"
+                            } else {
+                                dohManager.saveCustomServer(customName, customUrl)
+                                customError = ""
+                                showCustomDialog = false
+                            }
+                        }) { Text("保存") }
+                    }
+                }
+            }
+        },
+    ) { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -203,44 +253,48 @@ fun DohSettingScreen(
         }
     }
 
-    if (showCustomDialog) {
-        var name by remember { mutableStateOf(localSetting.dohCustomServerName) }
-        var url by remember { mutableStateOf(localSetting.dohCustomServerUrl) }
-        AlertDialog(
+        GlassModal(
+            visible = showCustomDialog,
             onDismissRequest = { showCustomDialog = false },
-            title = { Text("自定义 DoH") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text("名称") },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = url,
-                        onValueChange = { url = it },
-                        label = { Text("HTTPS 地址") },
-                        singleLine = true,
-                        supportingText = { if (customError.isNotBlank()) Text(customError, color = MaterialTheme.colorScheme.error) },
-                    )
+            surfaceId = "doh-custom-server-glass-modal",
+            modifier = Modifier.widthIn(max = 460.dp),
+        ) {
+            Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
+                Text("自定义 DoH", style = MaterialTheme.typography.titleLarge)
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = customName,
+                    onValueChange = { customName = it },
+                    label = { Text("名称") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = customUrl,
+                    onValueChange = { customUrl = it },
+                    label = { Text("HTTPS 地址") },
+                    singleLine = true,
+                    supportingText = { if (customError.isNotBlank()) Text(customError, color = MaterialTheme.colorScheme.error) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                ) {
+                    TextButton(onClick = { showCustomDialog = false }) { Text("取消") }
+                    TextButton(onClick = {
+                        if (!isValidDohUrl(customUrl)) {
+                            customError = "请输入有效的 HTTPS DoH 地址"
+                        } else {
+                            dohManager.saveCustomServer(customName, customUrl)
+                            customError = ""
+                            showCustomDialog = false
+                        }
+                    }) { Text("保存") }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (!isValidDohUrl(url)) {
-                        customError = "请输入有效的 HTTPS DoH 地址"
-                    } else {
-                        dohManager.saveCustomServer(name, url)
-                        customError = ""
-                        showCustomDialog = false
-                    }
-                }) { Text("保存") }
-            },
-            dismissButton = { TextButton(onClick = { showCustomDialog = false }) { Text("取消") } },
-        )
+            }
+        }
     }
-}
 
 @Composable
 private fun DohSwitchRow(
