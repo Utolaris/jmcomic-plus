@@ -22,7 +22,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.paging.compose.collectAsLazyPagingItems
-import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.ui.components.Comic
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.FilterItem
@@ -30,46 +29,19 @@ import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
-import com.par9uet.jm.ui.models.CommonUIState
-import com.par9uet.jm.ui.pagingSource.WeekFilter
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
 
 @Composable
 private fun ComicWeekCategorySelect(
     category: Pair<String, String>,
-    weekDataState: CommonUIState<WeekData>,
-    weekFilterState: WeekFilter,
-    comicViewModel: ComicViewModel = koinActivityViewModel(),
+    onClick: () -> Unit,
 ) {
-    var showSelectDialog by remember { mutableStateOf(false) }
-    val weekCategoryOptionList by remember(weekDataState) {
-        derivedStateOf {
-            val list = weekDataState.data?.categoryList ?: listOf()
-            list.map { SelectOption(label = it.second, value = it.first) }
-        }
-    }
     FilterItem(
         label = category.second,
-        onClick = {
-            showSelectDialog = true
-        },
+        onClick = onClick,
         active = true
     )
-    if (showSelectDialog) {
-        SelectDialog(
-            title = "选择日期",
-            value = weekFilterState.categoryId,
-            selectOptionList = weekCategoryOptionList,
-            onSelect = {
-                comicViewModel.changeWeekCategoryFilter(it)
-                showSelectDialog = false
-            },
-            onDismissRequest = {
-                showSelectDialog = false
-            }
-        )
-    }
 }
 
 @Composable
@@ -79,6 +51,7 @@ fun ComicWeekRecommendScreen(
     val weekDataState by comicViewModel.weekDataState.collectAsState()
     val weekFilterState by comicViewModel.weekFilterState.collectAsState()
     val weekRecommendComicPagingItems = comicViewModel.weekComicPager.collectAsLazyPagingItems()
+    var showSelectDialog by remember { mutableStateOf(false) }
     val weekCategoryFilter by remember(weekFilterState) {
         derivedStateOf {
             val categoryList = weekDataState.data?.categoryList ?: listOf()
@@ -92,7 +65,22 @@ fun ComicWeekRecommendScreen(
         comicViewModel.getWeekData()
     }
     CommonScaffold(
-        title = "每周推荐"
+        title = "每周推荐",
+        overlayContent = {
+            SelectDialog(
+                visible = showSelectDialog,
+                title = "选择日期",
+                value = weekFilterState.categoryId,
+                selectOptionList = weekDataState.data?.categoryList.orEmpty().map {
+                    SelectOption(label = it.second, value = it.first)
+                },
+                onSelect = {
+                    comicViewModel.changeWeekCategoryFilter(it)
+                    showSelectDialog = false
+                },
+                onDismissRequest = { showSelectDialog = false },
+            )
+        },
     ) { topContentPadding, bottomContentPadding ->
         Column(modifier = Modifier.fillMaxSize()) {
             if (weekDataState.data != null) {
@@ -125,8 +113,7 @@ fun ComicWeekRecommendScreen(
                     weekCategoryFilter?.let {
                         ComicWeekCategorySelect(
                             category = it,
-                            weekDataState = weekDataState,
-                            weekFilterState = weekFilterState
+                            onClick = { showSelectDialog = true },
                         )
                     }
                 }

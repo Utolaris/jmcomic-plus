@@ -66,6 +66,7 @@ data class HistoryEditState(
 data class FavoriteViewportState(
     val firstVisibleItemIndex: Int = 0,
     val firstVisibleItemScrollOffset: Int = 0,
+    val resetGeneration: Long = 0,
 )
 
 private data class CollectPagerKey(
@@ -145,14 +146,23 @@ class UserViewModel(
     private val _favoriteViewport = MutableStateFlow(FavoriteViewportState())
     val favoriteViewport = _favoriteViewport.asStateFlow()
 
-    fun saveFavoriteViewport(firstVisibleItemIndex: Int, firstVisibleItemScrollOffset: Int) {
-        _favoriteViewport.value = FavoriteViewportState(firstVisibleItemIndex, firstVisibleItemScrollOffset)
+    fun saveFavoriteViewport(
+        firstVisibleItemIndex: Int,
+        firstVisibleItemScrollOffset: Int,
+        resetGeneration: Long = _favoriteViewport.value.resetGeneration,
+    ) {
+        val current = _favoriteViewport.value
+        if (resetGeneration != current.resetGeneration) return
+        _favoriteViewport.value = current.copy(
+            firstVisibleItemIndex = firstVisibleItemIndex,
+            firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
+        )
     }
 
     fun resetFavoriteViewport() {
-        if (_favoriteViewport.value != FavoriteViewportState()) {
-            _favoriteViewport.value = FavoriteViewportState()
-        }
+        _favoriteViewport.value = FavoriteViewportState(
+            resetGeneration = _favoriteViewport.value.resetGeneration + 1,
+        )
     }
 
     private val _favoriteSyncState = MutableStateFlow(FavoriteSyncUiState())
@@ -260,6 +270,7 @@ class UserViewModel(
     }
 
     fun changeFolder(folderId: Int) {
+        if (_selectedFolderId.value == folderId) return
         clearCollectSelection()
         resetFavoriteViewport()
         _selectedFolderId.update { folderId }

@@ -107,7 +107,62 @@ fun AppLockSettingScreen(
         }
     }
 
-    CommonScaffold(title = "应用锁") { topContentPadding, bottomContentPadding ->
+    CommonScaffold(
+        title = "应用锁",
+        overlayContent = {
+            val lengthOptions = remember {
+                (4..8).map { SelectOption("$it 位", it.toString()) }
+            }
+
+            SelectDialog(
+                visible = showPasswordLengthDialog,
+                title = "密码长度",
+                value = pendingPasswordLength.toString(),
+                selectOptionList = lengthOptions,
+                onSelect = { value ->
+                    pendingPasswordLength = value.toIntOrNull() ?: 4
+                    showPasswordLengthDialog = false
+                    showSetPasswordDialog = true
+                },
+                onDismissRequest = { showPasswordLengthDialog = false },
+            )
+
+            SetAppLockPasswordDialog(
+                visible = showSetPasswordDialog,
+                lockType = APP_LOCK_TYPE_PASSWORD,
+                passwordLength = pendingPasswordLength,
+                onConfirm = { pwd ->
+                    localSettingManager.updateAppLockPasswordLength(pendingPasswordLength)
+                    localSettingManager.updateAppLockPassword(pwd)
+                    // 若两种方式都已设置，默认解锁模式为 both；否则为 password
+                    val newMode = if (hasPattern) {
+                        APP_LOCK_UNLOCK_MODE_BOTH
+                    } else {
+                        APP_LOCK_UNLOCK_MODE_PASSWORD
+                    }
+                    localSettingManager.updateAppLockUnlockMode(newMode)
+                    showSetPasswordDialog = false
+                },
+                onDismiss = { showSetPasswordDialog = false },
+            )
+
+            SetAppLockPasswordDialog(
+                visible = showSetPatternDialog,
+                lockType = APP_LOCK_TYPE_PATTERN,
+                onConfirm = { pattern ->
+                    localSettingManager.updateAppLockPattern(pattern)
+                    val newMode = if (hasPassword) {
+                        APP_LOCK_UNLOCK_MODE_BOTH
+                    } else {
+                        APP_LOCK_UNLOCK_MODE_PATTERN
+                    }
+                    localSettingManager.updateAppLockUnlockMode(newMode)
+                    showSetPatternDialog = false
+                },
+                onDismiss = { showSetPatternDialog = false },
+            )
+        },
+    ) { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -223,66 +278,6 @@ fun AppLockSettingScreen(
             }
         }
 
-        // 密码长度选择对话框
-        if (showPasswordLengthDialog) {
-            val lengthOptions = remember {
-                (4..8).map { SelectOption("$it 位", it.toString()) }
-            }
-            SelectDialog(
-                title = "密码长度",
-                value = pendingPasswordLength.toString(),
-                selectOptionList = lengthOptions,
-                onSelect = { value ->
-                    pendingPasswordLength = value.toIntOrNull()?.toInt() ?: 4
-                    showPasswordLengthDialog = false
-                    showSetPasswordDialog = true
-                },
-                onDismissRequest = { showPasswordLengthDialog = false }
-            )
-        }
-
-        // 设置密码弹窗
-        if (showSetPasswordDialog) {
-            SetAppLockPasswordDialog(
-                lockType = APP_LOCK_TYPE_PASSWORD,
-                passwordLength = pendingPasswordLength,
-                onConfirm = { pwd ->
-                    localSettingManager.updateAppLockPasswordLength(pendingPasswordLength)
-                    localSettingManager.updateAppLockPassword(pwd)
-                    // 若两种方式都已设置，默认解锁模式为 both；否则为 password
-                    val newMode = if (hasPattern) {
-                        APP_LOCK_UNLOCK_MODE_BOTH
-                    } else {
-                        APP_LOCK_UNLOCK_MODE_PASSWORD
-                    }
-                    localSettingManager.updateAppLockUnlockMode(newMode)
-                    showSetPasswordDialog = false
-                },
-                onDismiss = {
-                    showSetPasswordDialog = false
-                }
-            )
-        }
-
-        // 设置图案弹窗
-        if (showSetPatternDialog) {
-            SetAppLockPasswordDialog(
-                lockType = APP_LOCK_TYPE_PATTERN,
-                onConfirm = { pattern ->
-                    localSettingManager.updateAppLockPattern(pattern)
-                    val newMode = if (hasPassword) {
-                        APP_LOCK_UNLOCK_MODE_BOTH
-                    } else {
-                        APP_LOCK_UNLOCK_MODE_PATTERN
-                    }
-                    localSettingManager.updateAppLockUnlockMode(newMode)
-                    showSetPatternDialog = false
-                },
-                onDismiss = {
-                    showSetPatternDialog = false
-                }
-            )
-        }
     }
 }
 

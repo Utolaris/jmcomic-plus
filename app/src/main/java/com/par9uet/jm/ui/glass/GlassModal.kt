@@ -94,11 +94,13 @@ fun GlassModal(
             .graphicsLayer { alpha = scrimAlpha }
             .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f))
             .then(
-                if (dismissOnOutsideClick && active) {
+                if (active) {
                     Modifier.clickable(
                         interactionSource = scrimInteraction,
                         indication = null,
-                        onClick = onDismissRequest,
+                        onClick = {
+                            if (dismissOnOutsideClick) onDismissRequest()
+                        },
                     )
                 } else {
                     Modifier

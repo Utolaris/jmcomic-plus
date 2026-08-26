@@ -47,7 +47,9 @@ class ComicDetailViewModel(
 
     /** Comic id whose FULL detail has been fetched; a seed-only comic is not enough. */
     private var fullDetailComicId: Int? = null
-    private var currentDetailLoadJob: kotlinx.coroutines.Job? = null
+    private var currentDetailLoadJob: Job? = null
+    private var detailRequestGeneration = 0L
+    private var requestedDetailId: Int? = null
 
     /**
      * Seeds the state with the list-item the user just tapped so cover/title/author render on
@@ -55,6 +57,8 @@ class ComicDetailViewModel(
      */
     fun prepareDetail(comic: Comic) {
         currentDetailLoadJob?.cancel()
+        detailRequestGeneration++
+        requestedDetailId = null
         _comicDetailState.value = CommonUIState(
             data = comic,
             isLoading = true,
@@ -74,46 +78,58 @@ class ComicDetailViewModel(
 
     fun getComicDetail(id: Int) {
         currentDetailLoadJob?.cancel()
+        val requestGeneration = ++detailRequestGeneration
+        requestedDetailId = id
+        val currentState = _comicDetailState.value
+        val hasMatchingSeed = currentState.data?.id == id
+        if (!hasMatchingSeed) {
+            fullDetailComicId = null
+            _comicDetailState.value = CommonUIState(isLoading = true)
+        } else {
+            _comicDetailState.value = currentState.copy(
+                isLoading = true,
+                isError = false,
+                errorMsg = "",
+            )
+        }
         currentDetailLoadJob = viewModelScope.launch {
-            _comicDetailState.update {
-                it.copy(
-                    isLoading = true,
-                    isError = false,
-                    errorMsg = "",
-                )
+            val data = comicRepository.getComicDetail(id)
+            if (requestGeneration != detailRequestGeneration || requestedDetailId != id) {
+                return@launch
             }
-            when (val data = comicRepository.getComicDetail(id)) {
+            when (data) {
                 is NetWorkResult.Error -> {
-                    val hasSeed = _comicDetailState.value.data != null
-                    _comicDetailState.update {
-                        if (hasSeed) {
-                            // Keep the seeded page visible; surface the failure non-blockingly.
-                            it.copy(
-                                isLoading = false,
-                                errorMsg = data.message,
-                            )
-                        } else {
-                            it.copy(
-                                isError = true,
-                                errorMsg = data.message,
-                            )
-                        }
+                    val state = _comicDetailState.value
+                    if (state.data?.id == id) {
+                        // Keep only a matching seed visible; surface the failure non-blockingly.
+                        _comicDetailState.value = state.copy(
+                            isLoading = false,
+                            isError = false,
+                            errorMsg = data.message,
+                        )
+                    } else {
+                        _comicDetailState.value = CommonUIState(
+                            isLoading = false,
+                            isError = true,
+                            errorMsg = data.message,
+                        )
                     }
                 }
 
                 is NetWorkResult.Success<ComicDetailResponse> -> {
-                    fullDetailComicId = id
-                    _comicDetailState.update {
-                        it.copy(
-                            data = data.data.toComic()
+                    val state = _comicDetailState.value
+                    if (state.data == null || state.data.id == id) {
+                        fullDetailComicId = id
+                        _comicDetailState.value = state.copy(
+                            data = data.data.toComic(),
+                            isError = false,
+                            errorMsg = "",
                         )
                     }
                 }
             }
-            _comicDetailState.update {
-                it.copy(
-                    isLoading = false
-                )
+            if (requestGeneration == detailRequestGeneration && requestedDetailId == id) {
+                _comicDetailState.update { it.copy(isLoading = false) }
             }
         }
     }
@@ -291,6 +307,8 @@ class ComicDetailViewModel(
             return
         }
         currentDetailLoadJob?.cancel()
+        detailRequestGeneration++
+        requestedDetailId = null
         fullDetailComicId = null
         _comicDetailState.update {
             CommonUIState(

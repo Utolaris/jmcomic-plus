@@ -157,12 +157,33 @@ internal fun UserCollectComicScreen(
         initialFirstVisibleItemIndex = savedViewport.firstVisibleItemIndex,
         initialFirstVisibleItemScrollOffset = savedViewport.firstVisibleItemScrollOffset,
     )
+    val initialResetGeneration = remember { savedViewport.resetGeneration }
+    var suppressViewportPersistence by remember { mutableStateOf(false) }
+
+    // A reset changes the existing state as well as the saved value. The generation makes this
+    // effect distinct from the initial restore, and the short suppression window prevents the
+    // old grid position from racing back into the ViewModel while scrollToItem is settling.
+    LaunchedEffect(savedViewport.resetGeneration) {
+        if (savedViewport.resetGeneration == initialResetGeneration) return@LaunchedEffect
+        suppressViewportPersistence = true
+        try {
+            gridState.scrollToItem(0, 0)
+            androidx.compose.runtime.withFrameNanos { }
+        } finally {
+            suppressViewportPersistence = false
+        }
+    }
+
     // Persist the viewport on every settled scroll change; distinctUntilChanged keeps this cheap.
-    LaunchedEffect(gridState) {
+    // Re-keying on the generation also cancels a collector that still carries the old token.
+    LaunchedEffect(gridState, savedViewport.resetGeneration) {
+        val resetGeneration = savedViewport.resetGeneration
         snapshotFlow {
             gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
         }.distinctUntilChanged().collect { (index, offset) ->
-            userViewModel.saveFavoriteViewport(index, offset)
+            if (!suppressViewportPersistence) {
+                userViewModel.saveFavoriteViewport(index, offset, resetGeneration)
+            }
         }
     }
     val pullRevealPadding = 36.dp * pullDownState.progress

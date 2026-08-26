@@ -38,7 +38,6 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Tag
 import androidx.compose.material.icons.rounded.Minimize
-import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -72,7 +71,6 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.DialogProperties
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -81,8 +79,10 @@ import com.par9uet.jm.store.AppUpdateDownloadRequest
 import com.par9uet.jm.store.AppUpdateDownloadStatus
 import com.par9uet.jm.store.formatBytes
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.utils.MarkdownText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -324,6 +324,7 @@ fun CheckUpdateScreen(
     val downloadState by updateDownloadManager.state.collectAsState()
     var updateState by remember { mutableStateOf<UpdateState>(UpdateState.Idle) }
     var visibleRelease by remember { mutableStateOf<GithubRelease?>(null) }
+    var releaseDialogVisible by remember { mutableStateOf(false) }
     var showDownloadDialog by remember { mutableStateOf(false) }
 
     fun checkUpdate() {
@@ -343,7 +344,15 @@ fun CheckUpdateScreen(
             updateState = nextState
             if (nextState is UpdateState.Success && nextState.hasUpdate) {
                 visibleRelease = nextState.release
+                releaseDialogVisible = true
             }
+        }
+    }
+
+    LaunchedEffect(releaseDialogVisible) {
+        if (!releaseDialogVisible) {
+            delay(220)
+            visibleRelease = null
         }
     }
 
@@ -356,7 +365,52 @@ fun CheckUpdateScreen(
         downloadState.savedPath.isNotEmpty() &&
         File(downloadState.savedPath).exists()
 
-    CommonScaffold(title = "检查更新") { topContentPadding, bottomContentPadding ->
+    CommonScaffold(
+        title = "检查更新",
+        overlayContent = {
+            visibleRelease?.let { release ->
+                ReleaseDialog(
+                    visible = releaseDialogVisible,
+                    release = release,
+                    onCopyDownloadUrl = {
+                        clipboardManager.setText(AnnotatedString(release.downloadUrl.ifBlank { release.url }))
+                    },
+                    onDismiss = { releaseDialogVisible = false },
+                    onDownload = {
+                        updateDownloadManager.start(
+                            AppUpdateDownloadRequest(
+                                version = release.version,
+                                fileName = release.fileName.ifBlank { "jm-mobile_v${release.version}_unknown.apk" },
+                                downloadUrl = release.downloadUrl
+                            )
+                        )
+                        releaseDialogVisible = false
+                        showDownloadDialog = true
+                    },
+                )
+            }
+            UpdateDownloadDialog(
+                visible = showDownloadDialog && !downloadState.background,
+                onDismiss = { showDownloadDialog = false },
+                onPauseResume = {
+                    if (downloadState.status == AppUpdateDownloadStatus.Paused) {
+                        updateDownloadManager.resume()
+                    } else {
+                        updateDownloadManager.pause()
+                    }
+                },
+                onCancel = {
+                    updateDownloadManager.cancel()
+                    showDownloadDialog = false
+                },
+                onBackground = {
+                    updateDownloadManager.sendToBackground()
+                    showDownloadDialog = false
+                },
+                downloadState = downloadState,
+            )
+        },
+    ) { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -372,11 +426,15 @@ fun CheckUpdateScreen(
             }
             item {
                 UpdateStatusCard(
-                    updateState = updateState,
-                    appVersion = appVersion,
-                    onRetry = { checkUpdate() },
-                    onViewRelease = { visibleRelease = (updateState as? UpdateState.Success)?.release }
-                )
+                        updateState = updateState,
+                        appVersion = appVersion,
+                        onRetry = { checkUpdate() },
+                        onViewRelease = {
+                            val release = (updateState as? UpdateState.Success)?.release
+                            visibleRelease = release
+                            releaseDialogVisible = release != null
+                        }
+                    )
             }
             if (apkReady) {
                 item {
@@ -389,48 +447,6 @@ fun CheckUpdateScreen(
         }
     }
 
-    visibleRelease?.let { release ->
-        ReleaseDialog(
-            release = release,
-            onCopyDownloadUrl = {
-                clipboardManager.setText(AnnotatedString(release.downloadUrl.ifBlank { release.url }))
-            },
-            onDismiss = { visibleRelease = null },
-            onDownload = {
-                updateDownloadManager.start(
-                    AppUpdateDownloadRequest(
-                        version = release.version,
-                        fileName = release.fileName.ifBlank { "jm-mobile_v${release.version}_unknown.apk" },
-                        downloadUrl = release.downloadUrl
-                    )
-                )
-                visibleRelease = null
-                showDownloadDialog = true
-            }
-        )
-    }
-
-    if (showDownloadDialog && !downloadState.background) {
-        UpdateDownloadDialog(
-            onDismiss = { showDownloadDialog = false },
-            onPauseResume = {
-                if (downloadState.status == AppUpdateDownloadStatus.Paused) {
-                    updateDownloadManager.resume()
-                } else {
-                    updateDownloadManager.pause()
-                }
-            },
-            onCancel = {
-                updateDownloadManager.cancel()
-                showDownloadDialog = false
-            },
-            onBackground = {
-                updateDownloadManager.sendToBackground()
-                showDownloadDialog = false
-            },
-            downloadState = downloadState
-        )
-    }
 }
 
 @Composable
@@ -691,29 +707,26 @@ private fun StatusRow(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ReleaseDialog(
+    visible: Boolean,
     release: GithubRelease,
     onCopyDownloadUrl: () -> Unit,
     onDismiss: () -> Unit,
     onDownload: () -> Unit
 ) {
-    BasicAlertDialog(
+    GlassModal(
+        visible = visible,
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        surfaceId = "update-release-glass-modal",
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 520.dp)
+            .padding(horizontal = 24.dp),
     ) {
-        Card(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 520.dp)
-                .padding(horizontal = 24.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                .padding(24.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp)
-            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -782,7 +795,6 @@ private fun ReleaseDialog(
                         Text("下载更新")
                     }
                 }
-            }
         }
     }
 }
@@ -790,6 +802,7 @@ private fun ReleaseDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun UpdateDownloadDialog(
+    visible: Boolean,
     onDismiss: () -> Unit,
     onPauseResume: () -> Unit,
     onCancel: () -> Unit,
@@ -802,25 +815,23 @@ private fun UpdateDownloadDialog(
         status == AppUpdateDownloadStatus.Canceled
     val isPaused = status == AppUpdateDownloadStatus.Paused
 
-    BasicAlertDialog(
+    GlassModal(
+        visible = visible,
         onDismissRequest = { if (isDone) onDismiss() },
-        properties = DialogProperties(usePlatformDefaultWidth = false, dismissOnBackPress = isDone)
+        surfaceId = "update-download-glass-modal",
+        dismissOnOutsideClick = isDone,
+        dismissOnBack = isDone,
+        modifier = Modifier
+            .fillMaxWidth()
+            .widthIn(max = 480.dp)
+            .padding(horizontal = 24.dp),
     ) {
-        Card(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .widthIn(max = 480.dp)
-                .padding(horizontal = 24.dp),
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -953,7 +964,6 @@ private fun UpdateDownloadDialog(
                         }
                     }
                 }
-            }
         }
     }
 }

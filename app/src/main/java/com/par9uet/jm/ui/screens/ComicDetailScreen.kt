@@ -303,6 +303,9 @@ fun ComicDetailScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val scrollState = rememberScrollState()
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
+    // The activity-scoped ViewModel can still hold another comic for one composition frame while
+    // a direct route change is starting. Never render a seed or toolbar title for that old id.
+    val requestedComic = comicDetailState.data?.takeIf { it.id == id }
     val readHistory by readHistoryManager.readHistoryState.collectAsState()
     val authState by userManager.authState.collectAsState()
     val commentLazyPagingItems = comicDetailViewModel.commentPager.collectAsLazyPagingItems()
@@ -385,12 +388,11 @@ fun ComicDetailScreen(
                         modifier = Modifier.padding(top = detailTopContentPadding),
                     )
                 }
-                comicDetailState.isLoading && comicDetailState.data == null -> {
+                requestedComic == null -> {
                     ComicDetailSkeleton(topContentPadding = detailTopContentPadding)
                 }
                 else -> {
-                    val comic = comicDetailState.data
-                    if (comic != null) {
+                    val comic = requestedComic
                         if (showDownloadChapterDialog) {
                             ChapterMultiSelectDialog(
                                 title = "\u9009\u62e9\u7f13\u5b58\u7ae0\u8282",
@@ -503,12 +505,11 @@ fun ComicDetailScreen(
                                 onDismiss = comicDetailViewModel::hideFolderPicker,
                             )
                         }
-                    }
                 }
             }
         },
         overlayContent = {
-            val comic = comicDetailState.data
+            val comic = requestedComic
             val showFolderPicker by comicDetailViewModel.showFolderPicker.collectAsState()
             val folderList by comicDetailViewModel.folderList.collectAsState()
             Box(modifier = Modifier.fillMaxSize()) {

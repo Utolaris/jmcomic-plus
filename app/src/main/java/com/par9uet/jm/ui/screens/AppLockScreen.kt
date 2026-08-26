@@ -26,9 +26,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Backspace
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material3.BasicAlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -36,6 +33,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -55,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
+import com.par9uet.jm.ui.glass.GlassModal
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
 
@@ -528,11 +527,20 @@ fun SetAppLockPasswordDialog(
     lockType: String,
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit,
-    passwordLength: Int = 4
+    passwordLength: Int = 4,
+    visible: Boolean = true,
 ) {
     var firstInput by remember { mutableStateOf<String?>(null) }
     var secondInput by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            firstInput = null
+            secondInput = null
+            error = null
+        }
+    }
 
     val title = if (firstInput == null) {
         "请设置${if (lockType == APP_LOCK_TYPE_PATTERN) "图案" else "密码"}"
@@ -540,83 +548,80 @@ fun SetAppLockPasswordDialog(
         "请再次输入以确认"
     }
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.widthIn(max = 400.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            shape = MaterialTheme.shapes.extraLarge
+    GlassModal(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        surfaceId = "app-lock-${lockType}-glass-modal",
+        modifier = Modifier.widthIn(max = 400.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            error?.let {
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error
                 )
-                error?.let {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.error
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                if (lockType == APP_LOCK_TYPE_PATTERN) {
-                    PatternLockInput(
-                        title = "",
-                        correctPassword = null,
-                        onUnlock = {},
-                        onInputComplete = { pattern ->
-                            if (firstInput == null) {
-                                firstInput = pattern
-                                error = null
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            if (lockType == APP_LOCK_TYPE_PATTERN) {
+                PatternLockInput(
+                    title = "",
+                    correctPassword = null,
+                    onUnlock = {},
+                    onInputComplete = { pattern ->
+                        if (firstInput == null) {
+                            firstInput = pattern
+                            error = null
+                        } else {
+                            secondInput = pattern
+                            if (secondInput == firstInput) {
+                                onConfirm(pattern)
                             } else {
-                                secondInput = pattern
-                                if (secondInput == firstInput) {
-                                    onConfirm(pattern)
-                                } else {
-                                    error = "两次输入不一致，请重新设置"
-                                    firstInput = null
-                                    secondInput = null
-                                }
+                                error = "两次输入不一致，请重新设置"
+                                firstInput = null
+                                secondInput = null
                             }
                         }
-                    )
-                } else {
-                    PasswordLockInput(
-                        title = "",
-                        correctPassword = null,
-                        onUnlock = {},
-                        passwordLength = passwordLength,
-                        onInputComplete = { pwd ->
-                            if (firstInput == null) {
-                                firstInput = pwd
-                                error = null
+                    }
+                )
+            } else {
+                PasswordLockInput(
+                    title = "",
+                    correctPassword = null,
+                    onUnlock = {},
+                    passwordLength = passwordLength,
+                    onInputComplete = { pwd ->
+                        if (firstInput == null) {
+                            firstInput = pwd
+                            error = null
+                        } else {
+                            secondInput = pwd
+                            if (secondInput == firstInput) {
+                                onConfirm(pwd)
                             } else {
-                                secondInput = pwd
-                                if (secondInput == firstInput) {
-                                    onConfirm(pwd)
-                                } else {
-                                    error = "两次输入不一致，请重新设置"
-                                    firstInput = null
-                                    secondInput = null
-                                }
+                                error = "两次输入不一致，请重新设置"
+                                firstInput = null
+                                secondInput = null
                             }
                         }
-                    )
-                }
-                Spacer(modifier = Modifier.height(16.dp))
-                TextButton(onClick = onDismiss) {
-                    Text("取消")
-                }
+                    }
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            TextButton(onClick = onDismiss) {
+                Text("取消")
             }
         }
     }

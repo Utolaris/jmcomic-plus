@@ -33,6 +33,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -69,6 +70,14 @@ fun DohSettingScreen(
     var customError by remember { mutableStateOf("") }
     var customName by remember { mutableStateOf(localSetting.dohCustomServerName) }
     var customUrl by remember { mutableStateOf(localSetting.dohCustomServerUrl) }
+
+    LaunchedEffect(showCustomDialog) {
+        if (showCustomDialog) {
+            customName = localSetting.dohCustomServerName
+            customUrl = localSetting.dohCustomServerUrl
+            customError = ""
+        }
+    }
 
     val customServer = remember(localSetting.dohCustomServerName, localSetting.dohCustomServerUrl) {
         DohServer(
@@ -253,48 +262,7 @@ fun DohSettingScreen(
         }
     }
 
-        GlassModal(
-            visible = showCustomDialog,
-            onDismissRequest = { showCustomDialog = false },
-            surfaceId = "doh-custom-server-glass-modal",
-            modifier = Modifier.widthIn(max = 460.dp),
-        ) {
-            Column(modifier = Modifier.fillMaxWidth().padding(24.dp)) {
-                Text("自定义 DoH", style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = customName,
-                    onValueChange = { customName = it },
-                    label = { Text("名称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                OutlinedTextField(
-                    value = customUrl,
-                    onValueChange = { customUrl = it },
-                    label = { Text("HTTPS 地址") },
-                    singleLine = true,
-                    supportingText = { if (customError.isNotBlank()) Text(customError, color = MaterialTheme.colorScheme.error) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                ) {
-                    TextButton(onClick = { showCustomDialog = false }) { Text("取消") }
-                    TextButton(onClick = {
-                        if (!isValidDohUrl(customUrl)) {
-                            customError = "请输入有效的 HTTPS DoH 地址"
-                        } else {
-                            dohManager.saveCustomServer(customName, customUrl)
-                            customError = ""
-                            showCustomDialog = false
-                        }
-                    }) { Text("保存") }
-                }
-            }
-        }
-    }
+}
 
 @Composable
 private fun DohSwitchRow(

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -28,7 +29,6 @@ import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CloudUpload
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Circle
-import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -76,6 +76,7 @@ import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
+import com.par9uet.jm.ui.glass.GlassModal
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -284,85 +285,45 @@ fun BackupRestoreScreen(
         }
     }
 
-    CommonScaffold(title = "数据备份与恢复") { topContentPadding, bottomContentPadding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = topContentPadding + 16.dp,
-                bottom = bottomContentPadding + 16.dp,
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item { InfoCard() }
-            item {
-                ActionCard(
-                    icon = Icons.Rounded.CloudUpload,
-                    title = "备份数据",
-                    description = "选择需要备份的内容（本地设置 / 缓存目录），再选择是否设置密码/图案保护",
-                    onClick = {
-                        resetBackupState()
-                        backupStep = BackupStep.SelectContent
-                    }
-                )
-            }
-            item {
-                ActionCard(
-                    icon = Icons.Rounded.CloudDownload,
-                    title = "恢复数据",
-                    description = "从备份文件恢复，可选择需要恢复的内容（不会覆盖当前设备的应用锁状态）",
-                    onClick = {
-                        openDocumentLauncher.launch(arrayOf("application/json"))
-                    }
-                )
-            }
-        }
-
-        // ============== 备份流程 ==============
-
-        // 步骤 1：选择备份内容
-        if (backupStep == BackupStep.SelectContent) {
+    CommonScaffold(
+        title = "数据备份与恢复",
+        overlayContent = {
             BackupContentPickerDialog(
+                visible = backupStep == BackupStep.SelectContent,
                 options = contentOptions,
                 onChange = { contentOptions = it },
                 onConfirm = {
                     if (contentOptions.isEmpty) {
                         toastManager.showAsync("请至少选择一项备份内容")
-                    } else {
-                        // 如果选中了缓存目录，先异步读取 DAO 数据
-                        if (contentOptions.includeComicCache) {
-                            scope.launch {
-                                runCatching {
-                                    withContext(Dispatchers.IO) {
-                                        val all = downloadComicDao.getAll()
-                                        backupManager.buildComicCacheBackup(all)
-                                    }
-                                }.onSuccess { cache ->
-                                    if (cache.groups.isEmpty()) {
-                                        toastManager.showAsync("当前没有缓存记录，已自动取消勾选缓存目录")
-                                        contentOptions = contentOptions.copy(includeComicCache = false)
-                                    } else {
-                                        pendingComicCacheBackup = cache
-                                    }
-                                }.onFailure {
-                                    toastManager.showAsync("读取缓存列表失败：${it.message ?: "未知错误"}")
-                                    contentOptions = contentOptions.copy(includeComicCache = false)
+                    } else if (contentOptions.includeComicCache) {
+                        scope.launch {
+                            runCatching {
+                                withContext(Dispatchers.IO) {
+                                    val all = downloadComicDao.getAll()
+                                    backupManager.buildComicCacheBackup(all)
                                 }
-                                backupStep = BackupStep.SelectProtection
+                            }.onSuccess { cache ->
+                                if (cache.groups.isEmpty()) {
+                                    toastManager.showAsync("当前没有缓存记录，已自动取消勾选缓存目录")
+                                    contentOptions = contentOptions.copy(includeComicCache = false)
+                                } else {
+                                    pendingComicCacheBackup = cache
+                                }
+                            }.onFailure {
+                                toastManager.showAsync("读取缓存列表失败：${it.message ?: "未知错误"}")
+                                contentOptions = contentOptions.copy(includeComicCache = false)
                             }
-                        } else {
                             backupStep = BackupStep.SelectProtection
                         }
+                    } else {
+                        backupStep = BackupStep.SelectProtection
                     }
                 },
-                onDismiss = { resetBackupState() }
+                onDismiss = { resetBackupState() },
             )
-        }
 
-        // 步骤 2：选择保护方式
-        if (backupStep == BackupStep.SelectProtection) {
             SelectDialog(
+                visible = backupStep == BackupStep.SelectProtection,
                 title = "选择保护方式",
                 value = null,
                 selectOptionList = protectionOptionList,
@@ -373,24 +334,16 @@ fun BackupRestoreScreen(
                             pendingCreateDocument = true
                             backupStep = BackupStep.None
                         }
-                        BACKUP_PROTECTION_PASSWORD -> {
-                            backupStep = BackupStep.SetPassword
-                        }
-                        BACKUP_PROTECTION_PATTERN -> {
-                            backupStep = BackupStep.SetPattern
-                        }
-                        BACKUP_PROTECTION_BOTH -> {
-                            backupStep = BackupStep.SetPassword
-                        }
+                        BACKUP_PROTECTION_PASSWORD -> backupStep = BackupStep.SetPassword
+                        BACKUP_PROTECTION_PATTERN -> backupStep = BackupStep.SetPattern
+                        BACKUP_PROTECTION_BOTH -> backupStep = BackupStep.SetPassword
                     }
                 },
-                onDismissRequest = { resetBackupState() }
+                onDismissRequest = { resetBackupState() },
             )
-        }
 
-        // 步骤 3a：设置密码
-        if (backupStep == BackupStep.SetPassword) {
             SetAppLockPasswordDialog(
+                visible = backupStep == BackupStep.SetPassword,
                 lockType = APP_LOCK_TYPE_PASSWORD,
                 passwordLength = 4,
                 onConfirm = { pwd ->
@@ -402,30 +355,23 @@ fun BackupRestoreScreen(
                         BackupStep.None
                     }
                 },
-                onDismiss = { resetBackupState() }
+                onDismiss = { resetBackupState() },
             )
-        }
 
-        // 步骤 3b：设置图案
-        if (backupStep == BackupStep.SetPattern) {
             SetAppLockPasswordDialog(
+                visible = backupStep == BackupStep.SetPattern,
                 lockType = APP_LOCK_TYPE_PATTERN,
                 onConfirm = { pattern ->
                     pendingPattern = pattern
                     pendingCreateDocument = true
                     backupStep = BackupStep.None
                 },
-                onDismiss = { resetBackupState() }
+                onDismiss = { resetBackupState() },
             )
-        }
 
-        // ============== 恢复流程 ==============
-
-        // 核验密码
-        if (restoreStep == RestoreStep.VerifyPassword) {
-            val backup = restoreBackup
-            if (backup != null) {
+            restoreBackup?.let { backup ->
                 VerifyPasswordDialog(
+                    visible = restoreStep == RestoreStep.VerifyPassword,
                     passwordLength = 4,
                     onVerify = { pwd ->
                         if (backupManager.verifyPassword(backup, pwd)) {
@@ -435,16 +381,10 @@ fun BackupRestoreScreen(
                             false
                         }
                     },
-                    onDismiss = { cancelRestore() }
+                    onDismiss = { cancelRestore() },
                 )
-            }
-        }
-
-        // 核验图案
-        if (restoreStep == RestoreStep.VerifyPattern) {
-            val backup = restoreBackup
-            if (backup != null) {
                 VerifyPatternDialog(
+                    visible = restoreStep == RestoreStep.VerifyPattern,
                     onVerify = { pattern ->
                         if (backupManager.verifyPattern(backup, pattern)) {
                             onPatternVerified()
@@ -453,41 +393,27 @@ fun BackupRestoreScreen(
                             false
                         }
                     },
-                    onDismiss = { cancelRestore() }
+                    onDismiss = { cancelRestore() },
                 )
-            }
-        }
-
-        // 选择恢复内容
-        if (restoreStep == RestoreStep.SelectContent) {
-            val backup = restoreBackup
-            if (backup != null) {
                 RestoreContentPickerDialog(
+                    visible = restoreStep == RestoreStep.SelectContent,
                     backup = backup,
                     onConfirm = { options ->
                         restoreContentOptions = options
-                        // 如果包含缓存目录，先进入漫画选择步骤
                         if (options.includeComicCache && backup.meta.includeComicCache) {
                             restoreStep = RestoreStep.SelectComicCache
                         } else {
                             applyRestore(backup, options)
                         }
                     },
-                    onDismiss = { cancelRestore() }
+                    onDismiss = { cancelRestore() },
                 )
-            }
-        }
-
-        // 选择要恢复缓存的漫画
-        if (restoreStep == RestoreStep.SelectComicCache) {
-            val backup = restoreBackup
-            if (backup != null) {
                 val cache = backupManager.extractComicCache(backup)
                 ComicCacheRestoreDialog(
+                    visible = restoreStep == RestoreStep.SelectComicCache,
                     groups = cache.groups,
                     imgHost = remoteSetting.imgHost,
                     onConfirm = { selected ->
-                        // 先应用本地设置，再恢复缓存
                         val opts = restoreContentOptions
                         if (opts.includeLocalSetting) {
                             applyRestore(backup, opts.copy(includeComicCache = false))
@@ -498,10 +424,41 @@ fun BackupRestoreScreen(
                         applyComicCacheRestore(selected)
                     },
                     onSkip = {
-                        // 用户选择不恢复缓存，只恢复其他内容
                         applyRestore(backup, restoreContentOptions.copy(includeComicCache = false))
                     },
-                    onDismiss = { cancelRestore() }
+                    onDismiss = { cancelRestore() },
+                )
+            }
+        },
+    ) { topContentPadding, bottomContentPadding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = topContentPadding + 16.dp,
+                bottom = bottomContentPadding + 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            item { InfoCard() }
+            item {
+                ActionCard(
+                    icon = Icons.Rounded.CloudUpload,
+                    title = "备份数据",
+                    description = "选择需要备份的内容（本地设置 / 缓存目录），再选择是否设置密码/图案保护",
+                    onClick = {
+                        resetBackupState()
+                        backupStep = BackupStep.SelectContent
+                    },
+                )
+            }
+            item {
+                ActionCard(
+                    icon = Icons.Rounded.CloudDownload,
+                    title = "恢复数据",
+                    description = "从备份文件恢复，可选择需要恢复的内容（不会覆盖当前设备的应用锁状态）",
+                    onClick = { openDocumentLauncher.launch(arrayOf("application/json")) },
                 )
             }
         }
@@ -511,26 +468,26 @@ fun BackupRestoreScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun BackupContentPickerDialog(
+    visible: Boolean,
     options: BackupContentOptions,
     onChange: (BackupContentOptions) -> Unit,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.widthIn(max = 440.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            shape = MaterialTheme.shapes.extraLarge
+    GlassModal(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        surfaceId = "backup-content-picker-glass-modal",
+        modifier = Modifier.widthIn(max = 440.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 640.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
                 Text(
                     text = "选择备份内容",
                     style = MaterialTheme.typography.headlineSmall,
@@ -561,7 +518,6 @@ private fun BackupContentPickerDialog(
                     Spacer(modifier = Modifier.size(8.dp))
                     TextButton(onClick = onConfirm) { Text("下一步", fontWeight = FontWeight.Bold) }
                 }
-            }
         }
     }
 }
@@ -569,6 +525,7 @@ private fun BackupContentPickerDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun RestoreContentPickerDialog(
+    visible: Boolean,
     backup: BackupFile,
     onConfirm: (BackupContentOptions) -> Unit,
     onDismiss: () -> Unit,
@@ -576,21 +533,27 @@ private fun RestoreContentPickerDialog(
     var localSettingOn by remember { mutableStateOf(backup.meta.includeLocalSetting) }
     var comicCacheOn by remember { mutableStateOf(backup.meta.includeComicCache) }
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.widthIn(max = 440.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            shape = MaterialTheme.shapes.extraLarge
+    LaunchedEffect(visible) {
+        if (visible) {
+            localSettingOn = backup.meta.includeLocalSetting
+            comicCacheOn = backup.meta.includeComicCache
+        }
+    }
+
+    GlassModal(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        surfaceId = "restore-content-picker-glass-modal",
+        modifier = Modifier.widthIn(max = 440.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 640.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
                 Text(
                     text = "选择恢复内容",
                     style = MaterialTheme.typography.headlineSmall,
@@ -632,7 +595,6 @@ private fun RestoreContentPickerDialog(
                         )
                     }) { Text("下一步", fontWeight = FontWeight.Bold) }
                 }
-            }
         }
     }
 }
@@ -802,27 +764,30 @@ private fun ActionCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VerifyPasswordDialog(
+    visible: Boolean,
     passwordLength: Int,
     onVerify: (String) -> Boolean,
     onDismiss: () -> Unit,
 ) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.widthIn(max = 400.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            shape = MaterialTheme.shapes.extraLarge
+    LaunchedEffect(visible) {
+        if (visible) errorMessage = null
+    }
+
+    GlassModal(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        surfaceId = "backup-verify-password-glass-modal",
+        modifier = Modifier.widthIn(max = 400.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
                 Text(
                     text = "请输入备份密码",
                     style = MaterialTheme.typography.titleMedium,
@@ -854,7 +819,6 @@ private fun VerifyPasswordDialog(
                 TextButton(onClick = onDismiss) {
                     Text("取消")
                 }
-            }
         }
     }
 }
@@ -862,26 +826,29 @@ private fun VerifyPasswordDialog(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun VerifyPatternDialog(
+    visible: Boolean,
     onVerify: (String) -> Boolean,
     onDismiss: () -> Unit,
 ) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.widthIn(max = 400.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            shape = MaterialTheme.shapes.extraLarge
+    LaunchedEffect(visible) {
+        if (visible) errorMessage = null
+    }
+
+    GlassModal(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        surfaceId = "backup-verify-pattern-glass-modal",
+        modifier = Modifier.widthIn(max = 400.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
                 Text(
                     text = "请绘制备份图案",
                     style = MaterialTheme.typography.titleMedium,
@@ -912,7 +879,6 @@ private fun VerifyPatternDialog(
                 TextButton(onClick = onDismiss) {
                     Text("取消")
                 }
-            }
         }
     }
 }
@@ -930,6 +896,7 @@ private fun ChapterBackup_to_ComicChapter(chapter: com.par9uet.jm.store.ChapterB
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ComicCacheRestoreDialog(
+    visible: Boolean,
     groups: List<ComicGroupBackup>,
     imgHost: String,
     onConfirm: (List<ComicGroupBackup>) -> Unit,
@@ -937,22 +904,22 @@ private fun ComicCacheRestoreDialog(
     onDismiss: () -> Unit,
 ) {
     // 默认全部勾选
-    val selectedIds = remember { mutableStateOf(groups.map { it.id }.toSet()) }
+    val selectedIds = remember(groups) { mutableStateOf(groups.map { it.id }.toSet()) }
 
-    BasicAlertDialog(onDismissRequest = onDismiss) {
-        Card(
-            modifier = Modifier.widthIn(max = 520.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-            ),
-            shape = MaterialTheme.shapes.extraLarge
+    GlassModal(
+        visible = visible,
+        onDismissRequest = onDismiss,
+        surfaceId = "backup-cache-restore-glass-modal",
+        modifier = Modifier.widthIn(max = 520.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 640.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
                 // 标题
                 Text(
                     text = "恢复缓存目录",
@@ -1024,7 +991,6 @@ private fun ComicCacheRestoreDialog(
                         onConfirm(selected)
                     }) { Text("恢复", fontWeight = FontWeight.Bold) }
                 }
-            }
         }
     }
 }

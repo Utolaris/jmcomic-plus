@@ -12,10 +12,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Api
@@ -46,7 +50,6 @@ import androidx.compose.material.icons.rounded.BugReport
 import androidx.compose.material.icons.rounded.CleaningServices
 import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -65,12 +68,14 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.LauncherDisguise
@@ -79,6 +84,7 @@ import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
+import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
@@ -146,24 +152,22 @@ fun LocalSettingScreen(
     CommonScaffold(
         title = "\u8bbe\u7f6e",
         overlayContent = {
-            if (isOpenSettingSelectDialog) {
-                SettingSelectDialogContent(
-                    settingType = settingType,
-                    localSetting = localSetting,
-                    localSettingManager = localSettingManager,
-                    onDismiss = { isOpenSettingSelectDialog = false }
-                )
-            }
-            if (showHomeExcludedTagsDialog) {
-                HomeExcludedTagsDialog(
-                    tags = localSetting.homeExcludedTags,
-                    onConfirm = { tags ->
-                        localSettingManager.updateHomeExcludedTags(tags)
-                        showHomeExcludedTagsDialog = false
-                    },
-                    onDismiss = { showHomeExcludedTagsDialog = false }
-                )
-            }
+            SettingSelectDialogContent(
+                visible = isOpenSettingSelectDialog,
+                settingType = settingType,
+                localSetting = localSetting,
+                localSettingManager = localSettingManager,
+                onDismiss = { isOpenSettingSelectDialog = false }
+            )
+            HomeExcludedTagsDialog(
+                visible = showHomeExcludedTagsDialog,
+                tags = localSetting.homeExcludedTags,
+                onConfirm = { tags ->
+                    localSettingManager.updateHomeExcludedTags(tags)
+                    showHomeExcludedTagsDialog = false
+                },
+                onDismiss = { showHomeExcludedTagsDialog = false }
+            )
         },
     ) { topContentPadding, bottomContentPadding ->
         LazyColumn(
@@ -354,6 +358,7 @@ fun LocalSettingScreen(
 
 @Composable
 private fun SettingSelectDialogContent(
+    visible: Boolean,
     settingType: SettingType,
     localSetting: LocalSetting,
     localSettingManager: LocalSettingManager,
@@ -362,6 +367,7 @@ private fun SettingSelectDialogContent(
     // 网格列数使用滑块设置，不走选项列表
     if (settingType is SettingType.AllGridColumns) {
         AllGridColumnSliderDialog(
+            visible = visible,
             homeColumns = localSetting.homeGridColumns,
             collectColumns = localSetting.collectGridColumns,
             downloadColumns = localSetting.downloadGridColumns,
@@ -430,6 +436,7 @@ private fun SettingSelectDialogContent(
         }
     }
     SelectDialog(
+        visible = visible,
         title = settingTitle(settingType),
         value = settingValue(settingType, localSetting),
         selectOptionList = when (settingType) {
@@ -464,6 +471,7 @@ private fun SettingSelectDialogContent(
 
 @Composable
 private fun AllGridColumnSliderDialog(
+    visible: Boolean,
     homeColumns: Int,
     collectColumns: Int,
     downloadColumns: Int,
@@ -477,6 +485,16 @@ private fun AllGridColumnSliderDialog(
     var download by remember { mutableStateOf(downloadColumns.toFloat()) }
     var history by remember { mutableStateOf(historyColumns.toFloat()) }
     var search by remember { mutableStateOf(searchColumns.toFloat()) }
+
+    LaunchedEffect(visible) {
+        if (visible) {
+            home = homeColumns.toFloat()
+            collect = collectColumns.toFloat()
+            download = downloadColumns.toFloat()
+            history = historyColumns.toFloat()
+            search = searchColumns.toFloat()
+        }
+    }
 
     @Composable
     fun SliderRow(
@@ -515,10 +533,22 @@ private fun AllGridColumnSliderDialog(
         }
     }
 
-    AlertDialog(
+    val screenHeight = LocalWindowInfo.current.containerSize.height.dp
+    GlassModal(
+        visible = visible,
         onDismissRequest = onDismiss,
-        title = { Text("网格列数") },
-        text = {
+        surfaceId = "settings-grid-columns-glass-modal",
+        modifier = Modifier.widthIn(max = 460.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = screenHeight * 0.85f)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("网格列数", style = MaterialTheme.typography.titleLarge)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     "拖动滑块设置各页面每行显示的漫画数量，0 = 自适应",
@@ -531,21 +561,23 @@ private fun AllGridColumnSliderDialog(
                 SliderRow(Icons.Rounded.History, "历史记录", history) { history = it }
                 SliderRow(Icons.Rounded.Search, "搜索", search) { search = it }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(home.toInt(), collect.toInt(), download.toInt(), history.toInt(), search.toInt()) }) {
-                Text("确定")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDismiss) { Text("取消") }
+                TextButton(onClick = {
+                    onConfirm(home.toInt(), collect.toInt(), download.toInt(), history.toInt(), search.toInt())
+                }) { Text("确定") }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
         }
-    )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun HomeExcludedTagsDialog(
+    visible: Boolean,
     tags: List<String>,
     onConfirm: (List<String>) -> Unit,
     onDismiss: () -> Unit,
@@ -553,10 +585,29 @@ private fun HomeExcludedTagsDialog(
     var text by remember { mutableStateOf("") }
     var currentTags by remember { mutableStateOf(tags) }
 
-    AlertDialog(
+    LaunchedEffect(visible) {
+        if (visible) {
+            text = ""
+            currentTags = tags
+        }
+    }
+
+    val screenHeight = LocalWindowInfo.current.containerSize.height.dp
+    GlassModal(
+        visible = visible,
         onDismissRequest = onDismiss,
-        title = { Text("首页标签排除") },
-        text = {
+        surfaceId = "settings-home-excluded-tags-glass-modal",
+        modifier = Modifier.widthIn(max = 460.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = screenHeight * 0.85f)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("首页标签排除", style = MaterialTheme.typography.titleLarge)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     "添加标签后，首页推荐将不再显示包含这些标签的漫画",
@@ -610,14 +661,15 @@ private fun HomeExcludedTagsDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(currentTags) }) { Text("确定") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDismiss) { Text("取消") }
+                TextButton(onClick = { onConfirm(currentTags) }) { Text("确定") }
+            }
         }
-    )
+    }
 }
 
 @Composable

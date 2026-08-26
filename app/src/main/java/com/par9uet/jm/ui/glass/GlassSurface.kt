@@ -2,6 +2,9 @@ package com.par9uet.jm.ui.glass
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
@@ -73,8 +76,21 @@ fun GlassSurface(
         }
     }
 
+    // GlassModal is also used by the onboarding flow, which intentionally has no page capture
+    // host. Keep that fallback visibly surfaced while host-backed callers retain real backdrop
+    // blur from the native GlassBackdropView.
+    val fallbackModifier = if (registry == null) {
+        Modifier.background(
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            shape = RoundedCornerShape(style.cornerRadius),
+        )
+    } else {
+        Modifier
+    }
+
     Box(
         modifier = modifier
+            .then(fallbackModifier)
             .alpha(currentAlpha.value)
             .graphicsLayer {
                 scaleX = currentScale.value

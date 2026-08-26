@@ -33,6 +33,7 @@ data class SelectOption(val label: String, val value: String)
  */
 @Composable
 fun SelectDialog(
+    visible: Boolean,
     title: String,
     value: String?,
     selectOptionList: List<SelectOption> = listOf(),
@@ -40,7 +41,7 @@ fun SelectDialog(
     onDismissRequest: () -> Unit = {}
 ) {
     GlassModal(
-        visible = true,
+        visible = visible,
         onDismissRequest = onDismissRequest,
         surfaceId = "select-dialog-glass",
         modifier = Modifier.widthIn(max = 420.dp),

@@ -14,18 +14,21 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Colorize
 import androidx.compose.material.icons.rounded.RestartAlt
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalIconButton
@@ -36,6 +39,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,6 +50,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_CUSTOM
@@ -58,6 +63,7 @@ import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_SUNSET
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.glass.GlassModal
 import org.koin.compose.getKoin
 
 // 预设方案：每组 4 个颜色对应 [primary, secondary, tertiary, error]，ARGB hex
@@ -118,7 +124,36 @@ fun ColorPaletteScreen(
             localSetting.customColorTertiary != null ||
             localSetting.customColorError != null
 
-    CommonScaffold(title = "调色板") { topContentPadding, bottomContentPadding ->
+    CommonScaffold(
+        title = "调色板",
+        overlayContent = {
+            val pickerSlot = editingSlot ?: ColorSlot.Primary
+            ColorPickerDialog(
+                visible = editingSlot != null,
+                slot = pickerSlot,
+                initialColor = when (pickerSlot) {
+                    ColorSlot.Primary -> effectiveColors[0]
+                    ColorSlot.Secondary -> effectiveColors[1]
+                    ColorSlot.Tertiary -> effectiveColors[2]
+                    ColorSlot.Error -> effectiveColors[3]
+                },
+                onDismiss = { editingSlot = null },
+                onConfirm = { newColor ->
+                    val hex = newColor.toArgbHex()
+                    val primary = if (pickerSlot == ColorSlot.Primary) hex else localSetting.customColorPrimary
+                    val secondary = if (pickerSlot == ColorSlot.Secondary) hex else localSetting.customColorSecondary
+                    val tertiary = if (pickerSlot == ColorSlot.Tertiary) hex else localSetting.customColorTertiary
+                    val error = if (pickerSlot == ColorSlot.Error) hex else localSetting.customColorError
+                    // 一旦自定义颜色，预设自动切到 custom
+                    if (localSetting.colorPalettePreset != COLOR_PALETTE_PRESET_CUSTOM) {
+                        localSettingManager.updateColorPalettePreset(COLOR_PALETTE_PRESET_CUSTOM)
+                    }
+                    localSettingManager.updateCustomColor(primary, secondary, tertiary, error)
+                    editingSlot = null
+                },
+            )
+        },
+    ) { topContentPadding, bottomContentPadding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -188,31 +223,6 @@ fun ColorPaletteScreen(
         }
     }
 
-    editingSlot?.let { slot ->
-        ColorPickerDialog(
-            slot = slot,
-            initialColor = when (slot) {
-                ColorSlot.Primary -> effectiveColors[0]
-                ColorSlot.Secondary -> effectiveColors[1]
-                ColorSlot.Tertiary -> effectiveColors[2]
-                ColorSlot.Error -> effectiveColors[3]
-            },
-            onDismiss = { editingSlot = null },
-            onConfirm = { newColor ->
-                val hex = newColor.toArgbHex()
-                val primary = if (slot == ColorSlot.Primary) hex else localSetting.customColorPrimary
-                val secondary = if (slot == ColorSlot.Secondary) hex else localSetting.customColorSecondary
-                val tertiary = if (slot == ColorSlot.Tertiary) hex else localSetting.customColorTertiary
-                val error = if (slot == ColorSlot.Error) hex else localSetting.customColorError
-                // 一旦自定义颜色，预设自动切到 custom
-                if (localSetting.colorPalettePreset != COLOR_PALETTE_PRESET_CUSTOM) {
-                    localSettingManager.updateColorPalettePreset(COLOR_PALETTE_PRESET_CUSTOM)
-                }
-                localSettingManager.updateCustomColor(primary, secondary, tertiary, error)
-                editingSlot = null
-            }
-        )
-    }
 }
 
 @Composable
@@ -420,6 +430,7 @@ private fun ColorSlotRow(
 
 @Composable
 private fun ColorPickerDialog(
+    visible: Boolean,
     slot: ColorSlot,
     initialColor: Color,
     onDismiss: () -> Unit,
@@ -430,10 +441,30 @@ private fun ColorPickerDialog(
     var blue by remember { mutableStateOf((initialColor.blue * 255).toInt()) }
     val currentColor = Color(red, green, blue)
 
-    AlertDialog(
+    LaunchedEffect(visible, slot) {
+        if (visible) {
+            red = (initialColor.red * 255).toInt()
+            green = (initialColor.green * 255).toInt()
+            blue = (initialColor.blue * 255).toInt()
+        }
+    }
+
+    val screenHeight = LocalWindowInfo.current.containerSize.height.dp
+    GlassModal(
+        visible = visible,
         onDismissRequest = onDismiss,
-        title = { Text("选择${slot.label}") },
-        text = {
+        surfaceId = "settings-color-picker-glass-modal",
+        modifier = Modifier.widthIn(max = 460.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = screenHeight * 0.85f)
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("选择${slot.label}", style = MaterialTheme.typography.titleLarge)
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Box(
                     modifier = Modifier
@@ -452,14 +483,15 @@ private fun ColorPickerDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(currentColor) }) { Text("确定") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onDismiss) { Text("取消") }
+                TextButton(onClick = { onConfirm(currentColor) }) { Text("确定") }
+            }
         }
-    )
+    }
 }
 
 @Composable
