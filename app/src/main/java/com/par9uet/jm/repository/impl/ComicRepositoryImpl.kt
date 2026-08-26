@@ -76,17 +76,6 @@ class ComicRepositoryImpl(
     ): NetWorkResult<CommentComicResponse> =
         embeddedDataSource.comment(content, comicId, commentId)
 
-    override suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit> =
-        embeddedDataSource.createFavoriteFolder(name)
-
-    override suspend fun deleteFavoriteFolder(folderId: String): NetWorkResult<Unit> =
-        embeddedDataSource.deleteFavoriteFolder(folderId)
-
-    override suspend fun renameFavoriteFolder(
-        folderId: String,
-        newName: String,
-    ): NetWorkResult<Unit> = embeddedDataSource.renameFavoriteFolder(folderId, newName)
-
     override suspend fun moveComicToFolder(
         comicId: Int,
         folderId: String,

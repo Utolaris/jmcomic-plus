@@ -122,15 +122,6 @@ class ComicViewModelHomeLoadingTest {
             commentId: Int?
         ): NetWorkResult<CommentComicResponse> = NetWorkResult.Error("stub")
 
-        override suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit> =
-            NetWorkResult.Error("stub")
-
-        override suspend fun deleteFavoriteFolder(folderId: String): NetWorkResult<Unit> =
-            NetWorkResult.Error("stub")
-
-        override suspend fun renameFavoriteFolder(folderId: String, newName: String): NetWorkResult<Unit> =
-            NetWorkResult.Error("stub")
-
         override suspend fun moveComicToFolder(comicId: Int, folderId: String): NetWorkResult<Unit> =
             NetWorkResult.Error("stub")
 

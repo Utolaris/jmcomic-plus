@@ -7,11 +7,11 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.style.TextOverflow
+import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.screens.HomeMaterialCategoryTitleSelector
 import com.par9uet.jm.ui.screens.HomeMaterialTopBarActions
 import com.par9uet.jm.ui.viewModel.ComicViewModel
-import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,12 +56,10 @@ private fun HomeTopBarComponent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CollectTopBarComponent(
-    controller: FavoritesUiController,
-    userViewModel: UserViewModel = koinActivityViewModel(),
+    favoritesViewModel: FavoritesViewModel,
 ) {
     FavoritesMaterialTopBar(
-        controller = controller,
-        userViewModel = userViewModel,
+        favoritesViewModel = favoritesViewModel,
     )
 }
 
@@ -92,7 +90,7 @@ internal fun TopBarComponent(
     homeCategories: List<ComicViewModel.HomeCategoryInfo> = emptyList(),
     selectedHomeCategoryId: String? = null,
     onHomeCategorySelected: (String) -> Unit = {},
-    favoritesController: FavoritesUiController? = null,
+    favoritesViewModel: FavoritesViewModel? = null,
     onHomeSearch: () -> Unit = {},
     onHomeDownload: () -> Unit = {},
     onHomeWeekly: () -> Unit = {},
@@ -112,7 +110,7 @@ internal fun TopBarComponent(
             onSign = onHomeSign,
         )
         MainTab.Collect -> CollectTopBarComponent(
-            controller = favoritesController ?: rememberFavoritesUiController(),
+            favoritesViewModel = favoritesViewModel ?: koinActivityViewModel(),
         )
         MainTab.Settings -> SettingsTopBarComponent(tab)
     }

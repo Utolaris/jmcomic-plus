@@ -47,9 +47,6 @@ interface ComicRepository {
         commentId: Int?
     ): NetWorkResult<CommentComicResponse>
 
-    suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit>
-    suspend fun deleteFavoriteFolder(folderId: String): NetWorkResult<Unit>
-    suspend fun renameFavoriteFolder(folderId: String, newName: String): NetWorkResult<Unit>
     suspend fun moveComicToFolder(comicId: Int, folderId: String): NetWorkResult<Unit>
 
     /**

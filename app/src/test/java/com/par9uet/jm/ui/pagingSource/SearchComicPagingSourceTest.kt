@@ -110,12 +110,6 @@ class SearchComicPagingSourceTest {
             commentId: Int?
         ): NetWorkResult<CommentComicResponse> = unused()
 
-        override suspend fun createFavoriteFolder(name: String): NetWorkResult<Unit> = unused()
-
-        override suspend fun deleteFavoriteFolder(folderId: String): NetWorkResult<Unit> = unused()
-
-        override suspend fun renameFavoriteFolder(folderId: String, newName: String): NetWorkResult<Unit> = unused()
-
         override suspend fun moveComicToFolder(comicId: Int, folderId: String): NetWorkResult<Unit> = unused()
 
         private fun contentItem(id: Int): ComicListResponse.ContentListItem {

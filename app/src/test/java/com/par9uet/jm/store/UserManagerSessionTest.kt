@@ -1,7 +1,6 @@
 package com.par9uet.jm.store
 
 import com.par9uet.jm.data.models.User
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.repository.VerifiedCredentials
@@ -11,7 +10,6 @@ import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
-import com.par9uet.jm.retrofit.model.UserCollectComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.storage.CookieStorage
@@ -159,8 +157,6 @@ class UserManagerSessionTest {
         private val verifyGate = CompletableDeferred<NetWorkResult<VerifiedCredentials>>()
         val activated = mutableListOf<VerifiedCredentials>()
         var loginHandler: (suspend (String, String) -> NetWorkResult<LoginSession>)? = null
-        var favoritesSeenCookies = emptyList<Cookie>()
-        var favoritesCalls = 0
 
         fun completeVerify(result: NetWorkResult<VerifiedCredentials>) {
             verifyGate.complete(result)
@@ -191,16 +187,6 @@ class UserManagerSessionTest {
         }
 
         override fun clearSession() = Unit
-
-        override suspend fun getCollectComicList(
-            page: Int,
-            order: CollectComicOrderFilter,
-            folderId: Int
-        ): NetWorkResult<UserCollectComicListResponse> {
-            favoritesCalls++
-            favoritesSeenCookies = cookieStorage.get()
-            return NetWorkResult.Error("stub")
-        }
 
         override suspend fun getHistoryComicList(
             page: Int
@@ -420,7 +406,7 @@ class UserManagerSessionTest {
     }
 
     @Test
-    fun promotedSessionIsUsedBySubsequentAuthenticatedFavoritesCall() = runBlocking {
+    fun promotedSessionIsAvailableToAuthenticatedFeatures() = runBlocking {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
@@ -438,10 +424,9 @@ class UserManagerSessionTest {
         )
         verifier.join()
 
-        repository.getCollectComicList(1, CollectComicOrderFilter.COLLECT_TIME, 0)
-        assertEquals(1, repository.favoritesCalls)
-        assertEquals("AVS", repository.favoritesSeenCookies.single().name)
-        assertEquals("session-A", repository.favoritesSeenCookies.single().value)
+        val activeCookie = cookieStorage.get().single()
+        assertEquals("AVS", activeCookie.name)
+        assertEquals("session-A", activeCookie.value)
     }
 
     @Test

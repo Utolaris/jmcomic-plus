@@ -73,7 +73,23 @@ import com.par9uet.jm.ui.glass.GlassAnchoredMenuState
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import com.par9uet.jm.ui.glass.glassMenuAnchor
-import com.par9uet.jm.ui.viewModel.UserViewModel
+import com.par9uet.jm.favorites.model.FavoritesIntent
+import com.par9uet.jm.favorites.presentation.FavoritesViewModel
+
+internal enum class FavoritesToolbarMode {
+    NORMAL,
+    SEARCH,
+    SELECTION,
+}
+
+internal fun resolveFavoritesToolbarMode(
+    searchActive: Boolean,
+    selectedCount: Int,
+): FavoritesToolbarMode = when {
+    selectedCount > 0 -> FavoritesToolbarMode.SELECTION
+    searchActive -> FavoritesToolbarMode.SEARCH
+    else -> FavoritesToolbarMode.NORMAL
+}
 
 internal object FavoritesToolbarDefaults {
     val toolbarHeight = 58.dp
@@ -269,30 +285,25 @@ private fun FavoritesGlassFolderTitle(
 @Composable
 internal fun FavoritesVariableGlassTopBar(
     statusBarInset: Dp,
-    controller: FavoritesUiController,
+    favoritesViewModel: FavoritesViewModel,
     folderMenuState: GlassAnchoredMenuState,
-    userViewModel: UserViewModel,
     modifier: Modifier = Modifier,
 ) {
-    val selectedFolderId by userViewModel.selectedFolderId.collectAsState()
-    val folderList by userViewModel.folderList.collectAsState()
-    val editState by userViewModel.collectEditState.collectAsState()
-    val syncState by userViewModel.favoriteSyncState.collectAsState()
-    val filter by userViewModel.collectComicFilter.collectAsState()
-    val selectedCount = editState.selectedComicIds.size
-    val mode = resolveFavoritesToolbarMode(controller.searchActive, selectedCount)
+    val state by favoritesViewModel.uiState.collectAsState()
+    val selectedFolderId = state.selectedFolderId
+    val selectedCount = state.selection.selectedComicIds.size
+    val mode = resolveFavoritesToolbarMode(state.searchActive, selectedCount)
     val keyboardController = LocalSoftwareKeyboardController.current
-    val title = resolveFavoriteFolderTitle(selectedFolderId, folderList)
-    val activeFilterCount = filter.selectedTags.size + filter.selectedAuthors.size
+    val title = resolveFavoriteFolderTitle(selectedFolderId, state.folders)
+    val activeFilterCount = state.filter.selectedTags.size + state.filter.selectedAuthors.size
 
     fun exitSearch() {
-        controller.exitSearch()
-        userViewModel.updateCollectSearchText("")
+        favoritesViewModel.onIntent(FavoritesIntent.SearchExited)
         keyboardController?.hide()
     }
 
     LaunchedEffect(selectedCount) {
-        if (selectedCount > 0 && controller.searchActive) exitSearch()
+        if (selectedCount > 0 && state.searchActive) exitSearch()
     }
     LaunchedEffect(mode) {
         if (mode != FavoritesToolbarMode.SEARCH) keyboardController?.hide()
@@ -301,7 +312,7 @@ internal fun FavoritesVariableGlassTopBar(
     BackHandler(enabled = mode != FavoritesToolbarMode.NORMAL) {
         when (mode) {
             FavoritesToolbarMode.SEARCH -> exitSearch()
-            FavoritesToolbarMode.SELECTION -> userViewModel.clearCollectSelection()
+            FavoritesToolbarMode.SELECTION -> favoritesViewModel.onIntent(FavoritesIntent.SelectionCleared)
             FavoritesToolbarMode.NORMAL -> Unit
         }
     }
@@ -342,37 +353,51 @@ internal fun FavoritesVariableGlassTopBar(
             when (targetMode) {
                 FavoritesToolbarMode.NORMAL -> FavoritesNormalGlassContent(
                     title = title,
-                    isSyncing = syncState.isSyncing,
-                    hasSyncError = syncState.errorMessage != null,
+                    isSyncing = state.sync.isSyncing,
+                    hasSyncError = state.sync.errorMessage != null,
                     activeFilterCount = activeFilterCount,
                     surfaceAlpha = normalSurfaceAlpha,
                     folderMenuState = folderMenuState,
-                    onSync = { userViewModel.requestFavoriteManualSync(selectedFolderId) },
+                    onSync = {
+                        favoritesViewModel.onIntent(FavoritesIntent.ManualSync)
+                    },
                     onSearch = {
                         folderMenuState.dismiss()
-                        controller.enterSearch()
+                        favoritesViewModel.onIntent(FavoritesIntent.SearchEntered)
                     },
                     onFilter = {
                         folderMenuState.dismiss()
-                        controller.showFilterDialog()
+                        favoritesViewModel.onIntent(FavoritesIntent.FilterOpened)
                     },
                 )
 
                 FavoritesToolbarMode.SEARCH -> FavoritesSearchGlassContent(
-                    value = filter.searchText,
+                    value = state.filter.searchText,
                     surfaceAlpha = searchSurfaceAlpha,
-                    onValueChange = userViewModel::updateCollectSearchText,
-                    onClear = { userViewModel.updateCollectSearchText("") },
+                    onValueChange = { query ->
+                        favoritesViewModel.onIntent(FavoritesIntent.SearchChanged(query))
+                    },
+                    onClear = {
+                        favoritesViewModel.onIntent(FavoritesIntent.SearchChanged(""))
+                    },
                     onBack = ::exitSearch,
                 )
 
                 FavoritesToolbarMode.SELECTION -> FavoritesSelectionGlassContent(
                     selectedCount = selectedCount,
                     surfaceAlpha = selectionSurfaceAlpha,
-                    onClose = userViewModel::clearCollectSelection,
-                    onDownload = { userViewModel.cacheCollectedComics(controller.selectedComics()) },
-                    onMove = controller::showMoveDialog,
-                    onDelete = controller::showDeleteDialog,
+                    onClose = {
+                        favoritesViewModel.onIntent(FavoritesIntent.SelectionCleared)
+                    },
+                    onDownload = {
+                        favoritesViewModel.onIntent(FavoritesIntent.DownloadSelected)
+                    },
+                    onMove = {
+                        favoritesViewModel.onIntent(FavoritesIntent.MoveSelected)
+                    },
+                    onDelete = {
+                        favoritesViewModel.onIntent(FavoritesIntent.UncollectSelected)
+                    },
                 )
             }
         }
@@ -575,33 +600,28 @@ private fun FavoritesSelectionGlassContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FavoritesMaterialTopBar(
-    controller: FavoritesUiController,
-    userViewModel: UserViewModel,
+    favoritesViewModel: FavoritesViewModel,
     onNavigateBack: (() -> Unit)? = null,
 ) {
-    val selectedFolderId by userViewModel.selectedFolderId.collectAsState()
-    val folderList by userViewModel.folderList.collectAsState()
-    val editState by userViewModel.collectEditState.collectAsState()
-    val syncState by userViewModel.favoriteSyncState.collectAsState()
-    val filter by userViewModel.collectComicFilter.collectAsState()
-    val selectedCount = editState.selectedComicIds.size
-    val mode = resolveFavoritesToolbarMode(controller.searchActive, selectedCount)
+    val state by favoritesViewModel.uiState.collectAsState()
+    val selectedFolderId = state.selectedFolderId
+    val selectedCount = state.selection.selectedComicIds.size
+    val mode = resolveFavoritesToolbarMode(state.searchActive, selectedCount)
     val keyboardController = LocalSoftwareKeyboardController.current
-    val activeFilterCount = filter.selectedTags.size + filter.selectedAuthors.size
+    val activeFilterCount = state.filter.selectedTags.size + state.filter.selectedAuthors.size
 
     fun exitSearch() {
-        controller.exitSearch()
-        userViewModel.updateCollectSearchText("")
+        favoritesViewModel.onIntent(FavoritesIntent.SearchExited)
         keyboardController?.hide()
     }
 
     LaunchedEffect(selectedCount) {
-        if (selectedCount > 0 && controller.searchActive) exitSearch()
+        if (selectedCount > 0 && state.searchActive) exitSearch()
     }
     BackHandler(enabled = mode != FavoritesToolbarMode.NORMAL) {
         when (mode) {
             FavoritesToolbarMode.SEARCH -> exitSearch()
-            FavoritesToolbarMode.SELECTION -> userViewModel.clearCollectSelection()
+            FavoritesToolbarMode.SELECTION -> favoritesViewModel.onIntent(FavoritesIntent.SelectionCleared)
             FavoritesToolbarMode.NORMAL -> Unit
         }
     }
@@ -615,7 +635,9 @@ internal fun FavoritesMaterialTopBar(
                 mode == FavoritesToolbarMode.SEARCH -> IconButton(onClick = ::exitSearch) {
                     Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "退出搜索")
                 }
-                mode == FavoritesToolbarMode.SELECTION -> IconButton(onClick = userViewModel::clearCollectSelection) {
+                mode == FavoritesToolbarMode.SELECTION -> IconButton(onClick = {
+                    favoritesViewModel.onIntent(FavoritesIntent.SelectionCleared)
+                }) {
                     Icon(Icons.Rounded.Close, contentDescription = "退出选择")
                 }
                 onNavigateBack != null -> IconButton(onClick = onNavigateBack) {
@@ -626,21 +648,27 @@ internal fun FavoritesMaterialTopBar(
         title = {
             when (mode) {
                 FavoritesToolbarMode.NORMAL -> FavoritesMaterialFolderTitle(
-                    title = resolveFavoriteFolderTitle(selectedFolderId, folderList),
+                    title = resolveFavoriteFolderTitle(selectedFolderId, state.folders),
                     selectedFolderId = selectedFolderId,
-                    folderList = folderList,
+                    folderList = state.folders,
                     onFolderSelected = { folderId ->
-                        userViewModel.clearCollectSelection()
+                        favoritesViewModel.onIntent(FavoritesIntent.SelectionCleared)
                         exitSearch()
-                        userViewModel.changeFolder(folderId)
+                        favoritesViewModel.onIntent(FavoritesIntent.FolderSelected(folderId))
                     },
-                    onManageFolders = controller::showFolderManagement,
+                    onManageFolders = {
+                        favoritesViewModel.onIntent(FavoritesIntent.FolderManagementOpened)
+                    },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 FavoritesToolbarMode.SEARCH -> FavoritesSearchField(
-                    value = filter.searchText,
-                    onValueChange = userViewModel::updateCollectSearchText,
-                    onClear = { userViewModel.updateCollectSearchText("") },
+                    value = state.filter.searchText,
+                    onValueChange = { query ->
+                        favoritesViewModel.onIntent(FavoritesIntent.SearchChanged(query))
+                    },
+                    onClear = {
+                        favoritesViewModel.onIntent(FavoritesIntent.SearchChanged(""))
+                    },
                     requestInitialFocus = true,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -653,14 +681,20 @@ internal fun FavoritesMaterialTopBar(
             when (mode) {
                 FavoritesToolbarMode.NORMAL -> {
                     FavoriteSyncIconButton(
-                        isSyncing = syncState.isSyncing,
-                        hasError = syncState.errorMessage != null,
-                        onClick = { userViewModel.requestFavoriteManualSync(selectedFolderId) },
+                        isSyncing = state.sync.isSyncing,
+                        hasError = state.sync.errorMessage != null,
+                        onClick = {
+                            favoritesViewModel.onIntent(FavoritesIntent.ManualSync)
+                        },
                     )
-                    IconButton(onClick = controller::enterSearch) {
+                    IconButton(onClick = {
+                        favoritesViewModel.onIntent(FavoritesIntent.SearchEntered)
+                    }) {
                         Icon(Icons.Rounded.Search, contentDescription = "搜索收藏")
                     }
-                    IconButton(onClick = controller::showFilterDialog) {
+                    IconButton(onClick = {
+                        favoritesViewModel.onIntent(FavoritesIntent.FilterOpened)
+                    }) {
                         Icon(
                             Icons.Rounded.FilterList,
                             contentDescription = "筛选",
@@ -674,13 +708,19 @@ internal fun FavoritesMaterialTopBar(
                 }
                 FavoritesToolbarMode.SEARCH -> Unit
                 FavoritesToolbarMode.SELECTION -> {
-                    IconButton(onClick = { userViewModel.cacheCollectedComics(controller.selectedComics()) }) {
+                    IconButton(onClick = {
+                        favoritesViewModel.onIntent(FavoritesIntent.DownloadSelected)
+                    }) {
                         Icon(Icons.Rounded.Download, contentDescription = "下载")
                     }
-                    IconButton(onClick = controller::showMoveDialog) {
+                    IconButton(onClick = {
+                        favoritesViewModel.onIntent(FavoritesIntent.MoveSelected)
+                    }) {
                         Icon(Icons.AutoMirrored.Rounded.DriveFileMove, contentDescription = "移动")
                     }
-                    IconButton(onClick = controller::showDeleteDialog) {
+                    IconButton(onClick = {
+                        favoritesViewModel.onIntent(FavoritesIntent.UncollectSelected)
+                    }) {
                         Icon(
                             Icons.Rounded.Delete,
                             contentDescription = "取消收藏",

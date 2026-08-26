@@ -112,6 +112,13 @@ class FavoriteStore(
             .toMutableMap()
             .apply { putIfAbsent("0", "全部") }
 
+    suspend fun getComics(accountId: Int, albumIds: Collection<Int>): List<Comic> {
+        val requestedIds = albumIds.distinct()
+        if (accountId <= 0 || requestedIds.isEmpty()) return emptyList()
+        val comicsById = comicDao.getByIds(accountId, requestedIds).associateBy { it.albumId }
+        return requestedIds.mapNotNull { comicsById[it]?.toComic() }
+    }
+
     suspend fun reconcileLightweightSnapshot(
         accountId: Int,
         scopeFolderId: Int,
@@ -653,6 +660,24 @@ private fun FavoriteComicEntity.toRemoteItem() = FavoriteRemoteItem(
     categoryTitle = categoryTitle,
     subCategoryId = subCategoryId,
     subCategoryTitle = subCategoryTitle,
+)
+
+private fun FavoriteComicEntity.toComic() = Comic(
+    id = albumId,
+    name = title,
+    authorList = authorList,
+    description = description,
+    readCount = 0,
+    likeCount = 0,
+    commentCount = 0,
+    tagList = tagList,
+    roleList = roleList,
+    workList = workList,
+    isCollect = true,
+    relateComicList = emptyList(),
+    comicChapterList = emptyList(),
+    price = 0,
+    isBuy = false,
 )
 
 private fun FavoriteRemoteItem.invalidatesMetadata(existing: FavoriteComicEntity): Boolean =

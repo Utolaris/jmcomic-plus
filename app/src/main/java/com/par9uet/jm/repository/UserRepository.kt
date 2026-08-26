@@ -8,7 +8,6 @@ import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
-import com.par9uet.jm.retrofit.model.UserCollectComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import okhttp3.Cookie
@@ -81,12 +80,6 @@ interface UserRepository {
     suspend fun removeCachedFavoriteFolder(accountId: Int, folderId: Int) = Unit
 
     suspend fun renameCachedFavoriteFolder(accountId: Int, folderId: Int, name: String) = Unit
-
-    suspend fun getCollectComicList(
-        page: Int = 1,
-        order: CollectComicOrderFilter = CollectComicOrderFilter.COLLECT_TIME,
-        folderId: Int = 0
-    ): NetWorkResult<UserCollectComicListResponse>
 
     suspend fun getHistoryComicList(page: Int = 1): NetWorkResult<UserHistoryComicListResponse>
     suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit>

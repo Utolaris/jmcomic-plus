@@ -29,7 +29,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,9 +45,10 @@ import com.par9uet.jm.ui.glass.GlassMenuAlignment
 import com.par9uet.jm.ui.glass.GlassMenuDivider
 import com.par9uet.jm.ui.glass.GlassMenuItem
 import com.par9uet.jm.ui.glass.GlassCaptureHost
-import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassStyle
 import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
+import com.par9uet.jm.favorites.model.FavoritesIntent
+import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.ui.interaction.PullDownSearchIndicator
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.store.UserManager
@@ -56,17 +56,14 @@ import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.navigation.NavigationMotion
 import com.par9uet.jm.ui.navigation.shouldIgnoreTabSelection
-import com.par9uet.jm.ui.navigation.shouldRequestInitialFavoriteSync
-import com.par9uet.jm.ui.navigation.shouldTriggerFavoriteSyncAfterLogin
-import com.par9uet.jm.ui.navigation.shouldTriggerFavoriteEntrySync
 import com.par9uet.jm.ui.screens.HomeScreen
 import com.par9uet.jm.ui.screens.HomeGlassTopBar
+import com.par9uet.jm.ui.screens.FavoritesModalHost
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.screens.resolveHomeCategoryTitle
 import com.par9uet.jm.ui.screens.UserCollectComicScreen
 import com.par9uet.jm.ui.screens.UserScreen
 import com.par9uet.jm.ui.viewModel.ComicViewModel
-import com.par9uet.jm.ui.viewModel.UserViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
@@ -77,7 +74,7 @@ fun TabScreen(
     tabName: String,
     userManager: UserManager = getKoin().get(),
     comicViewModel: ComicViewModel = koinActivityViewModel(),
-    userViewModel: UserViewModel = koinActivityViewModel(),
+    favoritesViewModel: FavoritesViewModel = koinActivityViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
     val authState by userManager.authState.collectAsState()
@@ -103,15 +100,15 @@ fun TabScreen(
         pageCount = { MainTab.ordered.size },
     )
     val coroutineScope = rememberCoroutineScope()
-    val favoritesController = rememberFavoritesUiController()
     val keyboardController = LocalSoftwareKeyboardController.current
     val homePullDownState = rememberPullDownActionState()
     val favoritesPullDownState = rememberPullDownActionState()
     val homeCategoryMenuState = rememberGlassAnchoredMenuState()
     val homeMoreMenuState = rememberGlassAnchoredMenuState()
     val favoritesFolderMenuState = rememberGlassAnchoredMenuState()
-    val selectedFavoriteFolderId by userViewModel.selectedFolderId.collectAsState()
-    val favoriteFolderList by userViewModel.folderList.collectAsState()
+    val favoritesState by favoritesViewModel.uiState.collectAsState()
+    val selectedFavoriteFolderId = favoritesState.selectedFolderId
+    val favoriteFolderList = favoritesState.folders
 
     // Only one programmatic pager animation may run at a time; the last click wins.
     var tabNavigationJob by remember { mutableStateOf<Job?>(null) }
@@ -168,63 +165,23 @@ fun TabScreen(
         }
     }
 
-    // Favorites entry is an actual pager transition, not composition: the three primary
-    // pages stay composed, so recomposition/prefetch must never count as entering.
-    var previousSettledPage by rememberSaveable { mutableIntStateOf(initialTab.index) }
-    LaunchedEffect(pagerState.settledPage, isAuthenticated) {
-        val currentlySettledPage = pagerState.settledPage
-        if (isAuthenticated &&
-            shouldTriggerFavoriteEntrySync(
-                previousSettledPage = previousSettledPage,
-                currentSettledPage = currentlySettledPage,
-                favoritesPage = MainTab.Collect.index,
-            )
-        ) {
-            userViewModel.requestFavoriteAutoSync()
-        }
-        previousSettledPage = currentlySettledPage
-    }
-
-    // When leaving Favorites, clear every transient UI flag so no scrim / selection / sheet
-    // can leak onto Home or Settings. Persistent state (folder, paging, filters) is untouched.
+    // TabScreen reports visibility and authentication transitions; Favorites owns the policy
+    // and decides whether those transitions should start a sync.
     LaunchedEffect(pagerState.settledPage) {
-        if (pagerState.settledPage == MainTab.Collect.index) return@LaunchedEffect
-        userViewModel.clearCollectSelection()
-        favoritesController.clearAllTransientUi()
-        favoritesFolderMenuState.dismiss()
-        userViewModel.updateCollectSearchText("")
-        keyboardController?.hide()
+        favoritesViewModel.onIntent(
+            if (pagerState.settledPage == MainTab.Collect.index) {
+                FavoritesIntent.Entered
+            } else {
+                FavoritesIntent.Left
+            }
+        )
+        if (pagerState.settledPage != MainTab.Collect.index) {
+            favoritesFolderMenuState.dismiss()
+            keyboardController?.hide()
+        }
     }
-
-    // Logging in while already settled on Favorites must also trigger one eligible auto sync.
-    var previousIsLogin by rememberSaveable { mutableStateOf(isAuthenticated) }
-    var initialCollectSyncRequested by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(isAuthenticated) {
-        if (shouldTriggerFavoriteSyncAfterLogin(
-                previousIsLogin = previousIsLogin,
-                isLogin = isAuthenticated,
-                settledPage = pagerState.settledPage,
-                favoritesPage = MainTab.Collect.index,
-            )
-        ) {
-            initialCollectSyncRequested = true
-            userViewModel.requestFavoriteAutoSync()
-        }
-        previousIsLogin = isAuthenticated
-    }
-
-    // Booting directly onto the Favorites route while authenticated gets one initial sync.
-    LaunchedEffect(Unit) {
-        if (shouldRequestInitialFavoriteSync(
-                initialPage = initialTab.index,
-                favoritesPage = MainTab.Collect.index,
-                isLogin = isAuthenticated,
-                alreadyRequested = initialCollectSyncRequested,
-            )
-        ) {
-            initialCollectSyncRequested = true
-            userViewModel.requestFavoriteAutoSync()
-        }
+        favoritesViewModel.onIntent(FavoritesIntent.AccountStateChanged(isAuthenticated))
     }
 
     BoxWithConstraints {
@@ -280,7 +237,7 @@ fun TabScreen(
                     MainTab.Collect -> if (canShowAuthenticatedUi) {
                         UserCollectComicScreen(
                             useScaffold = false,
-                            uiController = favoritesController,
+                            favoritesViewModel = favoritesViewModel,
                             pullDownState = favoritesPullDownState,
                             topContentPadding = favoritesTopContentPadding,
                             bottomContentPadding = contentBottomPadding,
@@ -308,7 +265,7 @@ fun TabScreen(
                         homeCategories = homeState.categories,
                         selectedHomeCategoryId = homeState.selectedCategoryId,
                         onHomeCategorySelected = comicViewModel::selectHomeCategory,
-                        favoritesController = favoritesController,
+                        favoritesViewModel = favoritesViewModel,
                         onHomeSearch = onHomeSearch,
                         onHomeDownload = onHomeDownload,
                         onHomeWeekly = onHomeWeekly,
@@ -362,9 +319,8 @@ fun TabScreen(
                                 } else if (selectedTab == MainTab.Collect && canShowAuthenticatedUi) {
                                     FavoritesVariableGlassTopBar(
                                         statusBarInset = statusBarInset,
-                                        controller = favoritesController,
+                                        favoritesViewModel = favoritesViewModel,
                                         folderMenuState = favoritesFolderMenuState,
-                                        userViewModel = userViewModel,
                                         modifier = Modifier.align(Alignment.TopCenter),
                                     )
                                     PullDownSearchIndicator(
@@ -463,10 +419,7 @@ fun TabScreen(
                                             selected = selectedFavoriteFolderId == 0,
                                             onClick = {
                                                 favoritesFolderMenuState.dismiss()
-                                                userViewModel.clearCollectSelection()
-                                                favoritesController.exitSearch()
-                                                userViewModel.updateCollectSearchText("")
-                                                userViewModel.changeFolder(0)
+                                                favoritesViewModel.onIntent(FavoritesIntent.FolderSelected(0))
                                             },
                                         )
                                         favoriteFolderList.entries
@@ -480,10 +433,9 @@ fun TabScreen(
                                                     selected = selectedFavoriteFolderId == numericFolderId,
                                                     onClick = {
                                                         favoritesFolderMenuState.dismiss()
-                                                        userViewModel.clearCollectSelection()
-                                                        favoritesController.exitSearch()
-                                                        userViewModel.updateCollectSearchText("")
-                                                        userViewModel.changeFolder(numericFolderId)
+                                                        favoritesViewModel.onIntent(
+                                                            FavoritesIntent.FolderSelected(numericFolderId)
+                                                        )
                                                     },
                                                 )
                                             }
@@ -493,33 +445,22 @@ fun TabScreen(
                                             leadingIcon = Icons.Rounded.Folder,
                                             onClick = {
                                                 favoritesFolderMenuState.dismiss()
-                                                favoritesController.showFolderManagement()
+                                                favoritesViewModel.onIntent(FavoritesIntent.FolderManagementOpened)
                                             },
                                         )
                                     }
                                 }
+                                if (selectedTab == MainTab.Collect && canShowAuthenticatedUi) {
+                                    FavoritesModalHost(favoritesViewModel)
+                                }
                             }
-                            GlassConfirmDialog(
-                                visible = selectedTab == MainTab.Collect &&
-                                    canShowAuthenticatedUi &&
-                                    favoritesController.deleteDialogVisible,
-                                title = "取消收藏",
-                                message = "确定取消收藏 ${favoritesController.selectedComics().size} 部漫画吗？",
-                                confirmText = "取消收藏",
-                                destructive = true,
-                                surfaceId = "favorites-uncollect-glass-confirm",
-                                onConfirm = {
-                                    userViewModel.deleteCollectedComics(
-                                        favoritesController.selectedComics(),
-                                    )
-                                    favoritesController.dismissDeleteDialog()
-                                },
-                                onDismiss = favoritesController::dismissDeleteDialog,
-                            )
                         },
                     )
                 }
             }
+        }
+        if (useNavigationRail && selectedTab == MainTab.Collect && canShowAuthenticatedUi) {
+            FavoritesModalHost(favoritesViewModel)
         }
     }
 }

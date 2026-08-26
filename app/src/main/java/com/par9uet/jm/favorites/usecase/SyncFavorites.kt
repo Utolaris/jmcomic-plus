@@ -1,20 +1,18 @@
-package com.par9uet.jm.repository.impl
+package com.par9uet.jm.favorites.usecase
 
 import android.os.SystemClock
 import com.par9uet.jm.data.models.CollectComicOrderFilter
+import com.par9uet.jm.favorites.data.FavoriteLocalSync
+import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
 import com.par9uet.jm.store.FavoriteMetadataPayload
 import com.par9uet.jm.store.FavoriteRemoteItem
-import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.store.FavoriteSyncProgress
 import com.par9uet.jm.store.FavoriteSyncReport
 import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
-import io.github.jukomu.jmcomic.api.model.FavoriteQuery
-import io.github.jukomu.jmcomic.api.model.JmAlbum
-import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -30,10 +28,10 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
 /** Coordinates persistent favorite synchronization without owning favorite persistence. */
-class FavoriteSyncService(
-    private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
+class SyncFavorites(
+    private val remoteQuery: FavoriteRemoteQuery,
+    private val localSync: FavoriteLocalSync,
     private val userStorage: UserStorage,
-    private val favoriteStore: FavoriteStore,
     private val applicationScope: CoroutineScope,
 ) {
     private data class RemoteFavoriteSnapshot(
@@ -95,7 +93,7 @@ class FavoriteSyncService(
                     onProgress = onProgress,
                 )
                 if (!isActiveFavoriteAccount(accountId)) return NetWorkResult.Error("登录账号已变化")
-                favoriteStore.replaceAllSnapshot(
+                localSync.replaceAllSnapshot(
                     accountId = accountId,
                     remoteItems = snapshot.items,
                     remoteFolders = snapshot.folders,
@@ -120,7 +118,7 @@ class FavoriteSyncService(
                 )
             } else {
                 val deltaStartedAt = SystemClock.elapsedRealtime()
-                val delta = favoriteStore.reconcileLightweightSnapshot(
+                val delta = localSync.reconcileLightweightSnapshot(
                     accountId = accountId,
                     scopeFolderId = folderId,
                     remoteItems = snapshot.items,
@@ -134,7 +132,7 @@ class FavoriteSyncService(
                 )
                 for (payload in metadata.payloads) {
                     if (!isActiveFavoriteAccount(accountId)) return NetWorkResult.Error("登录账号已变化")
-                    favoriteStore.applyMetadata(accountId, payload, syncedAt)
+                    localSync.applyMetadata(accountId, payload, syncedAt)
                 }
                 if (metadata.failures > 0) {
                     log(
@@ -142,7 +140,7 @@ class FavoriteSyncService(
                         "metadata failures=${metadata.failures}; keeping previous complete metadata where available",
                     )
                 }
-                favoriteStore.markSyncSuccess(accountId, folderId, syncedAt)
+                localSync.markSyncSuccess(accountId, folderId, syncedAt)
                 log(
                     "FavoritesSync",
                     "remote=${snapshot.items.size} added=${delta.added} " +
@@ -189,22 +187,14 @@ class FavoriteSyncService(
             var expectedTotal = 0
             var continuePaging = true
             while (continuePaging) {
-                val favoritePage = requireNotNull(
-                    authenticatedEmbeddedClient.withClient { client ->
-                        client.getFavorites(
-                            FavoriteQuery.Builder().folderId(folderId).page(page).build()
-                        )
-                    }
-                )
-                val pageItems = favoritePage.content().orEmpty().mapNotNull { it.toFavoriteRemoteItem() }
+                val favoritePage = remoteQuery.getFavorites(folderId, page, order)
+                val pageItems = favoritePage.items
                 items += pageItems
-                favoritePage.folderList().orEmpty().forEach { (id, name) ->
-                    id.toIntOrNull()?.let { folders[it] = name }
-                }
-                expectedTotal = favoritePage.totalItems()
+                folders += favoritePage.folders
+                expectedTotal = favoritePage.totalItems
                 onProgress(FavoriteSyncProgress(items.size, expectedTotal, progressPhase))
                 continuePaging = when {
-                    favoritePage.totalPages() > 0 -> page < favoritePage.totalPages()
+                    favoritePage.totalPages > 0 -> page < favoritePage.totalPages
                     pageItems.isEmpty() -> false
                     else -> pageItems.size >= FAVORITE_REMOTE_PAGE_SIZE
                 }
@@ -280,37 +270,7 @@ class FavoriteSyncService(
     }
 
     private suspend fun fetchFavoriteMetadata(albumId: Int): FavoriteMetadataPayload =
-        requireNotNull(
-            authenticatedEmbeddedClient.withClient { client ->
-            client.getAlbum(albumId.toString()).toFavoriteMetadataPayload()
-        }
-        )
-
-    private fun JmAlbumMeta.toFavoriteRemoteItem(): FavoriteRemoteItem? {
-        val albumId = id().toIntOrNull() ?: return null
-        return FavoriteRemoteItem(
-            albumId = albumId,
-            title = title().orEmpty(),
-            authors = authors().orEmpty(),
-            description = description().orEmpty(),
-            image = image().orEmpty(),
-            tags = tags().orEmpty(),
-            categoryId = category()?.id(),
-            categoryTitle = category()?.title(),
-            subCategoryId = subCategory()?.id(),
-            subCategoryTitle = subCategory()?.title(),
-        )
-    }
-
-    private fun JmAlbum.toFavoriteMetadataPayload() = FavoriteMetadataPayload(
-        albumId = id().toIntOrNull() ?: 0,
-        title = title().orEmpty(),
-        description = description().orEmpty(),
-        authors = authors().orEmpty(),
-        tags = tags().orEmpty(),
-        roles = actors().orEmpty(),
-        works = works().orEmpty(),
-    )
+        remoteQuery.getMetadata(albumId)
 
     private companion object {
         const val FAVORITE_REMOTE_PAGE_SIZE = 20

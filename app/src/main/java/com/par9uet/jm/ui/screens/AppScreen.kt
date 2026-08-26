@@ -19,6 +19,7 @@ import com.par9uet.jm.ui.screens.downloadScreen.DownloadComicDetailScreen
 import com.par9uet.jm.ui.screens.readScreen.ComicReadScreen
 import com.par9uet.jm.ui.screens.tabScreen.TabScreen
 import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.utils.EXTRA_NAVIGATE_ROUTE
 import com.par9uet.jm.utils.deserializeExcludedTags
 import org.koin.compose.viewmodel.koinActivityViewModel
@@ -62,7 +63,11 @@ fun AppScreen(
                 TabScreen(tabName = tabName)
             }
             composable("login") { LoginScreen() }
-            composable(route = "userCollectComic") { UserCollectComicScreen() }
+            composable(route = "userCollectComic") {
+                val favoritesViewModel: FavoritesViewModel = koinActivityViewModel()
+                UserCollectComicScreen(favoritesViewModel = favoritesViewModel)
+                FavoritesModalHost(favoritesViewModel)
+            }
             composable(route = "userHistoryComic") { UserHistoryComicScreen() }
             composable(route = "userHistoryComment") { UserHistoryCommentScreen() }
             composable(route = "appLocalSetting") { LocalSettingScreen() }

@@ -5,97 +5,42 @@ import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.SignInData
-import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.store.DownloadManager
-import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
-import com.par9uet.jm.store.FavoriteAutoRequestResult
-import com.par9uet.jm.store.FavoriteAutoSyncCoordinator
-import com.par9uet.jm.store.FavoriteSyncKind
-import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.store.shouldStartFavoriteSync
 import com.par9uet.jm.ui.models.CommonUIState
-import com.par9uet.jm.ui.pagingSource.CollectComicPagingSource
 import com.par9uet.jm.ui.pagingSource.HistoryComicPagingSource
 import com.par9uet.jm.ui.pagingSource.HistoryCommentPagingSource
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-
-data class CollectComicLocalFilter(
-    val searchText: String = "",
-    val selectedTags: Set<String> = emptySet(),
-    val selectedAuthors: Set<String> = emptySet(),
-    val tagLogic: TagFilterLogic = TagFilterLogic.AND
-)
-
-data class CollectEditState(
-    val editing: Boolean = false,
-    val selectedComicIds: Set<Int> = emptySet()
-)
 
 data class HistoryEditState(
     val editing: Boolean = false,
     val selectedComicIds: Set<Int> = emptySet()
 )
 
-/** Saved scroll position of the favorites grid for the current list context. */
-data class FavoriteViewportState(
-    val firstVisibleItemIndex: Int = 0,
-    val firstVisibleItemScrollOffset: Int = 0,
-    val resetGeneration: Long = 0,
-)
-
-private data class CollectPagerKey(
-    val accountId: Int,
-    val blockedTagList: List<String>,
-    val filter: CollectComicLocalFilter,
-    val folderId: Int
-)
-
-internal val FAVORITE_CANONICAL_ORDER = CollectComicOrderFilter.COLLECT_TIME
-
-data class FavoriteSyncUiState(
-    val isSyncing: Boolean = false,
-    val isForceRefresh: Boolean = false,
-    val completed: Int = 0,
-    val total: Int = 0,
-    val phase: String = "",
-    val errorMessage: String? = null,
-)
-
-@OptIn(ExperimentalCoroutinesApi::class)
 class UserViewModel(
     private val userManager: UserManager,
     private val userRepository: UserRepository,
     private val toastManager: ToastManager,
     private val localSettingManager: LocalSettingManager,
-    private val comicRepository: ComicRepository,
     private val downloadManager: DownloadManager,
-    private val favoriteStore: FavoriteStore,
 ) : ViewModel() {
     private val _loginState = MutableStateFlow(CommonUIState(data = null))
     val loginState = _loginState.asStateFlow()
@@ -136,383 +81,6 @@ class UserViewModel(
             userManager.clearUser()
         }
     }
-
-    private val _collectComicFilter = MutableStateFlow(CollectComicLocalFilter())
-    val collectComicFilter = _collectComicFilter.asStateFlow()
-    private val _selectedFolderId = MutableStateFlow(0)
-    val selectedFolderId = _selectedFolderId.asStateFlow()
-    private val _collectEditState = MutableStateFlow(CollectEditState())
-    val collectEditState = _collectEditState.asStateFlow()
-    private val _favoriteViewport = MutableStateFlow(FavoriteViewportState())
-    val favoriteViewport = _favoriteViewport.asStateFlow()
-
-    fun saveFavoriteViewport(
-        firstVisibleItemIndex: Int,
-        firstVisibleItemScrollOffset: Int,
-        resetGeneration: Long = _favoriteViewport.value.resetGeneration,
-    ) {
-        val current = _favoriteViewport.value
-        if (resetGeneration != current.resetGeneration) return
-        _favoriteViewport.value = current.copy(
-            firstVisibleItemIndex = firstVisibleItemIndex,
-            firstVisibleItemScrollOffset = firstVisibleItemScrollOffset,
-        )
-    }
-
-    fun resetFavoriteViewport() {
-        _favoriteViewport.value = FavoriteViewportState(
-            resetGeneration = _favoriteViewport.value.resetGeneration + 1,
-        )
-    }
-
-    private val _favoriteSyncState = MutableStateFlow(FavoriteSyncUiState())
-    val favoriteSyncState = _favoriteSyncState.asStateFlow()
-    private val autoSyncCoordinator = FavoriteAutoSyncCoordinator()
-    // Exactly one scheduled trailing automatic sync may exist at a time.
-    private var trailingAutoSyncJob: Job? = null
-
-    private val accountIdFlow = userManager.userState.map { it.data?.id ?: 0 }
-
-    init {
-        viewModelScope.launch {
-            accountIdFlow.distinctUntilChanged().collect {
-                _selectedFolderId.value = 0
-                resetFavoriteViewport()
-                _favoriteSyncState.value = FavoriteSyncUiState()
-                autoSyncCoordinator.reset()
-                trailingAutoSyncJob?.cancel()
-                trailingAutoSyncJob = null
-            }
-        }
-    }
-
-    val folderList = accountIdFlow.flatMapLatest { accountId ->
-        if (accountId <= 0) kotlinx.coroutines.flow.flowOf(emptyMap())
-        else favoriteStore.observeFolders(accountId)
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
-
-    val collectTagCounts = combine(
-        accountIdFlow,
-        _selectedFolderId,
-    ) { accountId, folderId -> accountId to folderId }
-        .flatMapLatest { (accountId, folderId) ->
-            if (accountId <= 0) kotlinx.coroutines.flow.flowOf(emptyMap())
-            else favoriteStore.observeTagCounts(accountId, folderId)
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
-
-    val collectAuthorCounts = combine(
-        accountIdFlow,
-        _selectedFolderId,
-    ) { accountId, folderId -> accountId to folderId }
-        .flatMapLatest { (accountId, folderId) ->
-            if (accountId <= 0) kotlinx.coroutines.flow.flowOf(emptyMap())
-            else favoriteStore.observeAuthorCounts(accountId, folderId)
-        }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyMap())
-
-    val collectComicPager = combine(
-        localSettingManager.localSettingState,
-        _collectComicFilter,
-        _selectedFolderId,
-        accountIdFlow,
-    ) { localSetting, filter, folderId, accountId ->
-        CollectPagerKey(accountId, localSetting.blockedTagList, filter, folderId)
-    }.flatMapLatest { key ->
-        Pager(
-            config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
-            pagingSourceFactory = {
-                CollectComicPagingSource(
-                    favoriteStore.pagingSource(
-                        accountId = key.accountId,
-                        blockedTagList = key.blockedTagList,
-                        searchText = key.filter.searchText,
-                        selectedTags = key.filter.selectedTags,
-                        selectedAuthors = key.filter.selectedAuthors,
-                        folderId = key.folderId,
-                        tagLogic = key.filter.tagLogic,
-                    )
-                )
-            }
-        ).flow
-    }.cachedIn(viewModelScope)
-
-    fun updateCollectSearchText(value: String) {
-        val previous = _collectComicFilter.value.searchText
-        _collectComicFilter.update { it.copy(searchText = value) }
-        if (previous != value) {
-            resetFavoriteViewport()
-        }
-    }
-
-    fun updateCollectSelectedTags(tags: Set<String>) {
-        val previous = _collectComicFilter.value.selectedTags
-        _collectComicFilter.update { it.copy(selectedTags = tags) }
-        if (previous != tags) {
-            resetFavoriteViewport()
-        }
-    }
-
-    fun updateCollectTagLogic(logic: TagFilterLogic) {
-        val previous = _collectComicFilter.value.tagLogic
-        _collectComicFilter.update { it.copy(tagLogic = logic) }
-        if (previous != logic) {
-            resetFavoriteViewport()
-        }
-    }
-
-    fun updateCollectSelectedAuthors(authors: Set<String>) {
-        val previous = _collectComicFilter.value.selectedAuthors
-        _collectComicFilter.update { it.copy(selectedAuthors = authors) }
-        if (previous != authors) {
-            resetFavoriteViewport()
-        }
-    }
-
-    fun changeFolder(folderId: Int) {
-        if (_selectedFolderId.value == folderId) return
-        clearCollectSelection()
-        resetFavoriteViewport()
-        _selectedFolderId.update { folderId }
-        requestFavoriteAutoSync(folderId)
-    }
-
-    fun enterCollectEdit(comicId: Int) {
-        _collectEditState.update {
-            it.copy(editing = true, selectedComicIds = it.selectedComicIds + comicId)
-        }
-    }
-
-    fun toggleCollectSelected(comicId: Int) {
-        _collectEditState.update {
-            val selected = if (comicId in it.selectedComicIds) {
-                it.selectedComicIds - comicId
-            } else {
-                it.selectedComicIds + comicId
-            }
-            it.copy(editing = selected.isNotEmpty(), selectedComicIds = selected)
-        }
-    }
-
-    fun clearCollectSelection() {
-        _collectEditState.update { CollectEditState() }
-    }
-
-    fun deleteCollectedComics(comics: List<Comic>) {
-        if (comics.isEmpty()) return
-        viewModelScope.launch {
-            var success = 0
-            var fail = 0
-            comics.forEach { comic ->
-                when (comicRepository.unCollectComic(comic.id)) {
-                    is NetWorkResult.Error -> fail++
-                    is NetWorkResult.Success -> {
-                        success++
-                        userRepository.removeCachedFavoriteComic(currentAccountId(), comic.id)
-                    }
-                }
-            }
-            toastManager.showAsync(
-                if (fail == 0) "已取消收藏 $success 部漫画"
-                else "成功 $success 部，失败 $fail 部"
-            )
-            clearCollectSelection()
-        }
-    }
-
-    fun cacheCollectedComics(comics: List<Comic>) {
-        if (comics.isEmpty()) return
-        downloadManager.downloadComics(comics)
-        clearCollectSelection()
-    }
-
-    fun moveCollectedToFolder(comics: List<Comic>, folderId: String) {
-        if (comics.isEmpty()) return
-        viewModelScope.launch {
-            var success = 0
-            var fail = 0
-            comics.forEach { comic ->
-                when (comicRepository.moveComicToFolder(comic.id, folderId)) {
-                    is NetWorkResult.Error -> fail++
-                    is NetWorkResult.Success -> {
-                        success++
-                        userRepository.moveCachedFavoriteComic(
-                            currentAccountId(),
-                            comic.id,
-                            folderId.toIntOrNull() ?: 0,
-                        )
-                    }
-                }
-            }
-            toastManager.showAsync(
-                if (fail == 0) "已移动 $success 部漫画"
-                else "成功 $success 部，失败 $fail 部"
-            )
-            clearCollectSelection()
-        }
-    }
-
-    fun refreshFolderList() {
-        requestFavoriteAutoSync()
-    }
-
-    fun createFolder(name: String) {
-        viewModelScope.launch {
-            when (val data = comicRepository.createFavoriteFolder(name)) {
-                is NetWorkResult.Error -> toastManager.showAsync(data.message)
-                is NetWorkResult.Success -> {
-                    requestFavoriteAutoSync()
-                    toastManager.showAsync("创建成功")
-                }
-            }
-        }
-    }
-
-    fun deleteFolder(folderId: String) {
-        viewModelScope.launch {
-            when (val data = comicRepository.deleteFavoriteFolder(folderId)) {
-                is NetWorkResult.Error -> toastManager.showAsync(data.message)
-                is NetWorkResult.Success -> {
-                    userRepository.removeCachedFavoriteFolder(
-                        currentAccountId(),
-                        folderId.toIntOrNull() ?: 0,
-                    )
-                    _selectedFolderId.update { 0 }
-                    requestFavoriteAutoSync()
-                    toastManager.showAsync("删除成功")
-                }
-            }
-        }
-    }
-
-    fun renameFolder(folderId: String, newName: String) {
-        viewModelScope.launch {
-            when (val data = comicRepository.renameFavoriteFolder(folderId, newName)) {
-                is NetWorkResult.Error -> toastManager.showAsync(data.message)
-                is NetWorkResult.Success -> {
-                    userRepository.renameCachedFavoriteFolder(
-                        currentAccountId(),
-                        folderId.toIntOrNull() ?: 0,
-                        newName.trim(),
-                    )
-                    requestFavoriteAutoSync()
-                    toastManager.showAsync("重命名成功")
-                }
-            }
-        }
-    }
-
-    /**
-     * Background/automatic favorites synchronization, globally throttled to at most once
-     * every 30 seconds per account. Does nothing while another sync is already running.
-     */
-    /**
-     * Background/automatic favorites synchronization with leading + trailing coalescing:
-     * the first eligible request starts immediately, further requests inside the rolling
-     * 30-second window are coalesced into exactly one trailing sync (latest requested folder
-     * wins), and requests during an in-flight sync are retained, never run in parallel.
-     */
-    fun requestFavoriteAutoSync(folderId: Int = _selectedFolderId.value) {
-        val accountId = currentAccountId()
-        if (accountId <= 0) return
-        when (val result = autoSyncCoordinator.request(folderId, _favoriteSyncState.value.isSyncing)) {
-            is FavoriteAutoRequestResult.StartNow -> {
-                launchFavoriteSync(accountId, result.folderId, force = false)
-            }
-            is FavoriteAutoRequestResult.Coalesced -> {
-                scheduleTrailingAutoSync(result.trailingDelayMs)
-            }
-        }
-    }
-
-    private fun scheduleTrailingAutoSync(delayMs: Long) {
-        if (trailingAutoSyncJob?.isActive == true) return
-        trailingAutoSyncJob = viewModelScope.launch {
-            if (delayMs > 0) delay(delayMs)
-            if (_favoriteSyncState.value.isSyncing) return@launch
-            val folderId = autoSyncCoordinator.trailingDue() ?: return@launch
-            val accountId = currentAccountId()
-            if (accountId <= 0) return@launch
-            launchFavoriteSync(accountId, folderId, force = false)
-        }
-    }
-
-    /**
-     * Explicit user sync (Favorites top-right button). Bypasses the automatic 30-second gate.
-     */
-    fun requestFavoriteManualSync(folderId: Int = _selectedFolderId.value) {
-        val accountId = currentAccountId()
-        if (accountId <= 0) return
-        if (!shouldStartFavoriteSync(
-                kind = FavoriteSyncKind.MANUAL,
-                isAutoSyncAllowed = false,
-                isSyncing = _favoriteSyncState.value.isSyncing,
-            )
-        ) {
-            return
-        }
-        launchFavoriteSync(accountId, folderId, force = false)
-    }
-
-    private fun launchFavoriteSync(accountId: Int, folderId: Int, force: Boolean) {
-        // Claim synchronously so a second caller cannot observe isSyncing == false twice.
-        _favoriteSyncState.update {
-            FavoriteSyncUiState(isSyncing = true, isForceRefresh = force)
-        }
-        viewModelScope.launch {
-            val result = userRepository.synchronizeFavorites(
-                accountId = accountId,
-                folderId = folderId,
-                force = force,
-                order = FAVORITE_CANONICAL_ORDER,
-                onProgress = { progress ->
-                    if (currentAccountId() == accountId) {
-                        _favoriteSyncState.update {
-                            it.copy(
-                                isSyncing = true,
-                                completed = progress.completed,
-                                total = progress.total,
-                                phase = progress.phase,
-                            )
-                        }
-                    }
-                },
-            )
-            if (currentAccountId() != accountId) return@launch
-            when (result) {
-                is NetWorkResult.Error -> {
-                    _favoriteSyncState.update {
-                        it.copy(isSyncing = false, errorMessage = result.message)
-                    }
-                }
-                is NetWorkResult.Success -> {
-                    _favoriteSyncState.value = FavoriteSyncUiState()
-                }
-            }
-            // A coalesced automatic request may have become due while this sync ran; run the
-            // single trailing sync now (it can never overlap: state was just cleared).
-            val trailingFolderId = autoSyncCoordinator.onSyncFinished()
-            if (trailingFolderId != null && !_favoriteSyncState.value.isSyncing) {
-                launchFavoriteSync(accountId, trailingFolderId, force = false)
-            }
-        }
-    }
-
-    fun forceRefreshFavorites() {
-        val accountId = currentAccountId()
-        if (accountId <= 0) return
-        if (!shouldStartFavoriteSync(
-                kind = FavoriteSyncKind.FORCE,
-                isAutoSyncAllowed = false,
-                isSyncing = _favoriteSyncState.value.isSyncing,
-            )
-        ) {
-            return
-        }
-        launchFavoriteSync(accountId, folderId = FAVORITE_SCOPE_ALL, force = true)
-    }
-
-    private fun currentAccountId(): Int = userManager.userState.value.data?.id ?: 0
 
     private val _historyRefreshVersion = MutableStateFlow(0)
 

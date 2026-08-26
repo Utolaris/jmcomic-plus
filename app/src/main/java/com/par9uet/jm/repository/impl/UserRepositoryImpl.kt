@@ -1,6 +1,7 @@
 package com.par9uet.jm.repository.impl
 
 import com.par9uet.jm.data.models.CollectComicOrderFilter
+import com.par9uet.jm.favorites.usecase.SyncFavorites
 import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.repository.VerifiedCredentials
@@ -10,7 +11,6 @@ import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
-import com.par9uet.jm.retrofit.model.UserCollectComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.store.FavoriteStore
@@ -18,7 +18,6 @@ import com.par9uet.jm.store.FavoriteSyncProgress
 import com.par9uet.jm.store.FavoriteSyncReport
 import io.github.jukomu.jmcomic.api.exception.NetworkException
 import io.github.jukomu.jmcomic.api.model.ForumQuery
-import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
 import io.github.jukomu.jmcomic.api.model.JmCategoryMeta
 import io.github.jukomu.jmcomic.api.model.JmComment
@@ -36,7 +35,7 @@ class UserRepositoryImpl(
     private val embeddedClientManager: EmbeddedClientManager,
     private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
     private val favoriteStore: FavoriteStore,
-    private val favoriteSyncService: FavoriteSyncService,
+    private val syncFavorites: SyncFavorites,
 ) : UserRepository {
     override suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
         return withContext(Dispatchers.IO) {
@@ -137,54 +136,13 @@ class UserRepositoryImpl(
         }
     }
 
-    override suspend fun getCollectComicList(
-        page: Int,
-        order: CollectComicOrderFilter,
-        folderId: Int
-    ): NetWorkResult<UserCollectComicListResponse> {
-        return loadCollectComicList(page, order, folderId)
-    }
-
-    private suspend fun loadCollectComicList(
-        page: Int,
-        @Suppress("UNUSED_PARAMETER") order: CollectComicOrderFilter,
-        folderId: Int,
-    ): NetWorkResult<UserCollectComicListResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                NetWorkResult.Success(
-                    requireNotNull(
-                        authenticatedEmbeddedClient.withClient { client ->
-                            val query = FavoriteQuery.Builder()
-                                .folderId(folderId)
-                                .page(page)
-                                .build()
-                            val favPage = client.getFavorites(query)
-                            val metas = favPage.content().orEmpty()
-                            UserCollectComicListResponse(
-                                count = favPage.totalItems(),
-                                folder_list = favPage.folderList(),
-                                list = metas.map { it.toListItem() },
-                                total = favPage.totalItems()
-                            )
-                        }
-                    )
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置API获取收藏列表失败：${e.message ?: "未知错误"}")
-            }
-        }
-    }
-
     override suspend fun synchronizeFavorites(
         accountId: Int,
         folderId: Int,
         force: Boolean,
         order: CollectComicOrderFilter,
         onProgress: (FavoriteSyncProgress) -> Unit,
-    ): NetWorkResult<FavoriteSyncReport> = favoriteSyncService.synchronize(
+    ): NetWorkResult<FavoriteSyncReport> = syncFavorites.synchronize(
         accountId = accountId,
         folderId = folderId,
         force = force,
@@ -344,22 +302,6 @@ class UserRepositoryImpl(
         )
     }
 
-    private fun JmAlbumMeta.toListItem(
-    ): UserCollectComicListResponse.ListItem {
-        val resolvedAuthors = authors().orEmpty()
-        return UserCollectComicListResponse.ListItem(
-            id = id().orEmpty(),
-            author = resolvedAuthors.firstOrNull().orEmpty(),
-            description = description(),
-            name = title().orEmpty(),
-            image = image().orEmpty(),
-            category = category().toCollectCategory(),
-            category_sub = subCategory().toCollectCategory(),
-            tags = tags().orEmpty().takeIf { it.isNotEmpty() },
-            authors = resolvedAuthors.takeIf { it.isNotEmpty() },
-        )
-    }
-
     private fun JmAlbumMeta.toHistoryListItem(): UserHistoryComicListResponse.ListItem {
         return UserHistoryComicListResponse.ListItem(
             id = id().orEmpty(),
@@ -374,13 +316,6 @@ class UserRepositoryImpl(
 
     private fun JmCategoryMeta?.toHistoryCategory(): UserHistoryComicListResponse.ListItem.Category {
         return UserHistoryComicListResponse.ListItem.Category(
-            id = this?.id(),
-            title = this?.title()
-        )
-    }
-
-    private fun JmCategoryMeta?.toCollectCategory(): UserCollectComicListResponse.ListItem.Category {
-        return UserCollectComicListResponse.ListItem.Category(
             id = this?.id(),
             title = this?.title()
         )

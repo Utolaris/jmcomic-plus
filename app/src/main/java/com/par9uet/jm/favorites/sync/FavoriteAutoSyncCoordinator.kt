@@ -1,4 +1,4 @@
-package com.par9uet.jm.store
+package com.par9uet.jm.favorites.sync
 
 import android.os.SystemClock
 

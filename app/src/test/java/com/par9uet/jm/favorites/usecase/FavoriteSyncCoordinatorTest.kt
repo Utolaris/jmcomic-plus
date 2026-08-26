@@ -1,4 +1,4 @@
-package com.par9uet.jm.repository.impl
+package com.par9uet.jm.favorites.usecase
 
 import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.store.FavoriteSyncProgress
@@ -9,6 +9,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -18,6 +19,7 @@ import org.junit.Assert.fail
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class FavoriteSyncCoordinatorTest {
     private data class Request(
         val accountId: Int,
