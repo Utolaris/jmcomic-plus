@@ -68,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.ui.components.Comic
@@ -157,8 +158,35 @@ internal fun UserCollectComicScreen(
         initialFirstVisibleItemIndex = savedViewport.firstVisibleItemIndex,
         initialFirstVisibleItemScrollOffset = savedViewport.firstVisibleItemScrollOffset,
     )
+    val favoriteItemCount = collectComicLazyPagingItems.itemCount
+    val favoriteAppendComplete = collectComicLazyPagingItems.loadState.append.let {
+        it is LoadState.NotLoading && it.endOfPaginationReached
+    }
     val initialResetGeneration = remember { savedViewport.resetGeneration }
+    var initialViewportRestorePending by remember { mutableStateOf(true) }
     var suppressViewportPersistence by remember { mutableStateOf(false) }
+
+    // An empty first Paging snapshot temporarily clamps LazyGridState to (0, 0). Do not treat
+    // that as the restored position; wait until the saved item is loaded or Paging confirms the
+    // list has ended, then apply the target once and release persistence.
+    LaunchedEffect(
+        savedViewport.resetGeneration,
+        favoriteItemCount,
+        favoriteAppendComplete,
+    ) {
+        if (!initialViewportRestorePending || favoriteItemCount <= 0) return@LaunchedEffect
+        val savedIndex = savedViewport.firstVisibleItemIndex
+        if (!favoriteAppendComplete && favoriteItemCount <= savedIndex) return@LaunchedEffect
+
+        val targetIndex = savedIndex.coerceAtMost(favoriteItemCount - 1)
+        if (gridState.firstVisibleItemIndex != targetIndex ||
+            gridState.firstVisibleItemScrollOffset != savedViewport.firstVisibleItemScrollOffset
+        ) {
+            gridState.scrollToItem(targetIndex, savedViewport.firstVisibleItemScrollOffset)
+        }
+        androidx.compose.runtime.withFrameNanos { }
+        initialViewportRestorePending = false
+    }
 
     // A reset changes the existing state as well as the saved value. The generation makes this
     // effect distinct from the initial restore, and the short suppression window prevents the
@@ -176,12 +204,16 @@ internal fun UserCollectComicScreen(
 
     // Persist the viewport on every settled scroll change; distinctUntilChanged keeps this cheap.
     // Re-keying on the generation also cancels a collector that still carries the old token.
-    LaunchedEffect(gridState, savedViewport.resetGeneration) {
+    LaunchedEffect(gridState, savedViewport.resetGeneration, initialViewportRestorePending) {
         val resetGeneration = savedViewport.resetGeneration
         snapshotFlow {
-            gridState.firstVisibleItemIndex to gridState.firstVisibleItemScrollOffset
-        }.distinctUntilChanged().collect { (index, offset) ->
-            if (!suppressViewportPersistence) {
+            Triple(
+                collectComicLazyPagingItems.itemCount,
+                gridState.firstVisibleItemIndex,
+                gridState.firstVisibleItemScrollOffset,
+            )
+        }.distinctUntilChanged().collect { (itemCount, index, offset) ->
+            if (itemCount > 0 && !initialViewportRestorePending && !suppressViewportPersistence) {
                 userViewModel.saveFavoriteViewport(index, offset, resetGeneration)
             }
         }

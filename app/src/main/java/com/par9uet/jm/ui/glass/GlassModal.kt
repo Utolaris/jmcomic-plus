@@ -8,7 +8,6 @@ import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -30,22 +29,21 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 
 /**
  * Real-glass modal rendered INSIDE the page's existing GlassCaptureHost overlay.
  *
- * The backdrop blurs live page content through the shared registry: the scrim is a plain themed
- * translucent layer and [surface] becomes a normal GlassSurface, so API 31+ gets true Gaussian
- * backdrop blur and older devices get the existing translucent fallback. No extra capture host
- * is created; callers must place this in CommonScaffold overlayContent (or equivalent).
+ * The backdrop blurs live page content through the shared registry: the full-screen layer is
+ * transparent but still handles outside taps, and [surface] becomes a normal GlassSurface, so
+ * API 31+ gets true Gaussian backdrop blur and older devices get the existing translucent
+ * fallback. No extra capture host is created; callers must place this in CommonScaffold
+ * overlayContent (or equivalent).
  *
- * Motion: enter fade ~200ms + scale 0.96->1; exit reverses and the scrim hit layer is removed
- * once the transition finishes, so no invisible scrim can intercept input. Outside tap and Back
- * dismissal are individually configurable.
+ * Motion: enter fade ~200ms + scale 0.96->1; exit reverses and the full-screen hit layer is
+ * removed once the transition finishes, so no invisible layer can intercept input. Outside tap
+ * and Back dismissal are individually configurable.
  *
  * [visible] is the logical visibility CONTROLLED BY THE CALLER (callers keep this composable
  * composed and flip [visible]); [onDismissRequest] fires for outside tap / Back so the caller
@@ -68,10 +66,6 @@ fun GlassModal(
         transitionState = visibleState,
         label = "glass-modal-transition",
     )
-    val scrimAlpha by transition.animateFloat(
-        transitionSpec = { tween(200) },
-        label = "glass-modal-scrim",
-    ) { if (it) 1f else 0f }
     val surfaceAlpha by transition.animateFloat(
         transitionSpec = { tween(200) },
         label = "glass-modal-surface-alpha",
@@ -91,8 +85,6 @@ fun GlassModal(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .graphicsLayer { alpha = scrimAlpha }
-            .background(MaterialTheme.colorScheme.scrim.copy(alpha = 0.35f))
             .then(
                 if (active) {
                     Modifier.clickable(
