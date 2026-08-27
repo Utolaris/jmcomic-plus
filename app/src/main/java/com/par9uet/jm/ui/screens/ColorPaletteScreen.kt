@@ -60,8 +60,7 @@ import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_LAVENDER
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_MONET
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_OCEAN
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_SUNSET
-import com.par9uet.jm.data.models.LocalSetting
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.AppearancePreferences
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.GlassModal
 import org.koin.compose.getKoin
@@ -94,17 +93,17 @@ private enum class ColorSlot(val label: String) {
 
 @Composable
 fun ColorPaletteScreen(
-    localSettingManager: LocalSettingManager = getKoin().get(),
+    appearancePreferences: AppearancePreferences = getKoin().get(),
 ) {
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val colorPalette by appearancePreferences.colorPalette.collectAsState()
     val context = LocalContext.current
 
     var editingSlot by remember { mutableStateOf<ColorSlot?>(null) }
 
-    val currentPreset = COLOR_PRESETS.firstOrNull { it.id == localSetting.colorPalettePreset }
+    val currentPreset = COLOR_PRESETS.firstOrNull { it.id == colorPalette.presetId }
     // 当前生效的四色：莫奈取色时从动态色获取，其余从预设/自定义获取
-    val effectiveColors = remember(localSetting) {
-        if (localSetting.colorPalettePreset == COLOR_PALETTE_PRESET_MONET &&
+    val effectiveColors = remember(colorPalette) {
+        if (colorPalette.presetId == COLOR_PALETTE_PRESET_MONET &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
         ) {
             val ds = dynamicLightColorScheme(context)
@@ -112,17 +111,14 @@ fun ColorPaletteScreen(
         } else {
             val presetColors = currentPreset?.colors ?: COLOR_PRESETS[0].colors
             listOf(
-                localSetting.customColorPrimary?.toColorOrNull() ?: Color(presetColors[0]),
-                localSetting.customColorSecondary?.toColorOrNull() ?: Color(presetColors[1]),
-                localSetting.customColorTertiary?.toColorOrNull() ?: Color(presetColors[2]),
-                localSetting.customColorError?.toColorOrNull() ?: Color(presetColors[3]),
+                colorPalette.customPrimary?.toColorOrNull() ?: Color(presetColors[0]),
+                colorPalette.customSecondary?.toColorOrNull() ?: Color(presetColors[1]),
+                colorPalette.customTertiary?.toColorOrNull() ?: Color(presetColors[2]),
+                colorPalette.customError?.toColorOrNull() ?: Color(presetColors[3]),
             )
         }
     }
-    val hasCustomOverride = localSetting.customColorPrimary != null ||
-            localSetting.customColorSecondary != null ||
-            localSetting.customColorTertiary != null ||
-            localSetting.customColorError != null
+    val hasCustomOverride = colorPalette.hasCustomOverride
 
     CommonScaffold(
         title = "调色板",
@@ -140,15 +136,13 @@ fun ColorPaletteScreen(
                 onDismiss = { editingSlot = null },
                 onConfirm = { newColor ->
                     val hex = newColor.toArgbHex()
-                    val primary = if (pickerSlot == ColorSlot.Primary) hex else localSetting.customColorPrimary
-                    val secondary = if (pickerSlot == ColorSlot.Secondary) hex else localSetting.customColorSecondary
-                    val tertiary = if (pickerSlot == ColorSlot.Tertiary) hex else localSetting.customColorTertiary
-                    val error = if (pickerSlot == ColorSlot.Error) hex else localSetting.customColorError
-                    // 一旦自定义颜色，预设自动切到 custom
-                    if (localSetting.colorPalettePreset != COLOR_PALETTE_PRESET_CUSTOM) {
-                        localSettingManager.updateColorPalettePreset(COLOR_PALETTE_PRESET_CUSTOM)
-                    }
-                    localSettingManager.updateCustomColor(primary, secondary, tertiary, error)
+                    // 一次完整状态迁移：四色与 custom 预设在同一更新内生效
+                    appearancePreferences.editor.applyCustomColors(
+                        primary = if (pickerSlot == ColorSlot.Primary) hex else colorPalette.customPrimary,
+                        secondary = if (pickerSlot == ColorSlot.Secondary) hex else colorPalette.customSecondary,
+                        tertiary = if (pickerSlot == ColorSlot.Tertiary) hex else colorPalette.customTertiary,
+                        error = if (pickerSlot == ColorSlot.Error) hex else colorPalette.customError,
+                    )
                     editingSlot = null
                 },
             )
@@ -172,12 +166,11 @@ fun ColorPaletteScreen(
             item {
                 Section(title = "预设方案") {
                     PresetGrid(
-                        selectedPreset = localSetting.colorPalettePreset,
+                        selectedPreset = colorPalette.presetId,
                         hasCustomOverride = hasCustomOverride,
                         onSelect = { presetId ->
-                            // 切换预设时清空自定义颜色覆盖
-                            localSettingManager.updateCustomColor(null, null, null, null)
-                            localSettingManager.updateColorPalettePreset(presetId)
+                            // 一次完整状态迁移：切换预设并清空自定义颜色覆盖
+                            appearancePreferences.editor.selectColorPreset(presetId)
                         }
                     )
                 }
@@ -210,8 +203,7 @@ fun ColorPaletteScreen(
                         horizontalArrangement = Arrangement.End
                     ) {
                         TextButton(onClick = {
-                            localSettingManager.updateCustomColor(null, null, null, null)
-                            localSettingManager.updateColorPalettePreset(COLOR_PALETTE_PRESET_DEFAULT)
+                            appearancePreferences.editor.selectColorPreset(COLOR_PALETTE_PRESET_DEFAULT)
                         }) {
                             Icon(Icons.Rounded.RestartAlt, contentDescription = null)
                             Spacer(Modifier.width(4.dp))

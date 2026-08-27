@@ -10,7 +10,7 @@ import com.par9uet.jm.image.ImageHostFailureKind
 import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.image.classifyImageHostFailure
 import com.par9uet.jm.network.DohManager
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.ReaderPreferences
 import com.par9uet.jm.utils.compressWebpCompat
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +19,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -71,7 +71,7 @@ private data class ReaderSourceFile(
 
 class ReaderImagePipeline internal constructor(
     context: Context,
-    private val localSettingManager: LocalSettingManager,
+    private val readerPreferences: ReaderPreferences,
     imageHostHealthManager: JmImageHostHealthManager,
     dohManager: DohManager,
 ) {
@@ -82,8 +82,8 @@ class ReaderImagePipeline internal constructor(
     private val imageWorkConcurrency = ReaderConcurrencyPolicy.imageWorkConcurrency(lowRamDevice, memoryClassMb)
     private val maxDecodeConcurrency = ReaderConcurrencyPolicy.maxDecodeConcurrency(lowRamDevice, memoryClassMb)
     private val initialDecodeConcurrency = ReaderConcurrencyPolicy.effectiveDecodeConcurrency(
-        memoryOptEnabled = localSettingManager.localSettingState.value.readMemoryOptEnabled,
-        userConcurrency = localSettingManager.localSettingState.value.readDecodeConcurrency,
+        memoryOptEnabled = readerPreferences.memoryOptEnabled.value,
+        userConcurrency = readerPreferences.decodeConcurrency.value,
         lowRamDevice = lowRamDevice,
         memoryClassMb = memoryClassMb,
     )
@@ -101,7 +101,7 @@ class ReaderImagePipeline internal constructor(
         totalConcurrency = networkConcurrency,
         initialBackgroundConcurrency = if (
             networkConcurrency >= 3 &&
-            localSettingManager.localSettingState.value.prefetchCount >= 5
+            readerPreferences.prefetchCount.value >= 5
         ) 2 else 1,
     )
     private val decodeLimiter = ReaderDynamicLimiter(initialDecodeConcurrency)
@@ -273,13 +273,16 @@ class ReaderImagePipeline internal constructor(
     init {
         appContext.registerComponentCallbacks(memoryCallbacks)
         scope.launch {
-            localSettingManager.localSettingState
+            combine(
+                readerPreferences.memoryOptEnabled,
+                readerPreferences.decodeConcurrency,
+            ) { memoryOpt, userConcurrency -> memoryOpt to userConcurrency }
                 // 内存优化开关与并发设置共同决定生效并发；关闭内存优化后恢复硬件默认，
                 // 不再被历史保存的 readDecodeConcurrency 限速。运行时切换立即生效。
-                .map { setting ->
+                .map { (memoryOpt, userConcurrency) ->
                     ReaderConcurrencyPolicy.effectiveDecodeConcurrency(
-                        memoryOptEnabled = setting.readMemoryOptEnabled,
-                        userConcurrency = setting.readDecodeConcurrency,
+                        memoryOptEnabled = memoryOpt,
+                        userConcurrency = userConcurrency,
                         lowRamDevice = lowRamDevice,
                         memoryClassMb = memoryClassMb,
                     )
@@ -291,9 +294,7 @@ class ReaderImagePipeline internal constructor(
                 }
         }
         scope.launch {
-            localSettingManager.localSettingState
-                .map { it.prefetchCount }
-                .distinctUntilChanged()
+            readerPreferences.prefetchCount
                 .collect { count ->
                     networkScheduler.updateBackgroundLimit(
                         if (networkConcurrency >= 3 && count >= 5) 2 else 1,
@@ -835,8 +836,7 @@ class ReaderImagePipeline internal constructor(
     }
 
     private fun currentProfile(): ReaderDecodeProfile {
-        val setting = localSettingManager.localSettingState.value
-        return if (setting.readMemoryOptEnabled) {
+        return if (readerPreferences.memoryOptEnabled.value) {
             ReaderDecodeProfile.LOW
         } else {
             ReaderDecodeProfile.HIGH

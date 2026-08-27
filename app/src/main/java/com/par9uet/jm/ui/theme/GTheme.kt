@@ -20,7 +20,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_MONET
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.AppearancePreferences
 import org.koin.compose.getKoin
 
 val LocalExtendedColors = staticCompositionLocalOf<ExtendedColorScheme> {
@@ -59,11 +59,11 @@ private fun String.toColorOrNull(): Color? {
 
 @Composable
 fun AppTheme(
-    localSettingManager: LocalSettingManager = getKoin().get(),
+    appearancePreferences: AppearancePreferences = getKoin().get(),
     content: @Composable () -> Unit
 ) {
-    val setting by localSettingManager.localSettingState.collectAsState()
-    val theme = setting.theme
+    val theme by appearancePreferences.theme.collectAsState()
+    val colorPalette by appearancePreferences.colorPalette.collectAsState()
     val context = LocalContext.current
     val isDark = when (theme) {
         "auto" -> isSystemInDarkTheme()
@@ -72,7 +72,7 @@ fun AppTheme(
     }
     // 仅当用户选择"莫奈取色"预设时才使用动态色；其余预设始终应用调色板覆盖
     val supportDynamic = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val useDynamic = setting.colorPalettePreset == COLOR_PALETTE_PRESET_MONET && supportDynamic
+    val useDynamic = colorPalette.presetId == COLOR_PALETTE_PRESET_MONET && supportDynamic
     val baseScheme = when {
         useDynamic && isDark -> dynamicDarkColorScheme(context)
         useDynamic -> dynamicLightColorScheme(context)
@@ -82,12 +82,12 @@ fun AppTheme(
     val colorScheme = if (useDynamic) {
         baseScheme
     } else {
-        applyPaletteOverride(baseScheme, setting.colorPalettePreset, isDark) { slot ->
+        applyPaletteOverride(baseScheme, colorPalette.presetId, isDark) { slot ->
             when (slot) {
-                0 -> setting.customColorPrimary
-                1 -> setting.customColorSecondary
-                2 -> setting.customColorTertiary
-                else -> setting.customColorError
+                0 -> colorPalette.customPrimary
+                1 -> colorPalette.customSecondary
+                2 -> colorPalette.customTertiary
+                else -> colorPalette.customError
             }
         }
     }

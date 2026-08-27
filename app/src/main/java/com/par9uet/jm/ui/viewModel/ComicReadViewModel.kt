@@ -22,7 +22,7 @@ import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.reader.ReaderPageKey
 import com.par9uet.jm.reader.readerPrefetchPlan
 import com.par9uet.jm.reader.runReaderPrefetchSchedule
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.ReaderPreferences
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.models.CommonUIState
@@ -42,7 +42,7 @@ import kotlin.math.min
 class ComicReadViewModel(
     private val comicRepository: ComicRepository,
     private val readerImagePipeline: ReaderImagePipeline,
-    private val localSettingManager: LocalSettingManager,
+    private val readerPreferences: ReaderPreferences,
     private val downloadComicDao: DownloadComicDao,
     private val toastManager: ToastManager,
     private val readHistoryManager: ReadHistoryManager,
@@ -396,20 +396,20 @@ class ComicReadViewModel(
         visibleEnd: Int,
     ) {
         val pages = comicPicState.value.data ?: return
-        val setting = localSettingManager.localSettingState.value
+        val prefetchCount = readerPreferences.prefetchCount.value
         val policy = readerImagePipeline.adaptivePrefetchPolicy(
-            configuredDistance = setting.prefetchCount,
+            configuredDistance = prefetchCount,
             jumpDistance = jumpDistance,
             directionStreak = directionStreak,
             pageVelocity = pageVelocity,
-            turboMode = setting.prefetchCount >= 5,
+            turboMode = prefetchCount >= 5,
         )
         val plannedIndices = readerPrefetchPlan(
             currentPageIndex = index,
             pageCount = pages.size,
             distance = policy.distance,
             direction = direction,
-            includeOpposite = setting.readMode != "scroll",
+            includeOpposite = readerPreferences.readMode.value != "scroll",
             visibleStart = visibleStart,
             visibleEnd = visibleEnd,
         )

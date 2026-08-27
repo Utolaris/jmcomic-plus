@@ -5,10 +5,14 @@ import android.content.Context
 import android.content.pm.PackageManager
 import com.par9uet.jm.data.models.LauncherDisguise
 
+interface LauncherIdentityApplier {
+    fun apply(disguise: LauncherDisguise)
+}
+
 class LauncherDisguiseApplier(
     private val context: Context,
-) {
-    fun apply(disguise: LauncherDisguise) {
+) : LauncherIdentityApplier {
+    override fun apply(disguise: LauncherDisguise) {
         val packageManager = context.packageManager
         val componentClassPrefix = context.packageName
         LauncherDisguise.entries.forEach { item ->

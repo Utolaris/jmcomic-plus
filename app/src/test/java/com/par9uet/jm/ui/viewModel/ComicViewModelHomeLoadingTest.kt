@@ -1,7 +1,6 @@
 package com.par9uet.jm.ui.viewModel
 
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
-import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.CollectComicResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
@@ -13,11 +12,13 @@ import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
-import com.par9uet.jm.store.AppLocalSettings
+import com.par9uet.jm.store.ContentPreferences
+import com.par9uet.jm.store.RecommendationPreferences
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -57,8 +58,23 @@ class ComicViewModelHomeLoadingTest {
         Dispatchers.resetMain()
     }
 
-    private class FakeSettings(initial: LocalSetting = LocalSetting()) : AppLocalSettings {
-        override val localSettingState = MutableStateFlow(initial)
+    private class FakeSettings : ContentPreferences, RecommendationPreferences {
+        constructor()
+
+        constructor(recommendEnabled: Boolean) {
+            (_preferenceRecommendEnabled as MutableStateFlow).value = recommendEnabled
+        }
+
+        fun setRecommendEnabled(enabled: Boolean) {
+            (_preferenceRecommendEnabled as MutableStateFlow).value = enabled
+        }
+
+        private val _blockedTags = MutableStateFlow(emptyList<String>())
+        override val blockedTags = _blockedTags.asStateFlow()
+        private val _homeExcludedTags = MutableStateFlow(emptyList<String>())
+        override val homeExcludedTags = _homeExcludedTags.asStateFlow()
+        private val _preferenceRecommendEnabled = MutableStateFlow(false)
+        override val preferenceRecommendEnabled = _preferenceRecommendEnabled.asStateFlow()
     }
 
     private class FakeComicRepository(
@@ -155,7 +171,7 @@ class ComicViewModelHomeLoadingTest {
     fun recommendOffStartupRequestsOnlyLatest() = runTest(scheduler) {
         val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings)
+        val vm = ComicViewModel(repo, settings, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -181,8 +197,8 @@ class ComicViewModelHomeLoadingTest {
                 )
             },
         )
-        val settings = FakeSettings(LocalSetting().copy(preferenceRecommendEnabled = true))
-        val vm = ComicViewModel(repo, settings)
+        val settings = FakeSettings(recommendEnabled = true)
+        val vm = ComicViewModel(repo, settings, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -220,7 +236,8 @@ class ComicViewModelHomeLoadingTest {
         )
         val vm = ComicViewModel(
             repo,
-            FakeSettings(LocalSetting().copy(preferenceRecommendEnabled = true)),
+            FakeSettings(recommendEnabled = true),
+            FakeSettings(recommendEnabled = true),
         )
 
         vm.refreshHome()
@@ -248,7 +265,8 @@ class ComicViewModelHomeLoadingTest {
         )
         val vm = ComicViewModel(
             repo,
-            FakeSettings(LocalSetting().copy(preferenceRecommendEnabled = true)),
+            FakeSettings(recommendEnabled = true),
+            FakeSettings(recommendEnabled = true),
         )
 
         vm.refreshHome()
@@ -265,7 +283,7 @@ class ComicViewModelHomeLoadingTest {
     fun clickingCategoryRequestsItOnceThenUsesCache() = runTest(scheduler) {
         val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings)
+        val vm = ComicViewModel(repo, settings, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -293,7 +311,7 @@ class ComicViewModelHomeLoadingTest {
     fun forceRefreshOnlyRefreshesCurrentCategory() = runTest(scheduler) {
         val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings)
+        val vm = ComicViewModel(repo, settings, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -321,7 +339,7 @@ class ComicViewModelHomeLoadingTest {
             networkHandler = { NetWorkResult.Success(listOf(page("home", "首页", listOf(item(3))))) },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings)
+        val vm = ComicViewModel(repo, settings, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -330,7 +348,7 @@ class ComicViewModelHomeLoadingTest {
         assertTrue(vm.homeState.value.states["builtin_week_hot"]?.isLoading == true)
 
         // 用户开启网络推荐：旧请求 token 作废，首页切换到推荐 + Embedded 分类拓扑。
-        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = true) }
+        settings.setRecommendEnabled(true)
         vm.refreshHome()
         advanceUntilIdle()
         assertEquals("net_home", vm.homeState.value.selectedCategoryId)
@@ -358,7 +376,7 @@ class ComicViewModelHomeLoadingTest {
             },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings)
+        val vm = ComicViewModel(repo, settings, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -390,7 +408,7 @@ class ComicViewModelHomeLoadingTest {
             },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings)
+        val vm = ComicViewModel(repo, settings, settings)
 
         // 默认只加载 Embedded 最新上架。
         vm.refreshHome()
@@ -398,7 +416,7 @@ class ComicViewModelHomeLoadingTest {
         assertEquals(1, repo.embeddedCalls.size)
 
         // 开启网络推荐：/promote 展开为 tab，同时保留 Embedded 分类入口。
-        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = true) }
+        settings.setRecommendEnabled(true)
         vm.refreshHome()
         advanceUntilIdle()
         assertEquals(1, repo.networkPageCalls)
@@ -410,7 +428,7 @@ class ComicViewModelHomeLoadingTest {
         assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
 
         // 关闭网络推荐：回到 Embedded，并复用已加载的最新上架缓存。
-        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = false) }
+        settings.setRecommendEnabled(false)
         vm.refreshHome()
         advanceUntilIdle()
         assertEquals(1, repo.embeddedCalls.size)
@@ -441,14 +459,14 @@ class ComicViewModelHomeLoadingTest {
             },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings)
+        val vm = ComicViewModel(repo, settings, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
         assertTrue(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.isLoading == true)
 
         // 最新上架加载中切换推荐开关：默认分类切到真实 /promote 推荐 section。
-        settings.localSettingState.update { it.copy(preferenceRecommendEnabled = true) }
+        settings.setRecommendEnabled(true)
         vm.refreshHome()
         advanceUntilIdle()
         assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
@@ -474,7 +492,7 @@ class ComicViewModelHomeLoadingTest {
                 if (categoryId == "builtin_week_hot") aGate.await() else embeddedOk(categoryId)
             },
         )
-        val vm = ComicViewModel(repo, FakeSettings())
+        val vm = ComicViewModel(repo, FakeSettings(), FakeSettings())
         vm.refreshHome()
         advanceUntilIdle()
 
@@ -508,7 +526,7 @@ class ComicViewModelHomeLoadingTest {
                 }
             },
         )
-        val vm = ComicViewModel(repo, FakeSettings())
+        val vm = ComicViewModel(repo, FakeSettings(), FakeSettings())
         vm.refreshHome()
         advanceUntilIdle()
 
@@ -529,7 +547,7 @@ class ComicViewModelHomeLoadingTest {
 
     @Test
     fun searchOrderChangeUpdatesFilterAndClearsPendingComicId() = runTest(scheduler) {
-        val vm = ComicViewModel(FakeComicRepository(), FakeSettings())
+        val vm = ComicViewModel(FakeComicRepository(), FakeSettings(), FakeSettings())
 
         assertEquals(ComicSearchOrderFilter.NEWEST, vm.searchComicFilterState.value.order)
 
@@ -551,7 +569,7 @@ class ComicViewModelHomeLoadingTest {
 
     @Test
     fun searchOrderChangeKeepsSearchCriteria() = runTest(scheduler) {
-        val vm = ComicViewModel(FakeComicRepository(), FakeSettings())
+        val vm = ComicViewModel(FakeComicRepository(), FakeSettings(), FakeSettings())
         vm.changeSearchComicContent("neko", listOf("tag1", "tag2"))
 
         vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_PIC_COUNT)

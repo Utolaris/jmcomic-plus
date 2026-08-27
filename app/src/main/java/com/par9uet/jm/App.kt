@@ -50,7 +50,7 @@ import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.PostStartupInitializer
-import com.par9uet.jm.store.RemoteSettingManager
+import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.AppSnackbarHost
@@ -70,8 +70,9 @@ fun App(
     postStartupInitializer: PostStartupInitializer = getKoin().get(),
 ) {
     val localSetting by localSettingManager.localSettingState.collectAsState()
+    val appLock by localSettingManager.appLock.collectAsState()
     val showOnboarding = !localSetting.onboardingCompleted
-    var isLocked by remember { mutableStateOf(localSetting.appLockEnabled) }
+    var isLocked by remember { mutableStateOf(appLock.enabled) }
     var sessionNsfwDismissed by remember { mutableStateOf(localSetting.nsfwWarningDismissed) }
 
     // Only the small local state needed to choose the first safe screen is loaded here. All
@@ -82,14 +83,14 @@ fun App(
         postStartupInitializer.start()
     }
 
-    LaunchedEffect(localSetting.appLockEnabled) {
-        if (!localSetting.appLockEnabled) isLocked = false
+    LaunchedEffect(appLock.enabled) {
+        if (!appLock.enabled) isLocked = false
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
-    DisposableEffect(lifecycleOwner, localSetting.appLockEnabled) {
+    DisposableEffect(lifecycleOwner, appLock.enabled) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_STOP && localSetting.appLockEnabled) {
+            if (event == Lifecycle.Event.ON_STOP && appLock.enabled) {
                 isLocked = true
             }
         }
@@ -97,7 +98,7 @@ fun App(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val showAppLock = localSetting.appLockEnabled && isLocked && !showOnboarding
+    val showAppLock = appLock.enabled && isLocked && !showOnboarding
     val showNsfwDialog = !showAppLock && !showOnboarding &&
         !sessionNsfwDismissed && !localSetting.nsfwWarningDismissed
 
@@ -117,15 +118,15 @@ fun App(
     when {
         showOnboarding -> WelcomeScreen(
             onComplete = {
-                isLocked = localSettingManager.localSettingState.value.appLockEnabled
+                isLocked = localSettingManager.appLock.value.enabled
             }
         )
 
         showAppLock -> AppLockScreen(
-            unlockMode = localSetting.appLockUnlockMode,
-            correctPassword = localSetting.appLockPassword,
-            correctPattern = localSetting.appLockPattern,
-            passwordLength = localSetting.appLockPasswordLength,
+            unlockMode = appLock.unlockMode,
+            correctPassword = appLock.password,
+            correctPattern = appLock.pattern,
+            passwordLength = appLock.passwordLength,
             onUnlock = { isLocked = false }
         )
 
@@ -269,10 +270,10 @@ private fun ClipboardDetectedComicDialog(
     comic: Comic,
     onDismiss: () -> Unit,
     onNavigate: (Int) -> Unit,
-    remoteSettingManager: RemoteSettingManager = getKoin().get(),
+    remoteConfigManager: RemoteConfigManager = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
 ) {
-    val remoteSetting by remoteSettingManager.remoteSettingState.collectAsState()
+    val remoteHost by remoteConfigManager.remoteImageHost.collectAsState()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("检测到漫画编码", fontWeight = FontWeight.Bold) },
@@ -283,7 +284,7 @@ private fun ClipboardDetectedComicDialog(
             ) {
                 JmCoverImage(
                     comicId = comic.id,
-                    remoteHost = remoteSetting.imgHost,
+                    remoteHost = remoteHost,
                     imageLoader = imageLoader,
                     contentDescription = "${comic.name}的封面",
                     contentScale = ContentScale.Crop,

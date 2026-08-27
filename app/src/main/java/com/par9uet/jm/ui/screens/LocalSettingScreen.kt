@@ -78,6 +78,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.par9uet.jm.data.models.AVAILABLE_APIS
+import com.par9uet.jm.data.models.AVAILABLE_THEMES
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.store.LocalSettingManager
@@ -116,12 +118,12 @@ private fun gridColumnsText(columns: Int): String =
 
 @Composable
 fun LocalSettingScreen(
+    settingsViewModel: com.par9uet.jm.ui.viewModel.SettingsViewModel = org.koin.compose.viewmodel.koinViewModel(),
     localSettingManager: LocalSettingManager = getKoin().get(),
-    favoritesViewModel: FavoritesViewModel = koinActivityViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
     val localSetting by localSettingManager.localSettingState.collectAsState()
-    val favoriteSyncState by favoritesViewModel.uiState.collectAsState()
+    val favoriteSyncState by settingsViewModel.favoriteSyncState.collectAsState()
     var settingType by remember { mutableStateOf<SettingType>(SettingType.Api) }
     var isOpenSettingSelectDialog by remember { mutableStateOf(false) }
     var showHomeExcludedTagsDialog by remember { mutableStateOf(false) }
@@ -157,14 +159,14 @@ fun LocalSettingScreen(
                 visible = isOpenSettingSelectDialog,
                 settingType = settingType,
                 localSetting = localSetting,
-                localSettingManager = localSettingManager,
+                settingsViewModel = settingsViewModel,
                 onDismiss = { isOpenSettingSelectDialog = false }
             )
             HomeExcludedTagsDialog(
                 visible = showHomeExcludedTagsDialog,
                 tags = localSetting.homeExcludedTags,
                 onConfirm = { tags ->
-                    localSettingManager.updateHomeExcludedTags(tags)
+                    settingsViewModel.updateHomeExcludedTags(tags)
                     showHomeExcludedTagsDialog = false
                 },
                 onDismiss = { showHomeExcludedTagsDialog = false }
@@ -204,7 +206,7 @@ fun LocalSettingScreen(
                         icon = Icons.Rounded.ContentPaste,
                         title = "\u526a\u5207\u677f\u81ea\u52a8\u68c0\u6d4b",
                         value = localSetting.clipboardAutoDetectEnabled,
-                        onCheckedChange = localSettingManager::updateClipboardAutoDetectEnabled
+                        onCheckedChange = settingsViewModel::setClipboardAutoDetectEnabled
                     )
                     SettingsRow(
                         Icons.Rounded.GridView,
@@ -259,7 +261,7 @@ fun LocalSettingScreen(
                         icon = Icons.Rounded.Recommend,
                         title = "\u7f51\u7edc\u63a8\u8350",
                         value = localSetting.preferenceRecommendEnabled,
-                        onCheckedChange = { localSettingManager.updatePreferenceRecommendEnabled(it) }
+                        onCheckedChange = { settingsViewModel.setPreferenceRecommendEnabled(it) }
                     )
                     if (localSetting.preferenceRecommendEnabled) {
                         Text(
@@ -290,7 +292,7 @@ fun LocalSettingScreen(
                         icon = Icons.Rounded.Memory,
                         title = "\u56fe\u7247\u5185\u5b58\u4f18\u5316",
                         value = localSetting.readMemoryOptEnabled,
-                        onCheckedChange = { localSettingManager.updateReadMemoryOptEnabled(it) }
+                        onCheckedChange = { settingsViewModel.setMemoryOptEnabled(it) }
                     )
                     if (localSetting.readMemoryOptEnabled) {
                         Text(
@@ -322,20 +324,21 @@ fun LocalSettingScreen(
                         icon = Icons.Rounded.EventAvailable,
                         title = "\u81ea\u52a8\u7b7e\u5230",
                         value = localSetting.autoSignInEnabled,
-                        onCheckedChange = { localSettingManager.updateAutoSignInEnabled(it) }
+                        onCheckedChange = { settingsViewModel.setAutoSignInEnabled(it) }
                     )
                     SettingsRow(
                         Icons.Rounded.CloudSync,
                         "强制刷新收藏夹",
-                        if (favoriteSyncState.sync.isSyncing && favoriteSyncState.sync.isForceRefresh) {
-                            "正在重建${favoriteSyncState.sync.phase.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""} " +
-                                "${favoriteSyncState.sync.completed}/${favoriteSyncState.sync.total}"
+                        if (favoriteSyncState.isSyncing && favoriteSyncState.isForceRefresh) {
+                            "正在重建${favoriteSyncState.phase.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""} " +
+                                "${favoriteSyncState.completed}/${favoriteSyncState.total}"
                         } else {
                             "重新获取收藏及完整元数据"
                         }
                     ) {
-                        if (!favoriteSyncState.sync.isSyncing) {
-                            favoritesViewModel.onIntent(FavoritesIntent.ForceRefresh)
+                        if (!favoriteSyncState.isSyncing) {
+                            // 通过窄的同步请求能力触发；Settings 不再依赖 FavoritesViewModel
+                            settingsViewModel.requestFavoriteForceRefresh()
                         }
                     }
                     SettingsRow(Icons.Rounded.BugReport, "\u67e5\u770b\u65e5\u5fd7", "\u8c03\u8bd5\u548c\u9519\u8bef\u4fe1\u606f") {
@@ -364,7 +367,7 @@ private fun SettingSelectDialogContent(
     visible: Boolean,
     settingType: SettingType,
     localSetting: LocalSetting,
-    localSettingManager: LocalSettingManager,
+    settingsViewModel: com.par9uet.jm.ui.viewModel.SettingsViewModel,
     onDismiss: () -> Unit
 ) {
     // 网格列数使用滑块设置，不走选项列表
@@ -377,22 +380,18 @@ private fun SettingSelectDialogContent(
             historyColumns = localSetting.historyGridColumns,
             searchColumns = localSetting.searchGridColumns,
             onConfirm = { home, collect, download, history, search ->
-                localSettingManager.updateHomeGridColumns(home)
-                localSettingManager.updateCollectGridColumns(collect)
-                localSettingManager.updateDownloadGridColumns(download)
-                localSettingManager.updateHistoryGridColumns(history)
-                localSettingManager.updateSearchGridColumns(search)
+                settingsViewModel.applyGridColumns(home, collect, download, history, search)
                 onDismiss()
             },
             onDismiss = onDismiss
         )
         return
     }
-    val apiSelectOptionList by remember(localSetting.apiList) {
-        derivedStateOf { localSetting.apiList.map { SelectOption(it.removePrefix("https://"), it) } }
+    val apiSelectOptionList by remember(AVAILABLE_APIS) {
+        derivedStateOf { AVAILABLE_APIS.map { SelectOption(it.removePrefix("https://"), it) } }
     }
-    val themeSelectOptionList by remember(localSetting.themeList) {
-        derivedStateOf { localSetting.themeList.map { SelectOption(themeTextMap[it].orEmpty(), it) } }
+    val themeSelectOptionList by remember(AVAILABLE_THEMES) {
+        derivedStateOf { AVAILABLE_THEMES.map { SelectOption(themeTextMap[it].orEmpty(), it) } }
     }
     val launcherDisguiseOptionList by remember {
         derivedStateOf { LauncherDisguise.entries.map { SelectOption(it.label, it.id) } }
@@ -453,18 +452,18 @@ private fun SettingSelectDialogContent(
         },
         onSelect = {
             when (settingType) {
-                is SettingType.Api -> localSettingManager.updateApi(it)
-                is SettingType.Theme -> localSettingManager.updateTheme(it)
-                is SettingType.LauncherDisguise -> localSettingManager.updateLauncherDisguise(it)
-                is SettingType.PrefetchCount -> localSettingManager.updatePrefetchCount(it)
-                is SettingType.ReadMode -> localSettingManager.updateReadMode(it)
+                is SettingType.Api -> settingsViewModel.selectApi(it)
+                is SettingType.Theme -> settingsViewModel.selectTheme(it)
+                is SettingType.LauncherDisguise -> settingsViewModel.selectLauncherDisguise(it)
+                is SettingType.PrefetchCount -> settingsViewModel.setPrefetchCount(it.toIntOrNull() ?: 0)
+                is SettingType.ReadMode -> settingsViewModel.setReadMode(it)
                 is SettingType.NotificationManagement -> {
-                    localSettingManager.updateNotificationSettings(
+                    settingsViewModel.applyNotificationSetting(
                         show = it != NOTIFICATION_OFF,
                         showName = it == NOTIFICATION_ON_WITH_NAME
                     )
                 }
-                is SettingType.ReadDecodeConcurrency -> localSettingManager.updateReadDecodeConcurrency(it.toIntOrNull() ?: 2)
+                is SettingType.ReadDecodeConcurrency -> settingsViewModel.setDecodeConcurrency(it.toIntOrNull() ?: 2)
             }
             onDismiss()
         },

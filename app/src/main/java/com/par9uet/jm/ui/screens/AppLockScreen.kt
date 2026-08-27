@@ -53,14 +53,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
 import com.par9uet.jm.ui.glass.GlassModal
 import kotlinx.coroutines.launch
 import kotlin.math.hypot
 
-// 解锁模式常量
-const val APP_LOCK_UNLOCK_MODE_PASSWORD = "password"
-const val APP_LOCK_UNLOCK_MODE_PATTERN = "pattern"
-const val APP_LOCK_UNLOCK_MODE_BOTH = "both"
 
 /**
  * 应用锁全屏遮罩。当应用锁开启且处于锁定状态时，覆盖整个应用界面。

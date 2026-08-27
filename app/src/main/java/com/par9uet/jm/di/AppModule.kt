@@ -16,13 +16,12 @@ import com.par9uet.jm.storage.SecureStorage
 import com.par9uet.jm.storage.SecureUserStorage
 import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.store.AppUpdateDownloadManager
-import com.par9uet.jm.store.AppLocalSettings
+import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.DownloadToastAggregator
 import com.par9uet.jm.store.HistorySearchManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.PostStartupInitializer
 import com.par9uet.jm.store.ReadHistoryManager
-import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.SessionReadinessHolder
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
@@ -35,11 +34,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.map
 import org.koin.core.context.GlobalContext
+import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.bind
 import org.koin.dsl.module
 
 val appModule = module {
-    single { DohManager(get()) }
+    single { DohManager(get(), get()) }
 
     single {
         CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, throwable ->
@@ -58,7 +58,7 @@ val appModule = module {
         JmImageHostHealthManager(
             context = get(),
             scope = get(),
-            configuredHostFlow = get<RemoteSettingManager>().remoteSettingState.map { it.imgHost },
+            configuredHostFlow = get<RemoteConfigManager>().remoteImageHost,
         )
     }
     single { CoverImageHostResolver(get<JmImageHostHealthManager>()) }
@@ -67,14 +67,15 @@ val appModule = module {
 
     single { SessionReadinessHolder() }
     single { UserManager(get(), get(), get(), get(), get()) }
-    single { RemoteSettingManager(get(), get()) }
-    single { LocalSettingManager(get(), get()) } bind AppLocalSettings::class
+    single { RemoteConfigManager(get(), get()) }
+    single { LocalSettingManager(get<LocalSettingStorage>(), get()) }
     single { HistorySearchManager(get()) }
     single { ReadHistoryManager(get()) }
     single { ToastManager() }
     single { DownloadToastAggregator(get()) }
     single { PostStartupInitializer(get(), GlobalContext.get()) }
     single { AppUpdateDownloadManager(get(), get(), get(), get()) }
+    viewModel { com.par9uet.jm.ui.viewModel.SettingsViewModel(get(), get()) }
 
     single<Gson> { GsonBuilder().setStrictness(Strictness.LENIENT).serializeNulls().create() }
 }

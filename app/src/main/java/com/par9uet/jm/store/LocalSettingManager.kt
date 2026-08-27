@@ -1,43 +1,81 @@
 package com.par9uet.jm.store
 
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
 import com.par9uet.jm.data.models.BlockedTagTemplate
+import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_CUSTOM
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
-import com.par9uet.jm.storage.LocalSettingStorage
-import com.par9uet.jm.utils.LauncherDisguiseApplier
+import com.par9uet.jm.storage.LocalSettingPersistence
+import com.par9uet.jm.utils.LauncherIdentityApplier
 import com.par9uet.jm.utils.flattenBlockedTagTemplates
 import com.par9uet.jm.utils.log
-import com.par9uet.jm.utils.normalizeBlockedTag
 import com.par9uet.jm.utils.normalizeBlockedTagList
 import com.par9uet.jm.utils.normalizeBlockedTagTemplates
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
-/** 应用本地产品设置的可读视图，便于 ViewModel 单元测试替换。 */
-interface AppLocalSettings {
-    val localSettingState: kotlinx.coroutines.flow.StateFlow<LocalSetting>
-}
-
+/**
+ * Single writer for [LocalSetting]. The DTO stays the one persistence model (one encrypted
+ * JSON document, existing migrations and backup compatibility); features instead observe the
+ * narrow contracts projected below, so no feature can read unrelated settings.
+ */
 class LocalSettingManager(
-    private val localSettingStorage: LocalSettingStorage,
-    private val launcherDisguiseApplier: LauncherDisguiseApplier,
-) : AppLocalSettings {
+    private val persistence: LocalSettingPersistence,
+    private val launcherDisguiseApplier: LauncherIdentityApplier,
+) : ContentPreferences,
+    RecommendationPreferences,
+    ReaderPreferences,
+    CacheNotificationPreferences,
+    AppSecurityPreferences,
+    AppSecurityEditor,
+    DohPreferences,
+    DohPreferencesEditor,
+    AppearancePreferences,
+    AppearanceEditor,
+    ApiEndpointPreference {
     private val _localSettingState = MutableStateFlow(LocalSetting())
-    override val localSettingState = _localSettingState.asStateFlow()
-    private val loadLock = Any()
+    private val updateListeners = mutableListOf<(LocalSetting) -> Unit>()
 
-    @Volatile
-    private var loaded = false
+    /** Still exposed for first-frame Compose state reads; do not add new business readers. */
+    @Deprecated("Narrow contracts below replace full-model reads")
+    val localSettingState = _localSettingState.asStateFlow()
+
+    override val blockedTags = _projectingState { it.blockedTagList }
+    override val homeExcludedTags = _projectingState { it.homeExcludedTags }
+    override val preferenceRecommendEnabled = _projectingState { it.preferenceRecommendEnabled }
+    override val readMode = _projectingState { it.readMode }
+    override val readTapMode = _projectingState { it.readTapMode }
+    override val prefetchCount = _projectingState { it.prefetchCount }
+    override val memoryOptEnabled = _projectingState { it.readMemoryOptEnabled }
+    override val decodeConcurrency = _projectingState { it.readDecodeConcurrency }
+    override val cacheNotification = _projectingState(::toCacheNotificationSetting)
+    override val appLock = _projectingState(::toAppLockState)
+    override val doh = _projectingState(::toDohSettingsState)
+
+    /** True once DoH init ran or settings toggled DoH on in this session. */
+    private val _sessionDohActive = MutableStateFlow(false)
+    override val sessionDohActive = _sessionDohActive.asStateFlow()
+
+    override val theme = _projectingState { it.theme }
+    override val colorPalette = _projectingState(::toColorPaletteState)
+    override val editor: AppearanceEditor get() = this
+    override val apiEndpoint = _projectingState { it.api }
+
+    private fun <T> _projectingState(selector: (LocalSetting) -> T): MutableStateFlow<T> {
+        val flow = MutableStateFlow(selector(_localSettingState.value))
+        updateListeners += { flow.value = selector(it) }
+        return flow
+    }
 
     init {
-        // These values determine the first safe screen and the theme. The payload is small and
-        // LocalSettingStorage caches the decoded value, so load it once before composition.
         ensureLoaded()
     }
 
-    fun updatePreferenceRecommendEnabled(enabled: Boolean) =
-        updateSetting { it.copy(preferenceRecommendEnabled = enabled) }
+    // ---- Simple single-field editors (each maps to exactly one persistence field; compound
+    // business actions live on the atomic mutators so UI never sequences multiple writes). ----
 
     fun updateOnboardingCompleted(completed: Boolean) =
         updateSetting { it.copy(onboardingCompleted = completed) }
@@ -47,39 +85,9 @@ class LocalSettingManager(
 
     fun updateAutoSignInEnabled(enabled: Boolean) =
         updateSetting { it.copy(autoSignInEnabled = enabled) }
-
-    fun updateApi(api: String) = updateSetting { it.copy(api = api) }
-
-    fun updateTheme(theme: String) = updateSetting { it.copy(theme = theme) }
-
-    fun updateDohEnabled(enabled: Boolean) =
-        updateSetting { it.copy(dohEnabled = enabled) }
-
-    fun updateDohAutoStart(enabled: Boolean) =
-        updateSetting { it.copy(dohAutoStart = enabled) }
-
-    fun updateDohServer(id: String) =
-        updateSetting { it.copy(dohServerId = id) }
-
-    fun updateDohCustomServer(name: String, url: String) =
-        updateSetting {
-            it.copy(
-                dohServerId = "custom",
-                dohCustomServerName = name.trim(),
-                dohCustomServerUrl = url.trim(),
-            )
-        }
-
-    fun updateDohUseDeviceCertificates(enabled: Boolean) =
-        updateSetting { it.copy(dohUseDeviceCertificates = enabled) }
-
-    fun updateDohPreferIpv6(enabled: Boolean) =
-        updateSetting { it.copy(dohPreferIpv6 = enabled) }
-
-    fun updatePrefetchCount(prefetchCount: String) =
-        updateSetting { it.copy(prefetchCount = prefetchCount.toInt()) }
-
-    fun updateReadMode(readMode: String) = updateSetting { it.copy(readMode = readMode) }
+    fun setPreferenceRecommendEnabled(enabled: Boolean) =
+        updateSetting { it.copy(preferenceRecommendEnabled = enabled) }
+    fun setApiEndpoint(url: String) = updateSetting { it.copy(api = url) }
 
     fun closeShowComicScrollReadTip() =
         updateSetting { it.copy(showComicScrollReadTip = false) }
@@ -93,43 +101,28 @@ class LocalSettingManager(
         launcherDisguiseApplier.apply(disguise)
     }
 
-    fun updateNotificationSettings(show: Boolean, showName: Boolean) =
-        updateSetting {
-            it.copy(
-                showComicCacheNotification = show,
-                showComicCacheNotificationName = show && showName
-            )
-        }
+    fun dismissNsfwWarning() =
+        updateSetting { it.copy(nsfwWarningDismissed = true) }
 
-    fun updateShowComicCacheNotification(show: Boolean) =
-        updateSetting { it.copy(showComicCacheNotification = show) }
+    fun applyTheme(theme: String) =
+        updateSetting { it.copy(theme = theme) }
 
-    fun updateShowComicCacheNotificationName(show: Boolean) =
-        updateSetting { it.copy(showComicCacheNotificationName = show) }
+    fun setPrefetchCount(count: Int) =
+        updateSetting { it.copy(prefetchCount = count.coerceIn(0, 6)) }
 
-    fun addBlockedTag(tag: String) {
-        val normalizedTag = normalizeBlockedTag(tag)
-        if (normalizedTag.isBlank()) return
-        updateSetting {
-            it.copy(
-                blockedTagList = normalizeBlockedTagList(it.blockedTagList + normalizedTag)
-            )
-        }
-    }
+    fun setReadMode(mode: String) =
+        updateSetting { it.copy(readMode = mode) }
+
+    fun setDecodeConcurrency(concurrency: Int) =
+        updateSetting { it.copy(readDecodeConcurrency = concurrency.coerceIn(1, 4)) }
+
+    fun setMemoryOptEnabled(enabled: Boolean) =
+        updateSetting { it.copy(readMemoryOptEnabled = enabled) }
+
+    // ---- Content preferences (blocked tags / templates / home exclusions) ----
 
     fun replaceBlockedTags(tags: List<String>) =
         updateSetting { it.copy(blockedTagList = normalizeBlockedTagList(tags)) }
-
-    fun removeBlockedTag(tag: String) {
-        val normalizedTag = normalizeBlockedTag(tag)
-        updateSetting {
-            it.copy(
-                blockedTagList = it.blockedTagList.filterNot { item ->
-                    item.equals(normalizedTag, ignoreCase = true)
-                }
-            )
-        }
-    }
 
     fun saveBlockedTagTemplate(index: Int?, name: String, tags: List<String>) {
         val normalizedTags = normalizeBlockedTagList(tags)
@@ -163,27 +156,30 @@ class LocalSettingManager(
     fun replaceBlockedTagTemplates(templates: List<BlockedTagTemplate>) =
         updateSetting { it.withBlockedTagTemplates(templates) }
 
-    fun updateAppLockEnabled(enabled: Boolean) =
-        updateSetting { it.copy(appLockEnabled = enabled) }
+    fun updateHomeExcludedTags(tags: List<String>) =
+        updateSetting { it.copy(homeExcludedTags = tags) }
 
-    fun updateAppLockPassword(pwd: String) =
-        updateSetting { it.copy(appLockPassword = pwd) }
+    // ---- Appearance / palette: compound transitions ----
 
-    fun updateAppLockPasswordLength(len: Int) =
-        updateSetting { it.copy(appLockPasswordLength = len.coerceIn(4, 8)) }
+    /** Selecting a preset clears any custom color overrides in the same transition. */
+    override fun selectColorPreset(presetId: String) = updateSetting {
+        it.copy(
+            colorPalettePreset = presetId,
+            customColorPrimary = null,
+            customColorSecondary = null,
+            customColorTertiary = null,
+            customColorError = null,
+        )
+    }
 
-    fun updateAppLockPattern(pattern: String) =
-        updateSetting { it.copy(appLockPattern = pattern) }
-
-    fun updateAppLockUnlockMode(mode: String) =
-        updateSetting { it.copy(appLockUnlockMode = mode) }
-
-    fun updateColorPalettePreset(preset: String) =
-        updateSetting { it.copy(colorPalettePreset = preset) }
-
-    fun updateCustomColor(primary: String?, secondary: String?, tertiary: String?, error: String?) =
+    /** Confirming a custom color switches the palette to custom in the same transition. */
+    override fun applyCustomColors(primary: String?, secondary: String?, tertiary: String?, error: String?) =
         updateSetting {
+            val hasAnyCustomColor = primary != null || secondary != null ||
+                tertiary != null || error != null
             it.copy(
+                colorPalettePreset = if (hasAnyCustomColor) COLOR_PALETTE_PRESET_CUSTOM
+                else it.colorPalettePreset,
                 customColorPrimary = primary,
                 customColorSecondary = secondary,
                 customColorTertiary = tertiary,
@@ -191,39 +187,30 @@ class LocalSettingManager(
             )
         }
 
-    fun dismissNsfwWarning() =
-        updateSetting { it.copy(nsfwWarningDismissed = true) }
+    /** One confirm on the grid dialog updates all five page columns together. */
+    fun applyGridColumns(home: Int, collect: Int, download: Int, history: Int, search: Int) =
+        updateSetting {
+            it.copy(
+                homeGridColumns = home.coerceIn(0, 6),
+                collectGridColumns = collect.coerceIn(0, 6),
+                downloadGridColumns = download.coerceIn(0, 6),
+                historyGridColumns = history.coerceIn(0, 6),
+                searchGridColumns = search.coerceIn(0, 6),
+            )
+        }
 
-    fun updateHomeGridColumns(columns: Int) =
-        updateSetting { it.copy(homeGridColumns = columns.coerceIn(0, 6)) }
-
-    fun updateCollectGridColumns(columns: Int) =
-        updateSetting { it.copy(collectGridColumns = columns.coerceIn(0, 6)) }
-
-    fun updateDownloadGridColumns(columns: Int) =
-        updateSetting { it.copy(downloadGridColumns = columns.coerceIn(0, 6)) }
-
-    fun updateHistoryGridColumns(columns: Int) =
-        updateSetting { it.copy(historyGridColumns = columns.coerceIn(0, 6)) }
-
-    fun updateSearchGridColumns(columns: Int) =
-        updateSetting { it.copy(searchGridColumns = columns.coerceIn(0, 6)) }
-
-    fun updateHomeExcludedTags(tags: List<String>) =
-        updateSetting { it.copy(homeExcludedTags = tags) }
-
-    fun updateReadMemoryOptEnabled(enabled: Boolean) =
-        updateSetting { it.copy(readMemoryOptEnabled = enabled) }
-
-    fun updateReadDecodeConcurrency(concurrency: Int) =
-        updateSetting { it.copy(readDecodeConcurrency = concurrency.coerceIn(1, 4)) }
+    /** One selection from the notification dialog derives show/showName together. */
+    fun applyNotificationSetting(show: Boolean, showName: Boolean) = updateSetting {
+        // Showing the comic name requires the notification itself to be enabled.
+        it.copy(
+            showComicCacheNotification = show,
+            showComicCacheNotificationName = show && showName,
+        )
+    }
 
     /**
-     * 应用从备份恢复的 [LocalSetting]。
-     *
-     * 备份中已剥离 appLockPassword 与 appLockPattern 明文，因此恢复时保留当前设备的应用锁
-     * 相关字段（enabled/password/length/pattern/unlockMode），避免恢复后应用锁状态异常。
-     * 若恢复导致 launcherDisguise 变化，会重新应用伪装图标。
+     * Applies a backup's [LocalSetting]. Backups strip app-lock credentials/secret fields, so
+     * this device keeps its own app lock; identity-change side effects run after the write.
      */
     fun applyLocalSetting(setting: LocalSetting) {
         val previousLauncherDisguise = _localSettingState.value.launcherDisguise
@@ -242,11 +229,175 @@ class LocalSettingManager(
         }
     }
 
-    private fun updateSetting(update: (LocalSetting) -> LocalSetting) {
-        ensureLoaded()
-        _localSettingState.update(update)
-        localSettingStorage.set(_localSettingState.value)
+    /** PackageManager IPC only affects icons and must stay off the first-screen path. */
+    fun applyLauncherDisguiseIfNeeded() {
+        launcherDisguiseApplier.apply(LauncherDisguise.fromId(_localSettingState.value.launcherDisguise))
     }
+
+    fun currentAutoSignInEnabled(): Boolean = _localSettingState.value.autoSignInEnabled
+
+    // ---- AppSecurityEditor: one transition per user action ----
+
+    override fun setPassword(password: String, length: Int) = updateSetting {
+        it.copy(
+            appLockPassword = password,
+            appLockPasswordLength = length.coerceIn(4, 8),
+            appLockUnlockMode = if (it.appLockPattern.isNotEmpty()) {
+                APP_LOCK_UNLOCK_MODE_BOTH
+            } else {
+                APP_LOCK_UNLOCK_MODE_PASSWORD
+            },
+        )
+    }
+
+    override fun removePassword() = updateSetting {
+        it.copy(
+            appLockPassword = "",
+            appLockUnlockMode = if (it.appLockPattern.isNotEmpty()) {
+                APP_LOCK_UNLOCK_MODE_PATTERN
+            } else {
+                APP_LOCK_UNLOCK_MODE_PASSWORD
+            },
+            appLockEnabled = if (it.appLockPattern.isNotEmpty()) it.appLockEnabled else false,
+        )
+    }
+
+    override fun setPattern(pattern: String) = updateSetting {
+        it.copy(
+            appLockPattern = pattern,
+            appLockUnlockMode = if (it.appLockPassword.isNotEmpty()) {
+                APP_LOCK_UNLOCK_MODE_BOTH
+            } else {
+                APP_LOCK_UNLOCK_MODE_PATTERN
+            },
+        )
+    }
+
+    override fun removePattern() = updateSetting {
+        it.copy(
+            appLockPattern = "",
+            appLockUnlockMode = if (it.appLockPassword.isNotEmpty()) {
+                APP_LOCK_UNLOCK_MODE_PASSWORD
+            } else {
+                APP_LOCK_UNLOCK_MODE_PATTERN
+            },
+            appLockEnabled = if (it.appLockPassword.isNotEmpty()) it.appLockEnabled else false,
+        )
+    }
+
+    override fun setAppLockEnabled(enabled: Boolean) = updateSetting {
+        // Without at least one credential there is nothing to unlock with; keep the lock off.
+        it.copy(
+            appLockEnabled = enabled &&
+                (it.appLockPassword.isNotEmpty() || it.appLockPattern.isNotEmpty()),
+        )
+    }
+
+    override fun selectUnlockMode(mode: String) = updateSetting {
+        // BOTH requires both credentials; a mode without its credential falls back to the
+        // one that exists, keeping unlock always possible.
+        val validMode = when (mode) {
+            APP_LOCK_UNLOCK_MODE_BOTH ->
+                if (it.appLockPassword.isNotEmpty() && it.appLockPattern.isNotEmpty()) {
+                    APP_LOCK_UNLOCK_MODE_BOTH
+                } else if (it.appLockPattern.isNotEmpty()) {
+                    APP_LOCK_UNLOCK_MODE_PATTERN
+                } else {
+                    APP_LOCK_UNLOCK_MODE_PASSWORD
+                }
+            APP_LOCK_UNLOCK_MODE_PATTERN ->
+                if (it.appLockPattern.isNotEmpty()) {
+                    APP_LOCK_UNLOCK_MODE_PATTERN
+                } else {
+                    APP_LOCK_UNLOCK_MODE_PASSWORD
+                }
+            else ->
+                if (it.appLockPassword.isNotEmpty()) {
+                    APP_LOCK_UNLOCK_MODE_PASSWORD
+                } else {
+                    APP_LOCK_UNLOCK_MODE_PATTERN
+                }
+        }
+        it.copy(appLockUnlockMode = validMode)
+    }
+
+    // ---- DohPreferencesEditor ----
+
+    override fun persistEnabled(enabled: Boolean) =
+        updateSetting { it.copy(dohEnabled = enabled) }
+
+    override fun persistAutoStart(enabled: Boolean) =
+        updateSetting { it.copy(dohAutoStart = enabled) }
+
+    override fun persistServer(serverId: String) =
+        updateSetting { it.copy(dohServerId = serverId) }
+
+    override fun persistCustomServer(name: String, url: String) = updateSetting {
+        it.copy(
+            dohServerId = "custom",
+            dohCustomServerName = name.trim(),
+            dohCustomServerUrl = url.trim(),
+        )
+    }
+
+    override fun persistUseDeviceCertificates(enabled: Boolean) =
+        updateSetting { it.copy(dohUseDeviceCertificates = enabled) }
+
+    override fun persistPreferIpv6(enabled: Boolean) =
+        updateSetting { it.copy(dohPreferIpv6 = enabled) }
+
+    override fun setDohSessionActive(active: Boolean) {
+        _sessionDohActive.value = active
+    }
+
+    private fun updateSetting(update: (LocalSetting) -> LocalSetting) {
+        _localSettingState.update(update)
+        updateListeners.forEach { listener -> listener(_localSettingState.value) }
+        persistence.persist(_localSettingState.value)
+    }
+
+    private fun ensureLoaded() {
+        try {
+            val restored = persistence.load()
+            if (restored != null) {
+                _localSettingState.value = restored
+                updateListeners.forEach { listener -> listener(restored) }
+            }
+        } catch (error: Throwable) {
+            log("加载本地设置失败：${error.message}")
+        }
+    }
+
+    private fun toCacheNotificationSetting(setting: LocalSetting) = CacheNotificationSetting(
+        show = setting.showComicCacheNotification,
+        showName = setting.showComicCacheNotificationName,
+    )
+
+    private fun toAppLockState(setting: LocalSetting) = AppLockState(
+        enabled = setting.appLockEnabled,
+        password = setting.appLockPassword,
+        passwordLength = setting.appLockPasswordLength,
+        pattern = setting.appLockPattern,
+        unlockMode = setting.appLockUnlockMode,
+    )
+
+    private fun toDohSettingsState(setting: LocalSetting) = DohSettingsState(
+        enabled = setting.dohEnabled,
+        autoStart = setting.dohAutoStart,
+        serverId = setting.dohServerId,
+        customServerName = setting.dohCustomServerName,
+        customServerUrl = setting.dohCustomServerUrl,
+        useDeviceCertificates = setting.dohUseDeviceCertificates,
+        preferIpv6 = setting.dohPreferIpv6,
+    )
+
+    private fun toColorPaletteState(setting: LocalSetting) = ColorPaletteState(
+        presetId = setting.colorPalettePreset,
+        customPrimary = setting.customColorPrimary,
+        customSecondary = setting.customColorSecondary,
+        customTertiary = setting.customColorTertiary,
+        customError = setting.customColorError,
+    )
 
     private fun LocalSetting.withBlockedTagTemplates(templates: List<BlockedTagTemplate>): LocalSetting {
         val normalizedTemplates = normalizeBlockedTagTemplates(templates)
@@ -254,28 +405,5 @@ class LocalSettingManager(
             blockedTagTemplateList = normalizedTemplates,
             blockedTagList = flattenBlockedTagTemplates(normalizedTemplates)
         )
-    }
-
-    /**
-     * Applies the launcher alias after the first UI is available. PackageManager IPC is not
-     * needed to decide which screen to show, and should not be part of the startup path.
-     */
-    fun applyLauncherDisguiseIfNeeded() {
-        ensureLoaded()
-        launcherDisguiseApplier.apply(LauncherDisguise.fromId(_localSettingState.value.launcherDisguise))
-    }
-
-    private fun ensureLoaded() {
-        if (loaded) return
-        synchronized(loadLock) {
-            if (loaded) return
-            val setting = runCatching { localSettingStorage.get() }
-                .getOrElse {
-                    log("加载本地设置失败：${it.message}")
-                    LocalSetting()
-                }
-            _localSettingState.value = setting
-            loaded = true
-        }
     }
 }

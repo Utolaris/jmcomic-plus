@@ -25,24 +25,24 @@ import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.par9uet.jm.data.models.Comment
-import com.par9uet.jm.store.RemoteSettingManager
+import com.par9uet.jm.store.RemoteConfigManager
 import org.koin.compose.getKoin
 
 @Composable
 fun Comment(
     comment: Comment,
     showSource: Boolean = false,
-    remoteSettingManager: RemoteSettingManager = getKoin().get(),
+    remoteConfigManager: RemoteConfigManager = getKoin().get(),
     onClick: (() -> Unit)? = null,
     action: (@Composable () -> Unit)? = null
 ) {
-    val remoteSetting by remoteSettingManager.remoteSettingState.collectAsState()
+    val remoteImageHost by remoteConfigManager.remoteImageHost.collectAsState()
     val avatarModel = if (comment.avatar.startsWith("http://", ignoreCase = true) ||
         comment.avatar.startsWith("https://", ignoreCase = true)
     ) {
         comment.avatar
     } else {
-        "${remoteSetting.imgHost}/media/users/${comment.avatar}"
+        "${remoteImageHost}/media/users/${comment.avatar}"
     }
     Surface(
         modifier = Modifier

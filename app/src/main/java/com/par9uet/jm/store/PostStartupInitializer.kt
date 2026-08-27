@@ -23,12 +23,18 @@ class PostStartupInitializer(
     fun start() {
         if (!started.compareAndSet(false, true)) return
 
-        // DoH must be active before the first authenticated/network request resolves DNS.
+        // DoH must be active before the first authenticated/network request resolves DNS:
+        // those requests (remote settings, user verification) wait for init below. Everything
+        // purely local runs in parallel and never waits on DNS.
         launchTask("DoH 网络配置") {
-            koin.get<DohManager>().init()
-        }
-        launchTask("远程应用设置") {
-            koin.get<RemoteSettingManager>().refresh()
+            val dohManager = koin.get<DohManager>()
+            dohManager.init()
+            koin.get<RemoteConfigManager>().refresh()
+            koin.get<UserManager>().verifyStoredLogin()
+            koin.get<UserManager>().autoSignInIfNeeded(
+                enabled = koin.get<LocalSettingManager>().currentAutoSignInEnabled(),
+                toastManager = koin.get()
+            )
         }
         launchTask("桌面图标入口") {
             koin.get<LocalSettingManager>().applyLauncherDisguiseIfNeeded()
@@ -41,14 +47,6 @@ class PostStartupInitializer(
         }
         launchTask("通知渠道") {
             ensureAppNotificationChannels(koin.get())
-        }
-        launchTask("用户状态验证和自动签到") {
-            val userManager = koin.get<UserManager>()
-            userManager.verifyStoredLogin()
-            userManager.autoSignInIfNeeded(
-                enabled = koin.get<LocalSettingManager>().localSettingState.value.autoSignInEnabled,
-                toastManager = koin.get()
-            )
         }
     }
 

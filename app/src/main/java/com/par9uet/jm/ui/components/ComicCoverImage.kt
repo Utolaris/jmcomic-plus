@@ -36,7 +36,7 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.RemoteSettingManager
+import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.ToastManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -49,11 +49,11 @@ fun ComicCoverImage(
     comic: Comic,
     modifier: Modifier = Modifier.fillMaxWidth(),
     showIdChip: Boolean = false,
-    remoteSettingManager: RemoteSettingManager = getKoin().get(),
+    remoteConfigManager: RemoteConfigManager = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
     toastManager: ToastManager = getKoin().get(),
 ) {
-    val remoteSetting by remoteSettingManager.remoteSettingState.collectAsState()
+    val remoteImageHost by remoteConfigManager.remoteImageHost.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     val comicRepository: ComicRepository = getKoin().get()
     val scope = rememberCoroutineScope()
@@ -64,7 +64,7 @@ fun ComicCoverImage(
     Box(modifier = modifier) {
         JmCoverImage(
             comicId = comic.id,
-            remoteHost = remoteSetting.imgHost,
+            remoteHost = remoteImageHost,
             imageLoader = imageLoader,
             contentDescription = "${comic.name}的封面",
             contentScale = ContentScale.Crop,

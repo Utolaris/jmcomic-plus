@@ -1,8 +1,8 @@
 package com.par9uet.jm.network
 
 import android.util.Base64
-import com.par9uet.jm.data.models.LocalSetting
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.DohPreferences
+import com.par9uet.jm.store.DohPreferencesEditor
 import com.par9uet.jm.utils.applyTlsCompat
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +40,8 @@ data class DohLatencyResult(
  * so resolving the DNS server never recurses into this resolver.
  */
 class DohManager(
-    private val localSettingManager: LocalSettingManager,
+    private val dohPrefs: DohPreferences,
+    private val dohEditor: DohPreferencesEditor,
 ) : Dns {
     private val random = SecureRandom()
     private val _status = MutableStateFlow(DohRuntimeStatus())
@@ -61,7 +62,7 @@ class DohManager(
     private var resolverFailure: String = ""
 
     override fun lookup(hostname: String): List<InetAddress> {
-        val setting = localSettingManager.localSettingState.value
+        val setting = dohPrefs.doh.value
         val selectedResolver = ensureResolver()
         if (selectedResolver != null) {
             return try {
@@ -74,42 +75,42 @@ class DohManager(
         // A user-enabled DoH connection must never silently fall back to a system
         // resolver. Failing the request makes the status visible and guarantees
         // that app-owned requests are either resolved through DoH or not sent.
-        if (sessionEnabled && setting.dohEnabled) {
+        if (sessionEnabled && setting.enabled) {
             throw UnknownHostException(resolverFailure.ifBlank { "DoH 解析器未就绪" })
         }
         return Dns.SYSTEM.lookup(hostname)
-            .filter { address -> localSettingManager.localSettingState.value.dohPreferIpv6 || address is Inet4Address }
+            .filter { address -> dohPrefs.doh.value.preferIpv6 || address is Inet4Address }
             .sortedWith(compareBy<InetAddress> { it is Inet6Address })
     }
 
     fun setEnabled(enabled: Boolean) {
-        localSettingManager.updateDohEnabled(enabled)
+        dohEditor.persistEnabled(enabled)
         sessionEnabled = enabled
         rebuildResolver()
     }
 
     fun setAutoStart(enabled: Boolean) {
-        localSettingManager.updateDohAutoStart(enabled)
+        dohEditor.persistAutoStart(enabled)
     }
 
     fun selectServer(serverId: String) {
-        localSettingManager.updateDohServer(serverId)
+        dohEditor.persistServer(serverId)
         rebuildResolver()
     }
 
     fun saveCustomServer(name: String, url: String) {
         require(isValidDohUrl(url)) { "请输入 HTTPS DoH 地址" }
-        localSettingManager.updateDohCustomServer(name, url)
+        dohEditor.persistCustomServer(name, url)
         rebuildResolver()
     }
 
     fun setUseDeviceCertificates(enabled: Boolean) {
-        localSettingManager.updateDohUseDeviceCertificates(enabled)
+        dohEditor.persistUseDeviceCertificates(enabled)
         rebuildResolver()
     }
 
     fun setPreferIpv6(enabled: Boolean) {
-        localSettingManager.updateDohPreferIpv6(enabled)
+        dohEditor.persistPreferIpv6(enabled)
         rebuildResolver()
     }
 
@@ -122,11 +123,11 @@ class DohManager(
         val startedAt = System.nanoTime()
         var testResolver: DohResolver? = null
         val result = runCatching {
-            val setting = localSettingManager.localSettingState.value
+            val setting = dohPrefs.doh.value
             val resolver = DohResolver(
                 server = server,
-                preferIpv6 = setting.dohPreferIpv6,
-                useDeviceCertificates = setting.dohUseDeviceCertificates,
+                preferIpv6 = setting.preferIpv6,
+                useDeviceCertificates = setting.useDeviceCertificates,
                 random = random,
             )
             testResolver = resolver
@@ -139,35 +140,36 @@ class DohManager(
         result
     }
 
-    fun selectedServer(): DohServer = localSettingManager.localSettingState.value.toDohServer()
+    fun selectedServer(): DohServer = dohPrefs.doh.value.toDohServer()
 
     /** Activates DoH at app start according to the persisted enable/auto-start choices. */
     suspend fun init() {
-        val setting = localSettingManager.localSettingState.value
-        sessionEnabled = setting.dohEnabled && setting.dohAutoStart
+        val setting = dohPrefs.doh.value
+        sessionEnabled = setting.enabled && setting.autoStart
+        dohEditor.setDohSessionActive(sessionEnabled)
         rebuildResolver()
     }
 
     private fun ensureResolver(): DohResolver? {
-        val setting = localSettingManager.localSettingState.value
-        val key = setting.dohResolverKey(sessionEnabled)
+        val setting = dohPrefs.doh.value
+        val key = setting.resolverKey(sessionEnabled)
         if (key != resolverKey) rebuildResolver()
         return resolver
     }
 
     @Synchronized
     private fun rebuildResolver() {
-        val setting = localSettingManager.localSettingState.value
-        val key = setting.dohResolverKey(sessionEnabled)
+        val setting = dohPrefs.doh.value
+        val key = setting.resolverKey(sessionEnabled)
         resolverKey = key
         resolverFailure = ""
         val previousResolver = resolver
-        resolver = if (sessionEnabled && setting.dohEnabled) {
+        resolver = if (sessionEnabled && setting.enabled) {
             runCatching {
                 DohResolver(
                     server = setting.toDohServer(),
-                    preferIpv6 = setting.dohPreferIpv6,
-                    useDeviceCertificates = setting.dohUseDeviceCertificates,
+                    preferIpv6 = setting.preferIpv6,
+                    useDeviceCertificates = setting.useDeviceCertificates,
                     random = random,
                 )
             }.onFailure { error ->
@@ -378,20 +380,20 @@ private class DohResolver(
     }
 }
 
-private fun LocalSetting.toDohServer(): DohServer = resolveDohServer(
-    selectedId = dohServerId,
-    customName = dohCustomServerName,
-    customUrl = dohCustomServerUrl,
+private fun com.par9uet.jm.store.DohSettingsState.toDohServer(): DohServer = resolveDohServer(
+    selectedId = serverId,
+    customName = customServerName,
+    customUrl = customServerUrl,
 )
 
-private fun LocalSetting.dohResolverKey(sessionEnabled: Boolean): String = listOf(
-    dohEnabled,
+internal fun com.par9uet.jm.store.DohSettingsState.resolverKey(sessionEnabled: Boolean): String = listOf(
+    enabled,
     sessionEnabled,
-    dohServerId,
-    dohCustomServerName,
-    dohCustomServerUrl,
-    dohUseDeviceCertificates,
-    dohPreferIpv6,
+    serverId,
+    customServerName,
+    customServerUrl,
+    useDeviceCertificates,
+    preferIpv6,
 ).joinToString("|")
 
 private fun String.isIpLiteral(): Boolean =

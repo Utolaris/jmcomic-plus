@@ -62,6 +62,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
+import com.par9uet.jm.store.AppSecurityEditor
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.store.UserManager
@@ -85,11 +89,14 @@ import org.koin.compose.viewmodel.koinActivityViewModel
  *
  * 右上角随时可跳过整个引导。
  */
+private const val DEFAULT_ONBOARDING_PASSWORD_LENGTH = 4
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WelcomeScreen(
     onComplete: () -> Unit,
     localSettingManager: LocalSettingManager = getKoin().get(),
+    appSecurityEditor: AppSecurityEditor = getKoin().get(),
     userManager: UserManager = getKoin().get(),
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
@@ -252,34 +259,30 @@ fun WelcomeScreen(
                         patternSet = appLockPatternSet,
                         unlockMode = appLockUnlockMode,
                         onToggle = { enabled ->
-                            appLockEnabled = enabled
-                            localSettingManager.updateAppLockEnabled(enabled)
+                            // 一次状态迁移：关闭时清空两种凭据并保持 unlock mode 合法
+                            appSecurityEditor.setAppLockEnabled(enabled)
                             if (!enabled) {
-                                localSettingManager.updateAppLockPassword("")
-                                localSettingManager.updateAppLockPattern("")
+                                appSecurityEditor.removePassword()
+                                appSecurityEditor.removePattern()
                                 appLockPasswordSet = false
                                 appLockPatternSet = false
                             }
+                            appLockEnabled = enabled
                         },
                         onPasswordSet = { pwd ->
-                            localSettingManager.updateAppLockPassword(pwd)
+                            // 一次状态迁移：密码 + 模式（pattern 存在时为 both）
+                            appSecurityEditor.setPassword(pwd, DEFAULT_ONBOARDING_PASSWORD_LENGTH)
                             appLockPasswordSet = true
-                            if (!appLockPatternSet && appLockUnlockMode != APP_LOCK_TYPE_PASSWORD) {
-                                appLockUnlockMode = APP_LOCK_TYPE_PASSWORD
-                                localSettingManager.updateAppLockUnlockMode(APP_LOCK_TYPE_PASSWORD)
-                            }
+                            if (!appLockPatternSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PASSWORD
                         },
                         onPatternSet = { pattern ->
-                            localSettingManager.updateAppLockPattern(pattern)
+                            appSecurityEditor.setPattern(pattern)
                             appLockPatternSet = true
-                            if (!appLockPasswordSet && appLockUnlockMode != APP_LOCK_TYPE_PATTERN) {
-                                appLockUnlockMode = APP_LOCK_TYPE_PATTERN
-                                localSettingManager.updateAppLockUnlockMode(APP_LOCK_TYPE_PATTERN)
-                            }
+                            if (!appLockPasswordSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PATTERN
                         },
                         onUnlockModeSet = { mode ->
+                            appSecurityEditor.selectUnlockMode(mode)
                             appLockUnlockMode = mode
-                            localSettingManager.updateAppLockUnlockMode(mode)
                         },
                         onShowPasswordDialog = { showPasswordDialog = true },
                         onShowPatternDialog = { showPatternDialog = true }
@@ -302,7 +305,7 @@ fun WelcomeScreen(
                     )
                     8 -> PreferenceRecommendStepContent(
                         enabled = localSetting.preferenceRecommendEnabled,
-                        onToggle = { localSettingManager.updatePreferenceRecommendEnabled(it) }
+                        onToggle = { localSettingManager.setPreferenceRecommendEnabled(it) }
                     )
                 }
             }
@@ -314,13 +317,11 @@ fun WelcomeScreen(
         SetAppLockPasswordDialog(
             lockType = APP_LOCK_TYPE_PASSWORD,
             onConfirm = { pwd ->
-                localSettingManager.updateAppLockPassword(pwd)
+                // 一次状态迁移：密码与解锁模式同时生效
+                appSecurityEditor.setPassword(pwd, DEFAULT_ONBOARDING_PASSWORD_LENGTH)
                 appLockPasswordSet = true
                 showPasswordDialog = false
-                if (!appLockPatternSet && appLockUnlockMode != APP_LOCK_TYPE_PASSWORD) {
-                    appLockUnlockMode = APP_LOCK_TYPE_PASSWORD
-                    localSettingManager.updateAppLockUnlockMode(APP_LOCK_TYPE_PASSWORD)
-                }
+                if (!appLockPatternSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PASSWORD
             },
             onDismiss = { showPasswordDialog = false }
         )
@@ -329,13 +330,10 @@ fun WelcomeScreen(
         SetAppLockPasswordDialog(
             lockType = APP_LOCK_TYPE_PATTERN,
             onConfirm = { pattern ->
-                localSettingManager.updateAppLockPattern(pattern)
+                appSecurityEditor.setPattern(pattern)
                 appLockPatternSet = true
                 showPatternDialog = false
-                if (!appLockPasswordSet && appLockUnlockMode != APP_LOCK_TYPE_PATTERN) {
-                    appLockUnlockMode = APP_LOCK_TYPE_PATTERN
-                    localSettingManager.updateAppLockUnlockMode(APP_LOCK_TYPE_PATTERN)
-                }
+                if (!appLockPasswordSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PATTERN
             },
             onDismiss = { showPatternDialog = false }
         )
@@ -567,14 +565,14 @@ private fun AppLockStepContent(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         FilterChip(
-                            selected = unlockMode == APP_LOCK_TYPE_PASSWORD,
-                            onClick = { onUnlockModeSet(APP_LOCK_TYPE_PASSWORD) },
+                            selected = unlockMode == APP_LOCK_UNLOCK_MODE_PASSWORD,
+                            onClick = { onUnlockModeSet(APP_LOCK_UNLOCK_MODE_PASSWORD) },
                             enabled = passwordSet,
                             label = { Text("仅密码") }
                         )
                         FilterChip(
-                            selected = unlockMode == APP_LOCK_TYPE_PATTERN,
-                            onClick = { onUnlockModeSet(APP_LOCK_TYPE_PATTERN) },
+                            selected = unlockMode == APP_LOCK_UNLOCK_MODE_PATTERN,
+                            onClick = { onUnlockModeSet(APP_LOCK_UNLOCK_MODE_PATTERN) },
                             enabled = patternSet,
                             label = { Text("仅图案") }
                         )
@@ -587,8 +585,8 @@ private fun AppLockStepContent(
                     }
                     Text(
                         text = when (unlockMode) {
-                            APP_LOCK_TYPE_PASSWORD -> "从后台返回时需输入数字密码解锁"
-                            APP_LOCK_TYPE_PATTERN -> "从后台返回时需绘制图案解锁"
+                            APP_LOCK_UNLOCK_MODE_PASSWORD -> "从后台返回时需输入数字密码解锁"
+                            APP_LOCK_UNLOCK_MODE_PATTERN -> "从后台返回时需绘制图案解锁"
                             APP_LOCK_UNLOCK_MODE_BOTH -> "从后台返回时需先输入密码再绘制图案解锁"
                             else -> ""
                         },

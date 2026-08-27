@@ -11,7 +11,8 @@ import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekResponse
-import com.par9uet.jm.store.AppLocalSettings
+import com.par9uet.jm.store.ContentPreferences
+import com.par9uet.jm.store.RecommendationPreferences
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.SearchComicFilter
 import com.par9uet.jm.ui.pagingSource.SearchComicPagingSource
@@ -39,7 +40,8 @@ internal fun reorderPromoteSections(
 
 class ComicViewModel(
     private val comicRepository: ComicRepository,
-    private val localSettingManager: AppLocalSettings,
+    private val contentPreferences: ContentPreferences,
+    private val recommendationPreferences: RecommendationPreferences,
 ) : ViewModel() {
     /** 首页分类描述：id 供仓库加载，title 为展示名。 */
     data class HomeCategoryInfo(
@@ -100,8 +102,7 @@ class ComicViewModel(
 
     /** Rebuild Home from Embedded categories plus the optional network recommendation feed. */
     fun refreshHome() {
-        val setting = localSettingManager.localSettingState.value
-        val recommendEnabled = setting.preferenceRecommendEnabled
+        val recommendEnabled = recommendationPreferences.preferenceRecommendEnabled.value
         val topologyChanged = recommendEnabled != lastPreferenceRecommendEnabled
         if (topologyChanged) {
             // 分类结构变化时作废所有旧 token。阻塞式 JM 请求即使稍后返回，也不能写回新结构。
@@ -354,8 +355,8 @@ class ComicViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     val searchComicPager = combine(
         _searchComicFilterState,
-        localSettingManager.localSettingState
-    ) { filter, localSetting -> filter to localSetting.blockedTagList }
+        contentPreferences.blockedTags
+    ) { filter, blockedTagList -> filter to blockedTagList }
         .flatMapLatest { (filter, blockedTagList) ->
         Pager(
             config = PagingConfig(
@@ -455,9 +456,10 @@ class ComicViewModel(
     @OptIn(ExperimentalCoroutinesApi::class)
     val weekComicPager = combine(
         _weekFilterState,
-        localSettingManager.localSettingState
-    ) { filter, localSetting ->
-        filter to (localSetting.blockedTagList + localSetting.homeExcludedTags).distinct()
+        contentPreferences.blockedTags,
+        contentPreferences.homeExcludedTags,
+    ) { filter, blockedTagList, homeExcludedTags ->
+        filter to (blockedTagList + homeExcludedTags).distinct()
     }
         .flatMapLatest { (filter, blockedTagList) ->
         Pager(

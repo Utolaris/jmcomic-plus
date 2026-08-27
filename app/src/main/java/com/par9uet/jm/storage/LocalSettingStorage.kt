@@ -15,187 +15,129 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
+/**
+ * Persistence boundary for the single encrypted [LocalSetting] JSON document. New installs
+ * read/write the small startup preferences file; the legacy lookup stays as a one-time
+ * migration path for existing installations.
+ */
 class LocalSettingStorage(
     private val secureStorage: SecureStorage
-) {
+) : LocalSettingPersistence {
     companion object {
         private const val STORAGE_KEY = "localSetting"
+        private val GSON_TYPE = object : TypeToken<LocalSetting>() {}.type
     }
 
     private var _state = MutableStateFlow<LocalSetting?>(null)
     val state = _state.asStateFlow()
 
-    fun set(localSetting: LocalSetting) {
-        _state.update {
-            localSetting
-        }
+    override fun load(): LocalSetting? {
+        _state.value?.let { return it }
+        val savedJson = secureStorage.getStartupString(STORAGE_KEY)
+            ?: secureStorage.getString(STORAGE_KEY)?.also {
+                secureStorage.setStartupString(STORAGE_KEY, it)
+            }
+        if (savedJson == null) return null
+        val saved = secureStorage.decode<LocalSetting>(savedJson, GSON_TYPE) ?: return null
+        return normalize(savedJson, saved).also { restored -> _state.update { restored } }
+    }
+
+    override fun persist(localSetting: LocalSetting) {
+        _state.update { localSetting }
         secureStorage.setStartup(STORAGE_KEY, localSetting)
     }
 
-    fun get(): LocalSetting {
-        if (_state.value == null) {
-            _state.update {
-                // New installations read only the small startup preferences file. The legacy
-                // lookup is kept for one-time migration of existing installations.
-                val savedJson = secureStorage.getStartupString(STORAGE_KEY)
-                    ?: secureStorage.getString(STORAGE_KEY)?.also {
-                        secureStorage.setStartupString(STORAGE_KEY, it)
-                    }
-                val saved = secureStorage.decode<LocalSetting>(
-                    savedJson,
-                    object : TypeToken<LocalSetting>() {}.type
-                ) ?: LocalSetting()
-                // 旧版本字段 appLockType 迁移到 appLockUnlockMode
-                val legacyAppLockType = parseLegacyAppLockType(savedJson)
-                val migratedUnlockMode = if (savedJson.hasField("appLockUnlockMode")) {
-                    saved.appLockUnlockMode
-                } else if (legacyAppLockType != null) {
-                    legacyAppLockType
-                } else {
-                    APP_LOCK_TYPE_PASSWORD
-                }
-                val legacyBlockedTags = normalizeBlockedTagList(
-                    runCatching { saved.blockedTagList }.getOrNull() ?: listOf()
-                )
-                val savedTemplates = normalizeBlockedTagTemplates(
-                    runCatching { saved.blockedTagTemplateList }.getOrNull() ?: listOf()
-                )
-                val migratedTemplates = if (savedJson.hasField("blockedTagTemplateList")) {
-                    savedTemplates
-                } else if (legacyBlockedTags.isNotEmpty()) {
-                    listOf(BlockedTagTemplate(name = "默认排除", tagList = legacyBlockedTags))
-                } else {
-                    listOf()
-                }
-                saved.copy(
-                    // Gson ignores the retired comicApiSource/shunt fields in legacy JSON.
-                    // With no domain field left to consult, every installation uses Embedded.
-                    showComicCacheNotification = if (savedJson.hasField("showComicCacheNotification")) {
-                        saved.showComicCacheNotification
-                    } else {
-                        true
-                    },
-                    showComicCacheNotificationName = if (savedJson.hasField("showComicCacheNotificationName")) {
-                        saved.showComicCacheNotificationName
-                    } else {
-                        true
-                    },
-                    launcherDisguise = if (savedJson.hasField("launcherDisguise")) {
-                        LauncherDisguise.fromId(saved.launcherDisguise).id
-                    } else {
-                        LauncherDisguise.Default.id
-                    },
-                    blockedTagList = flattenBlockedTagTemplates(migratedTemplates),
-                    blockedTagTemplateList = migratedTemplates,
-                    appLockPassword = if (savedJson.hasField("appLockPassword")) {
-                        saved.appLockPassword ?: ""
-                    } else {
-                        ""
-                    },
-                    appLockPasswordLength = if (savedJson.hasField("appLockPasswordLength")) {
-                        saved.appLockPasswordLength.coerceIn(4, 8)
-                    } else {
-                        4
-                    },
-                    appLockPattern = if (savedJson.hasField("appLockPattern")) {
-                        saved.appLockPattern ?: ""
-                    } else {
-                        ""
-                    },
-                    appLockUnlockMode = migratedUnlockMode,
-                    colorPalettePreset = if (savedJson.hasField("colorPalettePreset")) {
-                        saved.colorPalettePreset
-                    } else {
-                        COLOR_PALETTE_PRESET_DEFAULT
-                    },
-                    customColorPrimary = if (savedJson.hasField("customColorPrimary")) {
-                        saved.customColorPrimary
-                    } else {
-                        null
-                    },
-                    customColorSecondary = if (savedJson.hasField("customColorSecondary")) {
-                        saved.customColorSecondary
-                    } else {
-                        null
-                    },
-                    customColorTertiary = if (savedJson.hasField("customColorTertiary")) {
-                        saved.customColorTertiary
-                    } else {
-                        null
-                    },
-                    customColorError = if (savedJson.hasField("customColorError")) {
-                        saved.customColorError
-                    } else {
-                        null
-                    },
-                    // DoH defaults to ENABLED, but only for users who never persisted a
-                    // choice; an explicit opt-out survives every restart.
-                    dohEnabled = if (savedJson.hasField("dohEnabled")) {
-                        saved.dohEnabled
-                    } else {
-                        true
-                    },
-                    dohAutoStart = if (savedJson.hasField("dohAutoStart")) {
-                        saved.dohAutoStart
-                    } else {
-                        true
-                    },
-                    dohServerId = if (savedJson.hasField("dohServerId")) {
-                        saved.dohServerId.takeIf { it.isNotBlank() } ?: "tencent"
-                    } else {
-                        "tencent"
-                    },
-                    dohCustomServerName = if (savedJson.hasField("dohCustomServerName")) {
-                        saved.dohCustomServerName.orEmpty()
-                    } else {
-                        ""
-                    },
-                    dohCustomServerUrl = if (savedJson.hasField("dohCustomServerUrl")) {
-                        saved.dohCustomServerUrl.orEmpty()
-                    } else {
-                        ""
-                    },
-                    dohUseDeviceCertificates = if (savedJson.hasField("dohUseDeviceCertificates")) {
-                        saved.dohUseDeviceCertificates
-                    } else {
-                        true
-                    },
-                    dohPreferIpv6 = if (savedJson.hasField("dohPreferIpv6")) {
-                        saved.dohPreferIpv6
-                    } else {
-                        false
-                    }
-                )
-            }
-        }
-        return _state.value ?: LocalSetting()
-    }
+    override fun isLoaded(): Boolean = _state.value != null
 
     fun remove() {
-        _state.update {
-            LocalSetting()
-        }
+        _state.update { null }
         secureStorage.remove(STORAGE_KEY)
         secureStorage.removeStartup(STORAGE_KEY)
     }
+
+    /**
+     * Normalizes every load: legacy field migrations and enum-safe coercions live here so the
+     * manager always starts from a valid LocalSetting.
+     */
+    private fun normalize(savedJson: String, saved: LocalSetting): LocalSetting {
+        // 旧版本字段 appLockType 迁移到 appLockUnlockMode。
+        val migratedUnlockMode = when {
+            savedJson.hasField("appLockUnlockMode") -> saved.appLockUnlockMode
+            else -> parseLegacyAppLockType(savedJson) ?: APP_LOCK_TYPE_PASSWORD
+        }
+        val legacyBlockedTags = normalizeBlockedTagList(
+            runCatching { saved.blockedTagList }.getOrNull() ?: listOf()
+        )
+        val savedTemplates = normalizeBlockedTagTemplates(
+            runCatching { saved.blockedTagTemplateList }.getOrNull() ?: listOf()
+        )
+        val migratedTemplates = when {
+            savedJson.hasField("blockedTagTemplateList") -> savedTemplates
+            legacyBlockedTags.isNotEmpty() ->
+                listOf(BlockedTagTemplate(name = "默认排除", tagList = legacyBlockedTags))
+            else -> listOf()
+        }
+        return saved.copy(
+            showComicCacheNotification = if (savedJson.hasField("showComicCacheNotification")) {
+                saved.showComicCacheNotification
+            } else {
+                true
+            },
+            showComicCacheNotificationName = if (savedJson.hasField("showComicCacheNotificationName")) {
+                saved.showComicCacheNotificationName
+            } else {
+                true
+            },
+            launcherDisguise = if (savedJson.hasField("launcherDisguise")) {
+                LauncherDisguise.fromId(saved.launcherDisguise).id
+            } else {
+                LauncherDisguise.Default.id
+            },
+            blockedTagList = flattenBlockedTagTemplates(migratedTemplates),
+            blockedTagTemplateList = migratedTemplates,
+            appLockPassword = saved.appLockPassword.orEmpty(),
+            appLockPasswordLength = saved.appLockPasswordLength.coerceIn(4, 8),
+            appLockPattern = saved.appLockPattern.orEmpty(),
+            appLockUnlockMode = migratedUnlockMode,
+            colorPalettePreset = if (savedJson.hasField("colorPalettePreset")) {
+                saved.colorPalettePreset
+            } else {
+                COLOR_PALETTE_PRESET_DEFAULT
+            },
+            customColorPrimary = nullableString(savedJson, "customColorPrimary", saved.customColorPrimary),
+            customColorSecondary = nullableString(savedJson, "customColorSecondary", saved.customColorSecondary),
+            customColorTertiary = nullableString(savedJson, "customColorTertiary", saved.customColorTertiary),
+            customColorError = nullableString(savedJson, "customColorError", saved.customColorError),
+            // DoH 默认启用，但仅对从未持久化过选择的用户生效；显式关闭在重启后保留。
+            dohEnabled = saved.dohEnabled,
+            dohAutoStart = saved.dohAutoStart,
+            dohServerId = saved.dohServerId.ifBlank { "tencent" },
+            dohCustomServerName = saved.dohCustomServerName,
+            dohCustomServerUrl = saved.dohCustomServerUrl,
+            dohUseDeviceCertificates = saved.dohUseDeviceCertificates,
+            dohPreferIpv6 = saved.dohPreferIpv6,
+        )
+    }
+
+    private fun nullableString(json: String, field: String, value: String?): String? =
+        if (json.hasField(field)) value else null
 }
 
-private fun String?.hasField(name: String): Boolean {
-    return this?.contains("\"$name\"") == true
-}
+private fun String?.hasField(name: String): Boolean = this != null && contains(QUOTE + name + QUOTE)
 
 /**
- * 解析旧版本存储中的 appLockType 字段（已废弃，迁移到 appLockUnlockMode）
+ * 旧版本存储中的 appLockType 字段（已废弃）迁移到 appLockUnlockMode。
  */
 private fun parseLegacyAppLockType(json: String?): String? {
     if (json.isNullOrBlank()) return null
     return runCatching {
         val obj = JsonParser.parseString(json).asJsonObject
-        if (!obj.has("appLockType")) return null
-        val value = obj.get("appLockType").asString
-        when (value) {
+        if (!obj.has("appLockType")) return@runCatching null
+        when (obj.get("appLockType").asString) {
             APP_LOCK_TYPE_PATTERN -> APP_LOCK_TYPE_PATTERN
             else -> APP_LOCK_TYPE_PASSWORD
         }
     }.getOrNull()
 }
+
+private val QUOTE: String = Char(34).toString()

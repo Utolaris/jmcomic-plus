@@ -30,9 +30,9 @@ import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.reader.ReaderImagePipeline
+import com.par9uet.jm.store.CacheNotificationPreferences
 import com.par9uet.jm.store.DownloadToastAggregator
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.RemoteSettingManager
+import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.utils.COMIC_CACHE_NOTIFICATION_ID_BASE
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.cancelProgressNotification
@@ -52,8 +52,8 @@ class DownloadComicWorker(
     private val appContext: Context,
     params: WorkerParameters,
     private val downloadComicDao: DownloadComicDao,
-    private val remoteSettingManager: RemoteSettingManager,
-    private val localSettingManager: LocalSettingManager,
+    private val remoteConfigManager: RemoteConfigManager,
+    private val cacheNotificationPreferences: CacheNotificationPreferences,
     private val comicRepository: ComicRepository,
     private val downloadToastAggregator: DownloadToastAggregator,
     private val readerImagePipeline: ReaderImagePipeline,
@@ -117,7 +117,7 @@ class DownloadComicWorker(
             val cacheKey = jmCoverCacheKey(coverOwnerId)
             val candidates = coverImageHostResolver.coverUrls(
                 comicId = coverOwnerId,
-                remoteHost = remoteSettingManager.remoteSettingState.value.imgHost,
+                remoteHost = remoteConfigManager.remoteImageHost.value,
             )
             candidates.forEachIndexed { index, coverUrl ->
                 val request = ImageRequest.Builder(appContext)
@@ -276,13 +276,13 @@ class DownloadComicWorker(
 
     private fun showComicCacheNotification(downloadTask: DownloadComic, progress: Float) {
         val groupId = downloadTask.groupId.takeIf { it != 0 } ?: downloadTask.id
-        val setting = localSettingManager.localSettingState.value
-        if (!setting.showComicCacheNotification) {
+        val setting = cacheNotificationPreferences.cacheNotification.value
+        if (!setting.show) {
             cancelProgressNotification(appContext, COMIC_CACHE_NOTIFICATION_ID_BASE + groupId)
             return
         }
         val comicName = downloadTask.groupName.ifBlank { downloadTask.name }
-        val title = if (setting.showComicCacheNotificationName && comicName.isNotBlank()) {
+        val title = if (setting.showName && comicName.isNotBlank()) {
             "正在缓存$comicName"
         } else {
             "正在缓存漫画"

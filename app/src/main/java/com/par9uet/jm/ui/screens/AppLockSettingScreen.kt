@@ -30,7 +30,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -42,13 +41,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
+import com.par9uet.jm.store.AppSecurityEditor
+import com.par9uet.jm.store.AppSecurityPreferences
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
 import org.koin.compose.getKoin
 
-// 解锁模式展示文本
 private val unlockModeTextMap = mapOf(
     APP_LOCK_UNLOCK_MODE_PASSWORD to "仅密码",
     APP_LOCK_UNLOCK_MODE_PATTERN to "仅图案",
@@ -57,55 +59,20 @@ private val unlockModeTextMap = mapOf(
 
 @Composable
 fun AppLockSettingScreen(
-    localSettingManager: LocalSettingManager = getKoin().get()
+    appSecurityPreferences: AppSecurityPreferences = getKoin().get(),
+    appSecurityEditor: AppSecurityEditor = getKoin().get(),
 ) {
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val appLock by appSecurityPreferences.appLock.collectAsState()
 
-    // 密码/图案是否已设置
-    val hasPassword by remember(localSetting) {
-        derivedStateOf { localSetting.appLockPassword.isNotEmpty() }
-    }
-    val hasPattern by remember(localSetting) {
-        derivedStateOf { localSetting.appLockPattern.isNotEmpty() }
-    }
-    val hasAnyMethod by remember(hasPassword, hasPattern) {
-        derivedStateOf { hasPassword || hasPattern }
-    }
+    val hasPassword = appLock.hasPassword
+    val hasPattern = appLock.hasPattern
+    val hasAnyMethod = appLock.hasCredential
 
-    // 弹窗状态
     var showPasswordLengthDialog by remember { mutableStateOf(false) }
     var showSetPasswordDialog by remember { mutableStateOf(false) }
     var showSetPatternDialog by remember { mutableStateOf(false) }
     // 设置密码时的临时长度（仅在选择完长度后弹出输入框时使用）
-    var pendingPasswordLength by remember { mutableStateOf(localSetting.appLockPasswordLength) }
-
-    // 关闭密码时需要清理相关状态
-    fun disablePassword() {
-        localSettingManager.updateAppLockPassword("")
-        // 调整解锁模式
-        val newMode = when {
-            hasPattern -> APP_LOCK_UNLOCK_MODE_PATTERN
-            else -> APP_LOCK_UNLOCK_MODE_PASSWORD
-        }
-        localSettingManager.updateAppLockUnlockMode(newMode)
-        // 若应用锁仍开启且无任何解锁方式，则关闭应用锁
-        if (!hasPattern && localSetting.appLockEnabled) {
-            localSettingManager.updateAppLockEnabled(false)
-        }
-    }
-
-    // 关闭图案时需要清理相关状态
-    fun disablePattern() {
-        localSettingManager.updateAppLockPattern("")
-        val newMode = when {
-            hasPassword -> APP_LOCK_UNLOCK_MODE_PASSWORD
-            else -> APP_LOCK_UNLOCK_MODE_PATTERN
-        }
-        localSettingManager.updateAppLockUnlockMode(newMode)
-        if (!hasPassword && localSetting.appLockEnabled) {
-            localSettingManager.updateAppLockEnabled(false)
-        }
-    }
+    var pendingPasswordLength by remember { mutableStateOf(appLock.passwordLength) }
 
     CommonScaffold(
         title = "应用锁",
@@ -132,15 +99,8 @@ fun AppLockSettingScreen(
                 lockType = APP_LOCK_TYPE_PASSWORD,
                 passwordLength = pendingPasswordLength,
                 onConfirm = { pwd ->
-                    localSettingManager.updateAppLockPasswordLength(pendingPasswordLength)
-                    localSettingManager.updateAppLockPassword(pwd)
-                    // 若两种方式都已设置，默认解锁模式为 both；否则为 password
-                    val newMode = if (hasPattern) {
-                        APP_LOCK_UNLOCK_MODE_BOTH
-                    } else {
-                        APP_LOCK_UNLOCK_MODE_PASSWORD
-                    }
-                    localSettingManager.updateAppLockUnlockMode(newMode)
+                    // 一次完整状态迁移：密码、长度、解锁模式在同一更新内生效
+                    appSecurityEditor.setPassword(pwd, pendingPasswordLength)
                     showSetPasswordDialog = false
                 },
                 onDismiss = { showSetPasswordDialog = false },
@@ -150,13 +110,7 @@ fun AppLockSettingScreen(
                 visible = showSetPatternDialog,
                 lockType = APP_LOCK_TYPE_PATTERN,
                 onConfirm = { pattern ->
-                    localSettingManager.updateAppLockPattern(pattern)
-                    val newMode = if (hasPassword) {
-                        APP_LOCK_UNLOCK_MODE_BOTH
-                    } else {
-                        APP_LOCK_UNLOCK_MODE_PATTERN
-                    }
-                    localSettingManager.updateAppLockUnlockMode(newMode)
+                    appSecurityEditor.setPattern(pattern)
                     showSetPatternDialog = false
                 },
                 onDismiss = { showSetPatternDialog = false },
@@ -173,36 +127,32 @@ fun AppLockSettingScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // Section 1: 设置解锁方式
             item {
                 SettingsSection(title = "设置解锁方式") {
-                    // 密码开关
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Key,
                         title = "密码",
                         value = hasPassword,
                         onCheckedChange = { enabled ->
                             if (enabled) {
-                                // 先选择密码长度，再弹出输入框
-                                pendingPasswordLength = localSetting.appLockPasswordLength
+                                pendingPasswordLength = appLock.passwordLength
                                 showPasswordLengthDialog = true
                             } else {
-                                disablePassword()
+                                // 移除最后一种凭据时由编辑器关闭应用锁并修正解锁模式
+                                appSecurityEditor.removePassword()
                             }
                         }
                     )
-                    // 密码已设置时显示长度修改入口
                     if (hasPassword) {
                         SettingsRow(
                             icon = Icons.Rounded.Key,
                             title = "密码长度",
-                            value = "${localSetting.appLockPasswordLength} 位"
+                            value = "${appLock.passwordLength} 位"
                         ) {
-                            pendingPasswordLength = localSetting.appLockPasswordLength
+                            pendingPasswordLength = appLock.passwordLength
                             showPasswordLengthDialog = true
                         }
                     }
-                    // 图案锁开关
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Gesture,
                         title = "图案锁",
@@ -211,14 +161,14 @@ fun AppLockSettingScreen(
                             if (enabled) {
                                 showSetPatternDialog = true
                             } else {
-                                disablePattern()
+                                appSecurityEditor.removePattern()
                             }
                         }
                     )
                 }
             }
 
-            // Section 2: 解锁模式（仅当两种方式都已设置时显示）
+            // 解锁模式仅在两种凭据都存在时可选；BOTH 与单方式之间的切换由编辑器校验
             if (hasPassword && hasPattern) {
                 item {
                     SettingsSection(title = "解锁模式") {
@@ -227,15 +177,15 @@ fun AppLockSettingScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .selectable(
-                                        selected = localSetting.appLockUnlockMode == mode,
-                                        onClick = { localSettingManager.updateAppLockUnlockMode(mode) }
+                                        selected = appLock.unlockMode == mode,
+                                        onClick = { appSecurityEditor.selectUnlockMode(mode) }
                                     )
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(
-                                    selected = localSetting.appLockUnlockMode == mode,
-                                    onClick = { localSettingManager.updateAppLockUnlockMode(mode) }
+                                    selected = appLock.unlockMode == mode,
+                                    onClick = { appSecurityEditor.selectUnlockMode(mode) }
                                 )
                                 Text(
                                     text = label,
@@ -248,22 +198,15 @@ fun AppLockSettingScreen(
                 }
             }
 
-            // Section 3: 启用应用锁
             item {
                 SettingsSection(title = "启用") {
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Lock,
                         title = "启用应用锁",
-                        value = localSetting.appLockEnabled,
+                        value = appLock.enabled,
                         onCheckedChange = { enabled ->
-                            if (enabled) {
-                                if (hasAnyMethod) {
-                                    localSettingManager.updateAppLockEnabled(true)
-                                }
-                                // 没有任何解锁方式时不允许开启（弹窗提示由下方 hint 处理）
-                            } else {
-                                localSettingManager.updateAppLockEnabled(false)
-                            }
+                            // 没有任何解锁方式时编辑器保持关闭，UI 只负责提示
+                            appSecurityEditor.setAppLockEnabled(enabled)
                         }
                     )
                     if (!hasAnyMethod) {
@@ -277,7 +220,6 @@ fun AppLockSettingScreen(
                 }
             }
         }
-
     }
 }
 

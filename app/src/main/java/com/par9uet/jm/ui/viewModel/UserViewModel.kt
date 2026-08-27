@@ -13,7 +13,7 @@ import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.store.DownloadManager
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.models.CommonUIState
@@ -39,7 +39,7 @@ class UserViewModel(
     private val userManager: UserManager,
     private val userRepository: UserRepository,
     private val toastManager: ToastManager,
-    private val localSettingManager: LocalSettingManager,
+    private val contentPreferences: ContentPreferences,
     private val downloadManager: DownloadManager,
 ) : ViewModel() {
     private val _loginState = MutableStateFlow(CommonUIState(data = null))
@@ -94,17 +94,14 @@ class UserViewModel(
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val historyComicPager = combine(
-        localSettingManager.localSettingState,
+        contentPreferences.blockedTags,
         _historyRefreshVersion
-    ) { localSetting, _ -> localSetting }
-        .flatMapLatest { localSetting ->
+    ) { blockedTagList, _ -> blockedTagList }
+        .flatMapLatest { blockedTagList ->
         Pager(
             config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
             pagingSourceFactory = {
-                HistoryComicPagingSource(
-                    userRepository,
-                    localSetting.blockedTagList
-                )
+                HistoryComicPagingSource(userRepository, blockedTagList)
             }
         ).flow
     }.cachedIn(viewModelScope)

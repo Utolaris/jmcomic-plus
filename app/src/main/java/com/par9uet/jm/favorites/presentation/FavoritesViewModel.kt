@@ -23,7 +23,7 @@ import com.par9uet.jm.favorites.usecase.DownloadSelectedFavorites
 import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.favorites.usecase.RenameFavoriteFolder
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
-import com.par9uet.jm.store.AppLocalSettings
+import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.pagingSource.CollectComicPagingSource
 import com.par9uet.jm.retrofit.model.NetWorkResult
@@ -49,7 +49,7 @@ private data class FavoritesPagerKey(
 @OptIn(ExperimentalCoroutinesApi::class)
 class FavoritesViewModel(
     private val favoriteSession: FavoriteSession,
-    private val localSettings: AppLocalSettings,
+    private val contentPreferences: ContentPreferences,
     private val localQuery: FavoriteLocalQuery,
     private val toastManager: ToastManager,
     private val uncollectFavorites: UncollectFavorites,
@@ -123,13 +123,13 @@ class FavoritesViewModel(
     }
 
     val collectComicPager = combine(
-        localSettings.localSettingState,
+        contentPreferences.blockedTags,
         _uiState.map { it.selectedFolderId to it.filter }.distinctUntilChanged(),
         accountIdFlow,
-    ) { localSetting, (folderId, filter), accountId ->
+    ) { blockedTagList, (folderId, filter), accountId ->
         FavoritesPagerKey(
             accountId = accountId,
-            blockedTagList = localSetting.blockedTagList,
+            blockedTagList = blockedTagList,
             filter = filter,
             folderId = folderId,
         )

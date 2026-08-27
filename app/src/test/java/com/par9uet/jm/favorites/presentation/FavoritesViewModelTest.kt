@@ -3,7 +3,6 @@ package com.par9uet.jm.favorites.presentation
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.database.model.FavoriteComicEntity
 import com.par9uet.jm.favorites.data.FavoriteDownloader
@@ -26,7 +25,7 @@ import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.favorites.usecase.RenameFavoriteFolder
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.AppLocalSettings
+import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.ToastManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
@@ -422,7 +421,7 @@ class FavoritesViewModelTest {
         val sync = RecordingSyncRequester(events)
         val viewModel = FavoritesViewModel(
             favoriteSession = session,
-            localSettings = FakeLocalSettings(),
+            contentPreferences = FakeLocalSettings(),
             localQuery = query,
             toastManager = ToastManager(),
             uncollectFavorites = UncollectFavorites(remote, local, session),
@@ -436,9 +435,11 @@ class FavoritesViewModelTest {
         return TestEnvironment(viewModel, session, remote, local, sync, events)
     }
 
-    private class FakeLocalSettings : AppLocalSettings {
-        override val localSettingState: StateFlow<LocalSetting> =
-            MutableStateFlow(LocalSetting()).asStateFlow()
+    private class FakeLocalSettings : ContentPreferences {
+        override val blockedTags: StateFlow<List<String>> =
+            MutableStateFlow(emptyList<String>()).asStateFlow()
+        override val homeExcludedTags: StateFlow<List<String>> =
+            MutableStateFlow(emptyList<String>()).asStateFlow()
     }
 
     private class FakeFavoriteSession(initialAccountId: Int = 42) : FavoriteSession {

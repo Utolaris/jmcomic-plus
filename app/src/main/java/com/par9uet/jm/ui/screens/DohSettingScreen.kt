@@ -48,7 +48,7 @@ import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.network.DohServer
 import com.par9uet.jm.network.builtinDohServers
 import com.par9uet.jm.network.isValidDohUrl
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.DohPreferences
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.GlassModal
 import androidx.compose.foundation.layout.widthIn
@@ -58,32 +58,32 @@ import org.koin.compose.getKoin
 
 @Composable
 fun DohSettingScreen(
-    localSettingManager: LocalSettingManager = getKoin().get(),
+    dohPreferences: DohPreferences = getKoin().get(),
     dohManager: DohManager = getKoin().get(),
 ) {
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val doh by dohPreferences.doh.collectAsState()
     val status by dohManager.status.collectAsState()
     val latency by dohManager.latencyState.collectAsState()
     val scope = rememberCoroutineScope()
     var testingAll by remember { mutableStateOf(false) }
     var showCustomDialog by remember { mutableStateOf(false) }
+    var customName by remember { mutableStateOf(doh.customServerName) }
+    var customUrl by remember { mutableStateOf(doh.customServerUrl) }
     var customError by remember { mutableStateOf("") }
-    var customName by remember { mutableStateOf(localSetting.dohCustomServerName) }
-    var customUrl by remember { mutableStateOf(localSetting.dohCustomServerUrl) }
 
     LaunchedEffect(showCustomDialog) {
         if (showCustomDialog) {
-            customName = localSetting.dohCustomServerName
-            customUrl = localSetting.dohCustomServerUrl
+            customName = doh.customServerName
+            customUrl = doh.customServerUrl
             customError = ""
         }
     }
 
-    val customServer = remember(localSetting.dohCustomServerName, localSetting.dohCustomServerUrl) {
+    val customServer = remember(doh.customServerName, doh.customServerUrl) {
         DohServer(
             id = DOH_SERVER_CUSTOM,
-            name = localSetting.dohCustomServerName.ifBlank { "自定义 DoH" },
-            displayUrl = localSetting.dohCustomServerUrl,
+            name = doh.customServerName.ifBlank { "自定义 DoH" },
+            displayUrl = doh.customServerUrl,
         )
     }
     val servers = remember(customServer) { builtinDohServers + customServer }
@@ -157,26 +157,26 @@ fun DohSettingScreen(
                         DohSwitchRow(
                             title = "启用 DoH",
                             summary = if (status.active) "应用网络请求均使用 ${status.serverName} 解析" else "关闭时使用系统 DNS",
-                            checked = localSetting.dohEnabled,
+                            checked = doh.enabled,
                             onCheckedChange = dohManager::setEnabled,
                         )
                         DohSwitchRow(
                             title = "启动时自动启用",
                             summary = "打开应用后自动恢复 DoH；关闭时可在本页手动开启",
-                            checked = localSetting.dohAutoStart,
+                            checked = doh.autoStart,
                             onCheckedChange = dohManager::setAutoStart,
                         )
                         DohSwitchRow(
                             title = "使用设备证书",
                             summary = "允许 Android 系统及用户安装的证书验证 DoH 连接",
-                            checked = localSetting.dohUseDeviceCertificates,
+                            checked = doh.useDeviceCertificates,
                             onCheckedChange = dohManager::setUseDeviceCertificates,
                             icon = Icons.Rounded.Security,
                         )
                         DohSwitchRow(
                             title = "优先尝试 IPv6",
                             summary = "关闭时只使用 IPv4，适合没有 IPv6 路由的设备",
-                            checked = localSetting.dohPreferIpv6,
+                            checked = doh.preferIpv6,
                             onCheckedChange = dohManager::setPreferIpv6,
                         )
                         Surface(
@@ -236,10 +236,10 @@ fun DohSettingScreen(
             items(servers, key = { it.id }) { server ->
                 DohServerRow(
                     server = server,
-                    selected = localSetting.dohServerId == server.id,
+                    selected = doh.serverId == server.id,
                     result = latency[server.id],
                     onSelect = {
-                        if (server.id == DOH_SERVER_CUSTOM && !isValidDohUrl(localSetting.dohCustomServerUrl)) {
+                        if (server.id == DOH_SERVER_CUSTOM && !isValidDohUrl(doh.customServerUrl)) {
                             showCustomDialog = true
                         } else {
                             dohManager.selectServer(server.id)

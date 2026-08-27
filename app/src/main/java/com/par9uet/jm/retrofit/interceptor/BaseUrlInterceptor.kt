@@ -1,14 +1,14 @@
 package com.par9uet.jm.retrofit.interceptor
 
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.ApiEndpointPreference
 import okhttp3.Interceptor
 import okhttp3.Response
 
 class BaseUrlInterceptor(
-    private val localSettingManager: LocalSettingManager
+    private val apiEndpointPreference: ApiEndpointPreference,
 ) : Interceptor {
 
-    private fun getBaseUrl() = localSettingManager.localSettingState.value.api
+    private fun getBaseUrl() = apiEndpointPreference.apiEndpoint.value
 
     override fun intercept(chain: Interceptor.Chain): Response {
         val baseUrl = getBaseUrl()

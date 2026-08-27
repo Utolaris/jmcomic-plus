@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import com.par9uet.jm.store.RemoteSettingManager
+import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
@@ -86,7 +86,7 @@ fun DownloadComicDetailScreen(
     id: Int,
     viewModel: DownloadComicDetailViewModel = koinViewModel(),
     imageLoader: ImageLoader = getKoin().get(),
-    remoteSettingManager: RemoteSettingManager = getKoin().get(),
+    remoteConfigManager: RemoteConfigManager = getKoin().get(),
     toastManager: ToastManager = getKoin().get(),
     downloadManager: DownloadManager = getKoin().get()
 ) {
@@ -94,7 +94,7 @@ fun DownloadComicDetailScreen(
     val scope = rememberCoroutineScope()
     val mainNavController = LocalMainNavController.current
     val detailState by viewModel.detailState.collectAsState()
-    val remoteSetting by remoteSettingManager.remoteSettingState.collectAsState()
+    val remoteImageHost by remoteConfigManager.remoteImageHost.collectAsState()
     val scrollState = rememberScrollState()
     var cachedInfo by remember { mutableStateOf<CachedComicInfo?>(null) }
     var exporting by remember { mutableStateOf(false) }
@@ -271,7 +271,7 @@ fun DownloadComicDetailScreen(
             LocalCover(
                 title = detailState.title,
                 coverPath = detailState.coverPath,
-                remoteHost = remoteSetting.imgHost,
+                remoteHost = remoteImageHost,
                 comicId = detailState.remoteCoverComicId,
                 imageLoader = imageLoader
             )
