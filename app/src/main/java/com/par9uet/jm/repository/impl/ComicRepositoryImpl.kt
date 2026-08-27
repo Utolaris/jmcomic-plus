@@ -76,11 +76,6 @@ class ComicRepositoryImpl(
     ): NetWorkResult<CommentComicResponse> =
         embeddedDataSource.comment(content, comicId, commentId)
 
-    override suspend fun moveComicToFolder(
-        comicId: Int,
-        folderId: String,
-    ): NetWorkResult<Unit> = embeddedDataSource.moveComicToFolder(comicId, folderId)
-
     override suspend fun getComicIdsByTag(tagName: String, maxPages: Int): Set<Int> =
         embeddedDataSource.getComicIdsByTag(tagName, maxPages)
 

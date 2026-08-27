@@ -1,6 +1,5 @@
 package com.par9uet.jm.favorites.sync
 
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.favorites.model.FavoriteSyncUiState
 import com.par9uet.jm.favorites.usecase.SyncFavorites
 import com.par9uet.jm.retrofit.model.NetWorkResult
@@ -35,8 +34,6 @@ interface FavoriteSyncRequester {
     )
 }
 
-internal val FAVORITE_CANONICAL_ORDER = CollectComicOrderFilter.COLLECT_TIME
-
 /**
  * Application-scoped Favorites synchronization boundary. It owns timing and trailing work, while
  * SyncFavorites owns the actual remote/local synchronization molecule.
@@ -48,7 +45,6 @@ class FavoriteSyncController(
         accountId: Int,
         folderId: Int,
         force: Boolean,
-        order: CollectComicOrderFilter,
         onProgress: (FavoriteSyncProgress) -> Unit,
     ) -> NetWorkResult<FavoriteSyncReport>,
     private val applicationScope: CoroutineScope,
@@ -62,9 +58,9 @@ class FavoriteSyncController(
     ) : this(
         { userManager.userState.value.data?.id ?: 0 },
         userManager.userState.map { it.data?.id ?: 0 },
-        { accountId: Int, folderId: Int, force: Boolean, order: CollectComicOrderFilter,
+        { accountId: Int, folderId: Int, force: Boolean,
           onProgress: (FavoriteSyncProgress) -> Unit ->
-            syncFavorites.synchronize(accountId, folderId, force, order, onProgress)
+            syncFavorites.synchronize(accountId, folderId, force, onProgress)
         },
         applicationScope,
         autoSyncCoordinator,
@@ -77,7 +73,6 @@ class FavoriteSyncController(
             accountId: Int,
             folderId: Int,
             force: Boolean,
-            order: CollectComicOrderFilter,
             onProgress: (FavoriteSyncProgress) -> Unit,
         ) -> NetWorkResult<FavoriteSyncReport>,
         applicationScope: CoroutineScope,
@@ -188,7 +183,6 @@ class FavoriteSyncController(
                 accountId,
                 folderId,
                 force,
-                FAVORITE_CANONICAL_ORDER,
                 { progress ->
                     synchronized(lock) {
                         if (currentAccountId() == accountId) {

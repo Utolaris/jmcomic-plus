@@ -25,25 +25,32 @@ class UncollectFavorites(
         val distinctIds = comicIds.distinct()
         var succeeded = 0
         var failed = 0
-        for (index in distinctIds.indices) {
-            if (!session.isCurrent(sessionSnapshot)) {
-                failed += distinctIds.size - index
-                break
-            }
-            val comicId = distinctIds[index]
-            when (remoteMutation.uncollectComic(comicId)) {
-                is NetWorkResult.Error -> failed++
-                is NetWorkResult.Success -> {
-                    val committed = session.withCurrentSession(sessionSnapshot) {
-                        localMutation.remove(sessionSnapshot.accountId, listOf(comicId))
+        val batchStarted = session.withBoundRemoteSession(sessionSnapshot) {
+            for (index in distinctIds.indices) {
+                if (!session.isCurrent(sessionSnapshot)) {
+                    failed += distinctIds.size - index
+                    break
+                }
+                val comicId = distinctIds[index]
+                when (remoteMutation.uncollectComic(comicId)) {
+                    is NetWorkResult.Error -> failed++
+                    is NetWorkResult.Success -> {
+                        val committed = session.withCurrentSession(sessionSnapshot) {
+                            localMutation.remove(sessionSnapshot.accountId, listOf(comicId))
+                        }
+                        if (committed == null) {
+                            failed += distinctIds.size - index
+                            break
+                        }
+                        succeeded++
                     }
-                    if (committed == null) {
-                        failed += distinctIds.size - index
-                        break
-                    }
-                    succeeded++
                 }
             }
+            true
+        }
+        if (batchStarted != true) {
+            // The whole batch was refused before any remote call: nothing was processed.
+            failed += distinctIds.size
         }
         return FavoritesBatchResult(succeeded = succeeded, failed = failed)
     }
@@ -62,25 +69,32 @@ class MoveFavorites(
         val distinctIds = comicIds.distinct()
         var succeeded = 0
         var failed = 0
-        for (index in distinctIds.indices) {
-            if (!session.isCurrent(sessionSnapshot)) {
-                failed += distinctIds.size - index
-                break
-            }
-            val comicId = distinctIds[index]
-            when (remoteMutation.moveComicToFolder(comicId, folderId)) {
-                is NetWorkResult.Error -> failed++
-                is NetWorkResult.Success -> {
-                    val committed = session.withCurrentSession(sessionSnapshot) {
-                        localMutation.moveToFolder(sessionSnapshot.accountId, comicId, folderId)
+        val batchStarted = session.withBoundRemoteSession(sessionSnapshot) {
+            for (index in distinctIds.indices) {
+                if (!session.isCurrent(sessionSnapshot)) {
+                    failed += distinctIds.size - index
+                    break
+                }
+                val comicId = distinctIds[index]
+                when (remoteMutation.moveComicToFolder(comicId, folderId)) {
+                    is NetWorkResult.Error -> failed++
+                    is NetWorkResult.Success -> {
+                        val committed = session.withCurrentSession(sessionSnapshot) {
+                            localMutation.moveToFolder(sessionSnapshot.accountId, comicId, folderId)
+                        }
+                        if (committed == null) {
+                            failed += distinctIds.size - index
+                            break
+                        }
+                        succeeded++
                     }
-                    if (committed == null) {
-                        failed += distinctIds.size - index
-                        break
-                    }
-                    succeeded++
                 }
             }
+            true
+        }
+        if (batchStarted != true) {
+            // The whole batch was refused before any remote call: nothing was processed.
+            failed += distinctIds.size
         }
         return FavoritesBatchResult(succeeded = succeeded, failed = failed)
     }
@@ -94,13 +108,15 @@ class CreateFavoriteFolder(
         sessionSnapshot: FavoriteSessionSnapshot,
         name: String,
     ): NetWorkResult<Unit> {
-        if (!session.isCurrent(sessionSnapshot)) return staleSessionError()
-        val result = remoteMutation.createFolder(name)
-        if (result is NetWorkResult.Success) {
-            val committed = session.withCurrentSession(sessionSnapshot) {}
-            if (committed == null) return staleSessionError()
-        }
-        return result
+        return session.withBoundRemoteSession(sessionSnapshot) {
+            when (val result = remoteMutation.createFolder(name)) {
+                is NetWorkResult.Error -> result
+                is NetWorkResult.Success -> {
+                    val committed = session.withCurrentSession(sessionSnapshot) {}
+                    if (committed == null) staleSessionError() else result
+                }
+            }
+        } ?: staleSessionError()
     }
 }
 
@@ -113,17 +129,17 @@ class DeleteFavoriteFolder(
         sessionSnapshot: FavoriteSessionSnapshot,
         folderId: Int,
     ): NetWorkResult<Unit> {
-        if (!session.isCurrent(sessionSnapshot)) return staleSessionError()
-        return when (val result = remoteMutation.deleteFolder(folderId)) {
-            is NetWorkResult.Error -> result
-            is NetWorkResult.Success -> {
-                val committed = session.withCurrentSession(sessionSnapshot) {
-                    localMutation.removeFolder(sessionSnapshot.accountId, folderId)
+        return session.withBoundRemoteSession(sessionSnapshot) {
+            when (val result = remoteMutation.deleteFolder(folderId)) {
+                is NetWorkResult.Error -> result
+                is NetWorkResult.Success -> {
+                    val committed = session.withCurrentSession(sessionSnapshot) {
+                        localMutation.removeFolder(sessionSnapshot.accountId, folderId)
+                    }
+                    if (committed == null) staleSessionError() else result
                 }
-                if (committed == null) return staleSessionError()
-                result
             }
-        }
+        } ?: staleSessionError()
     }
 }
 
@@ -137,17 +153,17 @@ class RenameFavoriteFolder(
         folderId: Int,
         name: String,
     ): NetWorkResult<Unit> {
-        if (!session.isCurrent(sessionSnapshot)) return staleSessionError()
-        return when (val result = remoteMutation.renameFolder(folderId, name)) {
-            is NetWorkResult.Error -> result
-            is NetWorkResult.Success -> {
-                val committed = session.withCurrentSession(sessionSnapshot) {
-                    localMutation.renameFolder(sessionSnapshot.accountId, folderId, name)
+        return session.withBoundRemoteSession(sessionSnapshot) {
+            when (val result = remoteMutation.renameFolder(folderId, name)) {
+                is NetWorkResult.Error -> result
+                is NetWorkResult.Success -> {
+                    val committed = session.withCurrentSession(sessionSnapshot) {
+                        localMutation.renameFolder(sessionSnapshot.accountId, folderId, name)
+                    }
+                    if (committed == null) staleSessionError() else result
                 }
-                if (committed == null) return staleSessionError()
-                result
             }
-        }
+        } ?: staleSessionError()
     }
 }
 

@@ -13,9 +13,12 @@ import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.supervisorScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -23,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.cancellation.CancellationException
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.coroutineContext
 
@@ -52,6 +56,21 @@ class UserManager(
     private val sessionGeneration = AtomicLong(0L)
 
     /**
+     * Serialization gate for session-bound Favorites remote mutations. Deliberately separate
+     * from [loginMutex]: bound network work holds THIS lock, while session transitions keep
+     * taking loginMutex quickly so manual login/logout never queues behind a 10-20s request.
+     */
+    private val boundRemoteGate = Mutex()
+
+    private class PinnedRemoteWork(
+        val generation: Long,
+        val work: Deferred<*>,
+    )
+
+    @Volatile
+    private var pinnedRemoteWork: PinnedRemoteWork? = null
+
+    /**
      * Background work is cancellable when possible, but generation checks remain the correctness
      * boundary because embedded JMComic calls are synchronous Java/OkHttp operations.
      */
@@ -77,6 +96,70 @@ class UserManager(
         block()
     }
 
+    /** Thrown as the cancellation reason when a session transition supersedes bound remote work. */
+    private class RemoteSessionSuperseded :
+        CancellationException("登录状态已变化，收藏操作已中止")
+
+    private sealed class BoundRemoteOutcome<out T> {
+        data class Completed<T>(val value: T) : BoundRemoteOutcome<T>()
+
+        /** Re-enter true means a generation transition superseded execution mid-flight. */
+        data class Stale(val reEnter: Boolean) : BoundRemoteOutcome<Nothing>()
+    }
+
+    /**
+     * 会话绑定的远程执行原语：把“确认快照仍是当前会话”和“使用属于该会话的认证远程能力”
+     * 合并为一个正确性边界。
+     *
+     * 返回 null 表示快照已过期或执行期间发生会话切换 —— 远程工作不会针对新账号继续。
+     * 快照有效时，整个 [block] 执行期间持有该会话代际的执行资格；任何并发的会话切换
+     * （[beginManualLogin] / [clearUser] / [updateUser]）都会取消尚未返回的远程工作，
+     * 因此共享客户端随后变成另一个账号时，被取消的块不会再向其发起新的网络调用。
+     */
+    suspend fun <T> withBoundRemoteSession(
+        accountId: Int,
+        generation: Long,
+        block: suspend () -> T,
+    ): T? {
+        return boundRemoteGate.withLock {
+            when (val outcome = executeRemoteBlockBoundToSession(accountId, generation, block)) {
+                // 会话代际只会递增：一旦被切换，快照永远失效，直接返回 null。
+                is BoundRemoteOutcome.Completed<*> -> outcome.value as T?
+                is BoundRemoteOutcome.Stale -> null
+            }
+        }
+    }
+
+    private suspend fun <T> executeRemoteBlockBoundToSession(
+        accountId: Int,
+        generation: Long,
+        block: suspend () -> T,
+    ): BoundRemoteOutcome<T> {
+        if (!isCurrentSession(accountId, generation)) return BoundRemoteOutcome.Stale(reEnter = false)
+        var work: Deferred<T>? = null
+        val outcome = try {
+            supervisorScope {
+                val deferred = async(start = CoroutineStart.LAZY) { block() }
+                work = deferred
+                pinnedRemoteWork = PinnedRemoteWork(generation, deferred)
+                deferred.start()
+                BoundRemoteOutcome.Completed(deferred.await())
+            }
+        } catch (e: RemoteSessionSuperseded) {
+            BoundRemoteOutcome.Stale(reEnter = true)
+        } finally {
+            work?.takeIf { it.isActive }?.cancel()
+            if (pinnedRemoteWork?.work === work) pinnedRemoteWork = null
+        }
+        return outcome
+    }
+
+    /** Cancels the pinned bound remote work that still believes [previousGeneration] is current. */
+    private fun supersedeRemoteWorkOfGeneration(previousGeneration: Long) {
+        pinnedRemoteWork?.takeIf { it.generation == previousGeneration }?.work
+            ?.cancel(RemoteSessionSuperseded())
+    }
+
     init {
         // Restoring the local identity is cheap and keeps the first frame consistent with the
         // last session. Network verification is deliberately started after the UI is ready.
@@ -88,7 +171,8 @@ class UserManager(
     fun updateUser(user: User) {
         runBlocking {
             loginMutex.withLock {
-                sessionGeneration.incrementAndGet()
+                val previousGeneration = sessionGeneration.getAndIncrement()
+                supersedeRemoteWorkOfGeneration(previousGeneration)
                 _userState.update { it.copy(data = user) }
                 userStorage.set(user)
                 sessionReadinessHolder.set(readinessForCachedUser(user))
@@ -99,7 +183,8 @@ class UserManager(
     suspend fun clearUser() {
         cancelBackgroundJob()
         loginMutex.withLock {
-            sessionGeneration.incrementAndGet()
+            val previousGeneration = sessionGeneration.getAndIncrement()
+            supersedeRemoteWorkOfGeneration(previousGeneration)
             clearIdentityWhileLocked()
             sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
         }
@@ -249,6 +334,7 @@ class UserManager(
 
     private suspend fun beginManualLogin(): Long = loginMutex.withLock {
         val generation = sessionGeneration.incrementAndGet()
+        supersedeRemoteWorkOfGeneration(generation - 1)
         _userState.update {
             it.copy(
                 isLoading = true,

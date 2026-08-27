@@ -1,6 +1,5 @@
 package com.par9uet.jm.favorites.usecase
 
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.store.FavoriteSyncProgress
 import com.par9uet.jm.store.FavoriteSyncReport
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
@@ -25,21 +24,21 @@ class FavoriteSyncCoordinatorTest {
         val accountId: Int,
         val folderId: Int,
         val force: Boolean,
-        val order: CollectComicOrderFilter,
+        val onProgressWired: Boolean = true,
     )
 
     @Test
     fun identicalRequestsShareOneActiveSync() = runTest {
         var calls = 0
         val gate = CompletableDeferred<Unit>()
-        val coordinator = coordinator(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)) { _, _, _, _, _ ->
+        val coordinator = coordinator(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)) { _, _, _, _ ->
             calls++
             gate.await()
             success()
         }
 
-        val first = async { coordinator.synchronize(7, 3, false, CollectComicOrderFilter.COLLECT_TIME) {} }
-        val second = async { coordinator.synchronize(7, 3, false, CollectComicOrderFilter.COLLECT_TIME) {} }
+        val first = async { coordinator.synchronize(7, 3, false) {} }
+        val second = async { coordinator.synchronize(7, 3, false) {} }
         advanceUntilIdle()
 
         assertEquals(1, calls)
@@ -55,13 +54,13 @@ class FavoriteSyncCoordinatorTest {
         val coordinator = coordinator(
             CoroutineScope(SupervisorJob() + Dispatchers.Unconfined),
             account = { activeAccount },
-        ) { _, _, _, _, _ ->
+        ) { _, _, _, _ ->
             gate.await()
             success()
         }
 
         val request = async {
-            coordinator.synchronize(7, 0, false, CollectComicOrderFilter.COLLECT_TIME) {}
+            coordinator.synchronize(7, 0, false) {}
         }
         advanceUntilIdle()
         activeAccount = 8
@@ -74,12 +73,12 @@ class FavoriteSyncCoordinatorTest {
     @Test
     fun cancellationPropagatesToTheCaller() = runTest {
         val gate = CompletableDeferred<Unit>()
-        val coordinator = coordinator(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)) { _, _, _, _, _ ->
+        val coordinator = coordinator(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)) { _, _, _, _ ->
             gate.await()
             success()
         }
         val request = async {
-            coordinator.synchronize(7, 0, false, CollectComicOrderFilter.COLLECT_TIME) {}
+            coordinator.synchronize(7, 0, false) {}
         }
         advanceUntilIdle()
 
@@ -96,19 +95,19 @@ class FavoriteSyncCoordinatorTest {
     @Test
     fun forceAndLightweightRequestsKeepTheirDistinctScopeSemantics() = runTest {
         val requests = mutableListOf<Request>()
-        val coordinator = coordinator(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)) { accountId, folderId, force, order, _ ->
-            requests += Request(accountId, folderId, force, order)
+        val coordinator = coordinator(CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)) { accountId, folderId, force, _ ->
+            requests += Request(accountId, folderId, force)
             success()
         }
 
-        coordinator.synchronize(7, 4, false, CollectComicOrderFilter.UPDATE_TIME) {}
-        coordinator.synchronize(7, 4, true, CollectComicOrderFilter.COLLECT_TIME) {}
+        coordinator.synchronize(7, 4, false) {}
+        coordinator.synchronize(7, 4, true) {}
         advanceUntilIdle()
 
         assertEquals(
             listOf(
-                Request(7, 4, false, CollectComicOrderFilter.UPDATE_TIME),
-                Request(7, FAVORITE_SCOPE_ALL, true, CollectComicOrderFilter.COLLECT_TIME),
+                Request(7, 4, false),
+                Request(7, FAVORITE_SCOPE_ALL, true),
             ),
             requests,
         )
@@ -121,7 +120,6 @@ class FavoriteSyncCoordinatorTest {
             accountId: Int,
             folderId: Int,
             force: Boolean,
-            order: CollectComicOrderFilter,
             onProgress: (FavoriteSyncProgress) -> Unit,
         ) -> NetWorkResult<FavoriteSyncReport>,
     ) = FavoriteSyncCoordinator(

@@ -47,8 +47,6 @@ interface ComicRepository {
         commentId: Int?
     ): NetWorkResult<CommentComicResponse>
 
-    suspend fun moveComicToFolder(comicId: Int, folderId: String): NetWorkResult<Unit>
-
     /**
      * 通过 JMComic 内置 API 按标签名搜索，返回该标签下的漫画 ID 集合。
      * 用于标签排除：获取所有排除标签下的漫画 ID 并集，从搜索结果中过滤掉。

@@ -23,6 +23,16 @@ interface FavoriteSession {
         snapshot: FavoriteSessionSnapshot,
         block: suspend () -> T,
     ): T?
+
+    /**
+     * 会话绑定的远程执行边界：把“快照仍是当前会话”校验与“使用属于该会话的认证远程
+     * 能力”合并为一个原语。[block] 整体只在该快照所属会话仍然有效时执行；执行期间发生
+     * 会话切换会让 block 被中止并返回 null，而不是继续对新账号发起远程调用。
+     */
+    suspend fun <T> withBoundRemoteSession(
+        snapshot: FavoriteSessionSnapshot,
+        block: suspend () -> T,
+    ): T? = withCurrentSession(snapshot, block)
 }
 
 class UserManagerFavoriteSession(
@@ -46,6 +56,15 @@ class UserManagerFavoriteSession(
         snapshot: FavoriteSessionSnapshot,
         block: suspend () -> T,
     ): T? = userManager.withCurrentSession(
+        accountId = snapshot.accountId,
+        generation = snapshot.generation,
+        block = block,
+    )
+
+    override suspend fun <T> withBoundRemoteSession(
+        snapshot: FavoriteSessionSnapshot,
+        block: suspend () -> T,
+    ): T? = userManager.withBoundRemoteSession(
         accountId = snapshot.accountId,
         generation = snapshot.generation,
         block = block,

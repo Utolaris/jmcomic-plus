@@ -122,9 +122,6 @@ class ComicViewModelHomeLoadingTest {
             commentId: Int?
         ): NetWorkResult<CommentComicResponse> = NetWorkResult.Error("stub")
 
-        override suspend fun moveComicToFolder(comicId: Int, folderId: String): NetWorkResult<Unit> =
-            NetWorkResult.Error("stub")
-
         override suspend fun getComicIdsByTag(tagName: String, maxPages: Int): Set<Int> = emptySet()
     }
 

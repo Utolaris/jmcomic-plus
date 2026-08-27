@@ -248,11 +248,14 @@ class FavoritesViewModel(
     }
 
     private fun exitSearch() {
+        val hadSearchQuery = _uiState.value.filter.searchText.isNotEmpty()
         _uiState.update {
             it.copy(
                 searchActive = false,
                 filter = it.filter.copy(searchText = ""),
-                viewport = it.viewport.reset(),
+                // Only an effective dataset change deserves a viewport reset; entering and
+                // immediately leaving an empty search must keep the saved scroll position.
+                viewport = if (hadSearchQuery) it.viewport.reset() else it.viewport,
             )
         }
     }
@@ -438,13 +441,16 @@ class FavoritesViewModel(
     }
 
     private fun clearTransientState() {
+        val hadSearchQuery = _uiState.value.filter.searchText.isNotEmpty()
         _uiState.update {
             it.copy(
                 searchActive = false,
                 filter = it.filter.copy(searchText = ""),
                 selection = FavoritesSelectionState(),
                 modal = null,
-                viewport = it.viewport.reset(),
+                // Leaving the tab alone never scrolls the user back to the top; a cleared
+                // active search query changes the effective list and therefore does.
+                viewport = if (hadSearchQuery) it.viewport.reset() else it.viewport,
             )
         }
     }

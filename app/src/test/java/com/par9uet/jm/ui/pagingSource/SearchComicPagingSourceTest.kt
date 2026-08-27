@@ -110,8 +110,6 @@ class SearchComicPagingSourceTest {
             commentId: Int?
         ): NetWorkResult<CommentComicResponse> = unused()
 
-        override suspend fun moveComicToFolder(comicId: Int, folderId: String): NetWorkResult<Unit> = unused()
-
         private fun contentItem(id: Int): ComicListResponse.ContentListItem {
             val category = ComicListResponse.ContentListItem.Category(id = null, title = "category")
             return ComicListResponse.ContentListItem(

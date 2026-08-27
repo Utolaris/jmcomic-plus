@@ -1,6 +1,5 @@
 package com.par9uet.jm.favorites.data
 
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.repository.impl.AuthenticatedEmbeddedClient
 import com.par9uet.jm.store.FavoriteMetadataPayload
 import com.par9uet.jm.store.FavoriteRemoteItem
@@ -22,7 +21,6 @@ interface FavoriteRemoteQuery {
     suspend fun getFavorites(
         folderId: Int,
         page: Int,
-        order: CollectComicOrderFilter,
     ): FavoriteRemotePage
 
     suspend fun getMetadata(albumId: Int): FavoriteMetadataPayload
@@ -35,7 +33,6 @@ class EmbeddedFavoriteRemoteQuery(
     override suspend fun getFavorites(
         folderId: Int,
         page: Int,
-        @Suppress("UNUSED_PARAMETER") order: CollectComicOrderFilter,
     ): FavoriteRemotePage = withContext(Dispatchers.IO) {
         requireNotNull(
             authenticatedEmbeddedClient.withClient { client ->

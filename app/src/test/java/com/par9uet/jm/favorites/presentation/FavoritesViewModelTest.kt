@@ -185,7 +185,7 @@ class FavoritesViewModelTest {
     }
 
     @Test
-    fun `left clears transient state but retains folder and applied filters`() = runTest(scheduler) {
+    fun `left with active search clears query and resets viewport`() = runTest(scheduler) {
         val environment = environment()
         runCurrent()
 
@@ -224,6 +224,45 @@ class FavoritesViewModelTest {
         assertEquals(0, state.viewport.firstVisibleItemIndex)
         assertEquals(0, state.viewport.firstVisibleItemScrollOffset)
         assertTrue(state.viewport.resetGeneration > previousGeneration)
+    }
+
+    @Test
+    fun `left without active search preserves viewport`() = runTest(scheduler) {
+        val environment = environment()
+        runCurrent()
+
+        val savedGeneration = environment.viewModel.uiState.value.viewport.resetGeneration
+        environment.viewModel.onIntent(FavoritesIntent.ViewportSaved(100, 4, savedGeneration))
+        val previousGeneration = environment.viewModel.uiState.value.viewport.resetGeneration
+
+        environment.viewModel.onIntent(FavoritesIntent.Left)
+
+        val state = environment.viewModel.uiState.value
+        assertFalse(state.searchActive)
+        assertEquals(FavoritesSelectionState(), state.selection)
+        assertEquals(null, state.modal)
+        assertEquals(100, state.viewport.firstVisibleItemIndex)
+        assertEquals(4, state.viewport.firstVisibleItemScrollOffset)
+        assertEquals(previousGeneration, state.viewport.resetGeneration)
+    }
+
+    @Test
+    fun `entering and exiting an empty search preserves viewport`() = runTest(scheduler) {
+        val environment = environment()
+        runCurrent()
+
+        val savedGeneration = environment.viewModel.uiState.value.viewport.resetGeneration
+        environment.viewModel.onIntent(FavoritesIntent.ViewportSaved(60, 7, savedGeneration))
+        val previousGeneration = environment.viewModel.uiState.value.viewport.resetGeneration
+
+        environment.viewModel.onIntent(FavoritesIntent.SearchEntered)
+        environment.viewModel.onIntent(FavoritesIntent.SearchExited)
+
+        val state = environment.viewModel.uiState.value
+        assertFalse(state.searchActive)
+        assertEquals(60, state.viewport.firstVisibleItemIndex)
+        assertEquals(7, state.viewport.firstVisibleItemScrollOffset)
+        assertEquals(previousGeneration, state.viewport.resetGeneration)
     }
 
     @Test

@@ -31,6 +31,7 @@ import kotlinx.coroutines.test.runTest
 import okhttp3.Cookie
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -471,5 +472,82 @@ class UserManagerSessionTest {
         val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
 
         assertEquals(SessionReadiness.Unauthenticated, manager.authState.value)
+    }
+
+    @Test
+    fun boundRemoteWorkRunsOnlyWhileSnapshotStaysCurrent() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        manager.updateUser(user(1, "accountA"))
+        val snapshot = manager.currentSessionSnapshot()
+        var remoteCalls = 0
+
+        val committed = manager.withBoundRemoteSession(
+            accountId = snapshot.accountId,
+            generation = snapshot.generation,
+        ) {
+            remoteCalls++
+            "result-A"
+        }
+
+        assertEquals("result-A", committed)
+        assertEquals(1, remoteCalls)
+    }
+
+    @Test
+    fun staleSnapshotNeverObtainsBoundRemoteCapability() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        manager.updateUser(user(1, "accountA"))
+        val staleGeneration = manager.currentSessionSnapshot().generation - 1L
+        var remoteCalls = 0
+
+        val committed = manager.withBoundRemoteSession(
+            accountId = 1,
+            generation = staleGeneration,
+        ) {
+            remoteCalls++
+            "result"
+        }
+
+        assertNull(committed)
+        assertEquals(0, remoteCalls)
+    }
+
+    @Test
+    fun sessionChangeDuringBoundRemoteExecutionCancelsTheCallInsteadOfTargetingNewAccount() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage()
+        val repository = GateUserRepository(cookieStorage)
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        manager.updateUser(user(1, "accountA"))
+        val snapshotA = manager.currentSessionSnapshot()
+        val blockStarted = CompletableDeferred<Unit>()
+        val switchGate = CompletableDeferred<Unit>()
+        val remoteAccountIds = mutableListOf<Int>()
+
+        val boundJob = launch {
+            val outcome = manager.withBoundRemoteSession(
+                accountId = snapshotA.accountId,
+                generation = snapshotA.generation,
+            ) {
+                remoteAccountIds += snapshotA.accountId
+                blockStarted.complete(Unit)
+                switchGate.await()
+                "should-never-return-after-switch"
+            }
+            assertNull(outcome)
+        }
+
+        blockStarted.await()
+        manager.updateUser(user(2, "accountB"))
+        switchGate.complete(Unit)
+        boundJob.join()
+
+        assertEquals(listOf(1), remoteAccountIds)
     }
 }

@@ -1,7 +1,5 @@
 package com.par9uet.jm.repository.impl
 
-import com.par9uet.jm.data.models.CollectComicOrderFilter
-import com.par9uet.jm.favorites.usecase.SyncFavorites
 import com.par9uet.jm.repository.LoginSession
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.repository.VerifiedCredentials
@@ -13,9 +11,6 @@ import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
-import com.par9uet.jm.store.FavoriteStore
-import com.par9uet.jm.store.FavoriteSyncProgress
-import com.par9uet.jm.store.FavoriteSyncReport
 import io.github.jukomu.jmcomic.api.exception.NetworkException
 import io.github.jukomu.jmcomic.api.model.ForumQuery
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta
@@ -34,8 +29,6 @@ import java.net.UnknownHostException
 class UserRepositoryImpl(
     private val embeddedClientManager: EmbeddedClientManager,
     private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
-    private val favoriteStore: FavoriteStore,
-    private val syncFavorites: SyncFavorites,
 ) : UserRepository {
     override suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
         return withContext(Dispatchers.IO) {
@@ -134,51 +127,6 @@ class UserRepositoryImpl(
             cause is SocketTimeoutException || cause is ConnectException || cause is UnknownHostException -> AuthFailure.TemporaryFailure
             else -> AuthFailure.Unknown
         }
-    }
-
-    override suspend fun synchronizeFavorites(
-        accountId: Int,
-        folderId: Int,
-        force: Boolean,
-        order: CollectComicOrderFilter,
-        onProgress: (FavoriteSyncProgress) -> Unit,
-    ): NetWorkResult<FavoriteSyncReport> = syncFavorites.synchronize(
-        accountId = accountId,
-        folderId = folderId,
-        force = force,
-        order = order,
-        onProgress = onProgress,
-    )
-
-    override suspend fun getCachedFavoriteFolders(accountId: Int): Map<String, String> =
-        favoriteStore.getCachedFolders(accountId)
-
-    override suspend fun cacheFavoriteComic(
-        accountId: Int,
-        comic: com.par9uet.jm.data.models.Comic,
-        folderId: Int,
-    ) {
-        if (accountId > 0) favoriteStore.addFromComic(accountId, comic, folderId)
-    }
-
-    override suspend fun removeCachedFavoriteComic(accountId: Int, albumId: Int) {
-        if (accountId > 0) favoriteStore.remove(accountId, listOf(albumId))
-    }
-
-    override suspend fun moveCachedFavoriteComic(accountId: Int, albumId: Int, folderId: Int) {
-        if (accountId > 0) favoriteStore.moveToFolder(accountId, albumId, folderId)
-    }
-
-    override suspend fun cacheFavoriteFolder(accountId: Int, folderId: Int, name: String) {
-        favoriteStore.cacheFolder(accountId, folderId, name)
-    }
-
-    override suspend fun removeCachedFavoriteFolder(accountId: Int, folderId: Int) {
-        favoriteStore.removeFolder(accountId, folderId)
-    }
-
-    override suspend fun renameCachedFavoriteFolder(accountId: Int, folderId: Int, name: String) {
-        favoriteStore.renameFolder(accountId, folderId, name)
     }
 
     override suspend fun getHistoryComicList(page: Int): NetWorkResult<UserHistoryComicListResponse> {

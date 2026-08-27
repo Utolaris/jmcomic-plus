@@ -1,6 +1,5 @@
 package com.par9uet.jm.favorites.sync
 
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
 import com.par9uet.jm.store.FavoriteSyncProgress
@@ -31,7 +30,7 @@ class FavoriteSyncControllerTest {
         var accountId = 7
         val requests = mutableListOf<Request>()
         val gate = CompletableDeferred<Unit>()
-        val controller = controller(backgroundScope, accountFlow, { accountId }, requests, operation = { _, _, _, _, _ ->
+        val controller = controller(backgroundScope, accountFlow, { accountId }, requests, operation = { _, _, _, _ ->
             gate.await()
             success()
         })
@@ -51,7 +50,7 @@ class FavoriteSyncControllerTest {
     fun `force refresh bypasses the auto window and always uses all favorites`() = runTest {
         val accountFlow = MutableStateFlow(7)
         val requests = mutableListOf<Request>()
-        val controller = controller(backgroundScope, accountFlow, { 7 }, requests, operation = { _, _, _, _, _ -> success() })
+        val controller = controller(backgroundScope, accountFlow, { 7 }, requests, operation = { _, _, _, _ -> success() })
 
         controller.request(FavoriteSyncRequestKind.AUTO, folderId = 4)
         runCurrent()
@@ -77,7 +76,7 @@ class FavoriteSyncControllerTest {
             accountFlow = accountFlow,
             currentAccountId = { 7 },
             requests = requests,
-            operation = { _, _, _, _, _ -> success() },
+            operation = { _, _, _, _ -> success() },
             intervalMillis = 100L,
             timeSource = { clock[0] },
         )
@@ -112,7 +111,7 @@ class FavoriteSyncControllerTest {
             accountFlow = accountFlow,
             currentAccountId = { accountId },
             requests = requests,
-            operation = { _, _, _, _, _ -> success() },
+            operation = { _, _, _, _ -> success() },
             intervalMillis = 100L,
             timeSource = { clock[0] },
         )
@@ -141,7 +140,6 @@ class FavoriteSyncControllerTest {
             accountId: Int,
             folderId: Int,
             force: Boolean,
-            order: CollectComicOrderFilter,
             onProgress: (FavoriteSyncProgress) -> Unit,
         ) -> NetWorkResult<FavoriteSyncReport>,
         intervalMillis: Long = 100L,
@@ -150,9 +148,9 @@ class FavoriteSyncControllerTest {
         accountFlow,
         currentAccountId,
         { account: Int, folder: Int, force: Boolean,
-          order: CollectComicOrderFilter, progress: (FavoriteSyncProgress) -> Unit ->
+          progress: (FavoriteSyncProgress) -> Unit ->
             requests += Request(account, folder, force)
-            operation(account, folder, force, order, progress)
+            operation(account, folder, force, progress)
         },
         applicationScope,
         FavoriteAutoSyncCoordinator(intervalMillis, timeSource),

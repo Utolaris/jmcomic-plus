@@ -7,18 +7,20 @@ import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.database.dao.DownloadComicDao
+import com.par9uet.jm.favorites.data.FavoriteLocalMutation
+import com.par9uet.jm.favorites.data.FavoriteLocalQuery
+import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.model.CollectComicResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
 import com.par9uet.jm.ui.state.CommentSubmissionGate
+import com.par9uet.jm.favorites.usecase.MoveFavorites
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -35,8 +37,10 @@ class ComicDetailViewModel(
     private val toastManager: ToastManager,
     private val downloadComicDao: DownloadComicDao,
     private val remoteSettingManager: RemoteSettingManager,
-    private val userRepository: UserRepository,
-    private val userManager: UserManager,
+    private val favoriteLocalQuery: FavoriteLocalQuery,
+    private val favoriteLocalMutation: FavoriteLocalMutation,
+    private val favoriteSession: FavoriteSession,
+    private val moveFavorites: MoveFavorites,
 ) : ViewModel() {
     private val _comicDetailState = MutableStateFlow<CommonUIState<Comic>>(
         CommonUIState(
@@ -158,7 +162,7 @@ class ComicDetailViewModel(
                 is NetWorkResult.Success<CollectComicResponse> -> {
                     toastManager.showAsync("收藏成功")
                     _comicDetailState.value.data?.let { comic ->
-                        userRepository.cacheFavoriteComic(
+                        favoriteLocalMutation.addFromComic(
                             accountId = currentAccountId(),
                             comic = comic,
                         )
@@ -202,7 +206,7 @@ class ComicDetailViewModel(
 
                 is NetWorkResult.Success<CollectComicResponse> -> {
                     toastManager.showAsync("取消收藏成功")
-                    userRepository.removeCachedFavoriteComic(currentAccountId(), id)
+                    favoriteLocalMutation.remove(currentAccountId(), listOf(id))
                     _comicDetailState.update { state ->
                         val currentData = state.data
                         if (currentData != null) {
@@ -231,13 +235,7 @@ class ComicDetailViewModel(
     fun refreshFolderList() {
         viewModelScope.launch {
             val accountId = currentAccountId()
-            _folderList.value = userRepository.getCachedFavoriteFolders(accountId)
-            if (accountId > 0) {
-                launch {
-                    userRepository.synchronizeFavorites(accountId, folderId = 0)
-                    _folderList.value = userRepository.getCachedFavoriteFolders(accountId)
-                }
-            }
+            _folderList.value = favoriteLocalQuery.getCachedFolders(accountId)
         }
     }
 
@@ -262,23 +260,19 @@ class ComicDetailViewModel(
                     val accountId = currentAccountId()
                     val comic = _comicDetailState.value.data
                     if (comic != null) {
-                        userRepository.cacheFavoriteComic(accountId, comic, folderId = 0)
+                        favoriteLocalMutation.addFromComic(accountId, comic, folderId = 0)
                     }
                     // 如果选择了非默认夹，再移动到目标夹
                     if (folderId != "0") {
-                        when (val moveResult = comicRepository.moveComicToFolder(comicId, folderId)) {
-                            is NetWorkResult.Error -> {
-                                toastManager.showAsync("已收藏但移动到收藏夹失败：${moveResult.message}")
-                            }
-                            is NetWorkResult.Success<Unit> -> {
-                                userRepository.moveCachedFavoriteComic(
-                                    accountId,
-                                    comicId,
-                                    folderId.toIntOrNull() ?: 0,
-                                )
-                                val folderName = _folderList.value[folderId] ?: "收藏夹"
-                                toastManager.showAsync("已收藏到 $folderName")
-                            }
+                        // Route through the canonical L3 molecule: the remote move runs inside
+                        // the session-bound boundary, and the local folder membership is only
+                        // written after a successful, still-current commit.
+                        val targetFolderId = folderId.toIntOrNull() ?: 0
+                        val moveResult = moveFavorites(favoriteSession.snapshot(), listOf(comicId), targetFolderId)
+                        val folderName = _folderList.value[folderId] ?: "收藏夹"
+                        when {
+                            moveResult.succeeded > 0 -> toastManager.showAsync("已收藏到 $folderName")
+                            else -> toastManager.showAsync("已收藏，但移动到收藏夹失败")
                         }
                     } else {
                         toastManager.showAsync("收藏成功")
@@ -317,7 +311,7 @@ class ComicDetailViewModel(
         }
     }
 
-    private fun currentAccountId(): Int = userManager.userState.value.data?.id ?: 0
+    private fun currentAccountId(): Int = favoriteSession.currentAccountId()
 
     private val _commentComicIdState = MutableStateFlow(0)
     val commentComicIdState = _commentComicIdState.asStateFlow()

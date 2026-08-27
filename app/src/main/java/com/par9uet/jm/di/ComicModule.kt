@@ -4,6 +4,7 @@ import com.par9uet.jm.data.comic.ComicEmbeddedDataSource
 import com.par9uet.jm.data.comic.EmbeddedComicDataSource
 import com.par9uet.jm.data.comic.NetworkHomeDataSource
 import com.par9uet.jm.data.comic.RetrofitNetworkHomeDataSource
+import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.repository.impl.AuthenticatedEmbeddedClient
 import com.par9uet.jm.repository.impl.ComicRepositoryImpl
@@ -25,6 +26,6 @@ val comicModule = module {
     single { ReaderImagePipeline(get(), get(), get(), get()) }
 
     viewModel { ComicViewModel(get(), get()) }
-    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { ComicReadViewModel(get(), get(), get(), get(), get(), get()) }
 }

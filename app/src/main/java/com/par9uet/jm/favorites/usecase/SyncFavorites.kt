@@ -1,7 +1,6 @@
 package com.par9uet.jm.favorites.usecase
 
 import android.os.SystemClock
-import com.par9uet.jm.data.models.CollectComicOrderFilter
 import com.par9uet.jm.favorites.data.FavoriteLocalSync
 import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
 import com.par9uet.jm.retrofit.model.NetWorkResult
@@ -57,13 +56,11 @@ class SyncFavorites(
         accountId: Int,
         folderId: Int = FAVORITE_SCOPE_ALL,
         force: Boolean = false,
-        order: CollectComicOrderFilter = CollectComicOrderFilter.COLLECT_TIME,
         onProgress: (FavoriteSyncProgress) -> Unit = {},
     ): NetWorkResult<FavoriteSyncReport> = syncCoordinator.synchronize(
         accountId = accountId,
         folderId = folderId,
         force = force,
-        order = order,
         onProgress = onProgress,
     )
 
@@ -71,17 +68,15 @@ class SyncFavorites(
         accountId: Int,
         folderId: Int,
         force: Boolean,
-        order: CollectComicOrderFilter,
         onProgress: (FavoriteSyncProgress) -> Unit,
     ): NetWorkResult<FavoriteSyncReport> {
         val startedAt = SystemClock.elapsedRealtime()
-        log("FavoritesSync", "start account=$accountId folder=$folderId force=$force order=$order")
+        log("FavoritesSync", "start account=$accountId folder=$folderId force=$force")
         return try {
             if (!isActiveFavoriteAccount(accountId)) return NetWorkResult.Error("登录账号已变化")
             val snapshot = fetchRemoteFavoriteSnapshot(
                 folderId = folderId,
                 includeAllFolderMemberships = force,
-                order = order,
                 onProgress = onProgress,
             )
             val syncedAt = System.currentTimeMillis()
@@ -175,7 +170,6 @@ class SyncFavorites(
     private suspend fun fetchRemoteFavoriteSnapshot(
         folderId: Int,
         includeAllFolderMemberships: Boolean,
-        order: CollectComicOrderFilter,
         onProgress: (FavoriteSyncProgress) -> Unit,
         progressPhase: String = "收藏页面",
     ): RemoteFavoriteSnapshot {
@@ -187,7 +181,7 @@ class SyncFavorites(
             var expectedTotal = 0
             var continuePaging = true
             while (continuePaging) {
-                val favoritePage = remoteQuery.getFavorites(folderId, page, order)
+                val favoritePage = remoteQuery.getFavorites(folderId, page)
                 val pageItems = favoritePage.items
                 items += pageItems
                 folders += favoritePage.folders
@@ -218,7 +212,6 @@ class SyncFavorites(
                 fetchRemoteFavoriteSnapshot(
                     folderId = nestedFolderId,
                     includeAllFolderMemberships = false,
-                    order = order,
                     onProgress = onProgress,
                     progressPhase = "收藏夹 $nestedFolderId",
                 ).items.map { it.albumId }
@@ -290,7 +283,6 @@ internal class FavoriteSyncCoordinator(
         accountId: Int,
         folderId: Int,
         force: Boolean,
-        order: CollectComicOrderFilter,
         onProgress: (FavoriteSyncProgress) -> Unit,
     ) -> NetWorkResult<FavoriteSyncReport>,
 ) {
@@ -298,7 +290,6 @@ internal class FavoriteSyncCoordinator(
         val accountId: Int,
         val folderId: Int,
         val force: Boolean,
-        val order: CollectComicOrderFilter,
     )
 
     private val syncMutex = Mutex()
@@ -310,19 +301,18 @@ internal class FavoriteSyncCoordinator(
         accountId: Int,
         folderId: Int,
         force: Boolean,
-        order: CollectComicOrderFilter,
         onProgress: (FavoriteSyncProgress) -> Unit,
     ): NetWorkResult<FavoriteSyncReport> {
         if (accountId <= 0) return NetWorkResult.Error("未登录")
         if (!isActiveAccount(accountId)) return NetWorkResult.Error("登录账号已变化")
         val scopeFolderId = if (force) FAVORITE_SCOPE_ALL else folderId
-        val key = FavoriteSyncKey(accountId, scopeFolderId, force, order)
+        val key = FavoriteSyncKey(accountId, scopeFolderId, force)
         val deferred = syncMutex.withLock {
             val accountLock = accountLocks.getOrPut(accountId) { Mutex() }
             activeSyncs[key]?.takeIf { it.isActive }
                 ?: applicationScope.async(start = CoroutineStart.LAZY) {
                     accountLock.withLock {
-                        performSync(accountId, scopeFolderId, force, order, onProgress)
+                        performSync(accountId, scopeFolderId, force, onProgress)
                     }
                 }.also { created ->
                     activeSyncs[key] = created
