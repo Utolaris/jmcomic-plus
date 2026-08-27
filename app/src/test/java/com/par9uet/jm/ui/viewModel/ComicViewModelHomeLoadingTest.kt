@@ -67,6 +67,8 @@ class ComicViewModelHomeLoadingTest {
         private val networkHandler: suspend () -> NetWorkResult<List<HomeSwiperComicListItemResponse>> =
             { NetWorkResult.Error("stub") },
     ) : ComicRepository {
+        override suspend fun <R> withEmbeddedClient(block: (io.github.jukomu.jmcomic.core.client.impl.JmApiClient) -> R): R? = null
+
         val embeddedCalls = mutableListOf<String>()
         var networkPageCalls = 0
 

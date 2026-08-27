@@ -19,13 +19,13 @@ import org.koin.dsl.module
 
 val comicModule = module {
     single { EmbeddedClientManager(get(), get()) }
-    single { AuthenticatedEmbeddedClient(get(), get()) }
+    single { AuthenticatedEmbeddedClient({ get<EmbeddedClientManager>().getClient() }, get()) }
     single { RetrofitNetworkHomeDataSource(get()) } bind NetworkHomeDataSource::class
     single { EmbeddedComicDataSource(get(), get()) } bind ComicEmbeddedDataSource::class
-    single { ComicRepositoryImpl(get(), get()) } bind ComicRepository::class
+    single { ComicRepositoryImpl(get(), get(), get()) } bind ComicRepository::class
     single { ReaderImagePipeline(get(), get(), get(), get()) }
 
     viewModel { ComicViewModel(get(), get()) }
-    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
     viewModel { ComicReadViewModel(get(), get(), get(), get(), get(), get()) }
 }

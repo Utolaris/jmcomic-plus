@@ -1,17 +1,50 @@
 package com.par9uet.jm.favorites.usecase
 
+import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteLocalQuery
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.data.FavoriteDownloader
+import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 
 data class FavoritesBatchResult(
     val succeeded: Int,
     val failed: Int,
 )
+
+/** Canonical "collect this comic into favorites" operation, session-bound end to end. */
+class CollectFavorite(
+    private val comicRepository: ComicRepository,
+    private val localMutation: FavoriteLocalMutation,
+    private val session: FavoriteSession,
+) {
+    suspend operator fun invoke(
+        sessionSnapshot: FavoriteSessionSnapshot,
+        comicId: Int,
+        comic: Comic?,
+    ): NetWorkResult<Unit> {
+        val completed = session.withBoundRemoteSession(sessionSnapshot) {
+            when (val result = comicRepository.collectComic(comicId)) {
+                is NetWorkResult.Error -> null
+                is NetWorkResult.Success -> {
+                    // Remote toggle succeeded while the captured session was still exclusive.
+                    // The local cache write targets snapshot.accountId inside the same boundary.
+                    if (comic != null) {
+                        localMutation.addFromComic(sessionSnapshot.accountId, comic)
+                    }
+                    true
+                }
+            }
+        }
+        return when {
+            completed == true -> NetWorkResult.Success(Unit)
+            else -> staleSessionError()
+        }
+    }
+}
 
 class UncollectFavorites(
     private val remoteMutation: FavoriteRemoteMutation,

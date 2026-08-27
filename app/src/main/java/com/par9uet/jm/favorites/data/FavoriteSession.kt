@@ -25,9 +25,9 @@ interface FavoriteSession {
     ): T?
 
     /**
-     * 会话绑定的远程执行边界：把“快照仍是当前会话”校验与“使用属于该会话的认证远程
-     * 能力”合并为一个原语。[block] 整体只在该快照所属会话仍然有效时执行；执行期间发生
-     * 会话切换会让 block 被中止并返回 null，而不是继续对新账号发起远程调用。
+     * 会话绑定的远程执行边界：把“快照仍是当前会话”校验与“远程能力归属于该会话”合并为
+     * 一个原子步骤。[block] 只在该快照仍代表活动会话时执行，且与所有会话转换串行化 ——
+     * 阻塞式远程调用期间账号不可能切换到 B。返回 null 表示快照已过期、拒绝执行。
      */
     suspend fun <T> withBoundRemoteSession(
         snapshot: FavoriteSessionSnapshot,

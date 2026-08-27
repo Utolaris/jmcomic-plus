@@ -182,8 +182,16 @@ class FavoriteUseCasesTest {
         ): T? {
             if (!isCurrent(snapshot)) return null
             boundBatchesStarted += snapshot.accountId to snapshot.generation
-            return block()
+            boundBatchOpen = true
+            try {
+                return block()
+            } finally {
+                boundBatchOpen = false
+            }
         }
+
+        var boundBatchOpen = false
+            private set
 
         fun switchAccount(newAccountId: Int) {
             accountId = newAccountId

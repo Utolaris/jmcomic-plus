@@ -14,6 +14,7 @@ import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
+import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 
 /**
  * Embedded is the canonical JM business backend. The network data source is an explicit,
@@ -22,9 +23,13 @@ import com.par9uet.jm.retrofit.model.WeekResponse
 class ComicRepositoryImpl(
     private val networkHomeDataSource: NetworkHomeDataSource,
     private val embeddedDataSource: ComicEmbeddedDataSource,
+    private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
 ) : ComicRepository {
     override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
         embeddedDataSource.getComicDetail(id)
+
+    override suspend fun <R> withEmbeddedClient(block: (JmApiClient) -> R): R? =
+        authenticatedEmbeddedClient.withClient(block)
 
     override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> =
         embeddedDataSource.collectComic(id)

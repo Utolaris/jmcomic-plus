@@ -15,6 +15,7 @@ import com.par9uet.jm.favorites.data.UserManagerFavoriteSession
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.favorites.sync.FavoriteSyncController
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequester
+import com.par9uet.jm.favorites.usecase.CollectFavorite
 import com.par9uet.jm.favorites.usecase.CreateFavoriteFolder
 import com.par9uet.jm.favorites.usecase.DeleteFavoriteFolder
 import com.par9uet.jm.favorites.usecase.DownloadSelectedFavorites
@@ -37,6 +38,7 @@ val favoriteModule = module {
     single { EmbeddedFavoriteRemoteQuery(get()) } bind FavoriteRemoteQuery::class
 
     single { UncollectFavorites(get(), get(), get()) }
+    single { CollectFavorite(get(), get(), get()) }
     single { MoveFavorites(get(), get(), get()) }
     single { CreateFavoriteFolder(get(), get()) }
     single { DeleteFavoriteFolder(get(), get(), get()) }
