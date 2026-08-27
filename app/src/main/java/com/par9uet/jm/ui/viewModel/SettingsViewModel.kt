@@ -70,6 +70,7 @@ data class GridColumnsSnapshot(
 private data class AppearanceSnapshot(
     val theme: String,
     val colorPalette: ColorPaletteState,
+    val launcherDisguiseId: String,
     val recommendationEnabled: Boolean,
 )
 
@@ -111,8 +112,11 @@ class SettingsViewModel(
     private val appearanceState = combine(
         appearancePreferences.theme,
         appearancePreferences.colorPalette,
+        appearancePreferences.launcherDisguiseId,
         recommendationPreferences.preferenceRecommendEnabled,
-    ) { theme, palette, recommend -> AppearanceSnapshot(theme, palette, recommend) }
+    ) { theme, palette, disguiseId, recommend ->
+        AppearanceSnapshot(theme, palette, disguiseId, recommend)
+    }
 
     private val readerState = combine(
         readerPreferences.prefetchCount,
@@ -138,6 +142,7 @@ class SettingsViewModel(
         SettingsUiState(
             theme = appearance.theme,
             colorPalette = appearance.colorPalette,
+            launcherDisguiseId = appearance.launcherDisguiseId,
             recommendationEnabled = appearance.recommendationEnabled,
             apiEndpoint = misc.apiEndpoint,
             homeExcludedTags = misc.homeExcludedTags,

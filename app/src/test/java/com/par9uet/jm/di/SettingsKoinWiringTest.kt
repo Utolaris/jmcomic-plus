@@ -44,20 +44,9 @@ class SettingsKoinWiringTest {
                 single { InMemoryRemoteConfigStore() } bind com.par9uet.jm.store.RemoteConfigStore::class
                 single { RemoteConfigManager(get(), get()) } bind RemoteConfigPreferences::class
                 single { NoOpRemoteSettingRepository() } bind RemoteSettingRepository::class
-                single { LocalSettingManager(get<LocalSettingPersistence>(), get()) } binds arrayOf(
-                    ContentPreferences::class,
-                    RecommendationPreferences::class,
-                    ReaderPreferences::class,
-                    CacheNotificationPreferences::class,
-                    AppSecurityPreferences::class,
-                    AppSecurityEditor::class,
-                    DohPreferences::class,
-                    DohPreferencesEditor::class,
-                    AppearancePreferences::class,
-                    AppearanceEditor::class,
-                    ApiEndpointPreference::class,
-                    com.par9uet.jm.store.MiscSettingsPreferences::class,
-                )
+                // 与 production 完全一致的 alias 列表，防止测试与线上 wiring 漂移。
+                single { LocalSettingManager(get<LocalSettingPersistence>(), get()) }
+                    .binds(com.par9uet.jm.di.LOCAL_SETTING_MANAGER_ALIASES)
                 single { DohManager(get(), get()) }
                 single { BaseUrlInterceptor(get()) }
             },

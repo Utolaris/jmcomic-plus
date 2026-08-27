@@ -40,7 +40,7 @@ class LocalSettingStorage(
             }
         if (savedJson == null) return null
         val saved = secureStorage.decode<LocalSetting>(savedJson, GSON_TYPE) ?: return null
-        return normalize(savedJson, saved).also { restored -> _state.update { restored } }
+        return normalizePersisted(savedJson, saved).also { restored -> _state.update { restored } }
     }
 
     override fun persist(localSetting: LocalSetting) {
@@ -54,11 +54,13 @@ class LocalSettingStorage(
         secureStorage.removeStartup(STORAGE_KEY)
     }
 
-    /**
-     * Normalizes every load: legacy field migrations and enum-safe coercions live here so the
-     * manager always starts from a valid LocalSetting.
-     */
-    private fun normalize(savedJson: String, saved: LocalSetting): LocalSetting {
+}
+
+/**
+ * Normalizes every load: legacy field migrations and enum-safe coercions live here so the
+ * manager always starts from a valid LocalSetting. Top-level so tests exercise the real path.
+ */
+internal fun normalizePersisted(savedJson: String, saved: LocalSetting): LocalSetting {
         // 旧版本字段 appLockType 迁移到 appLockUnlockMode。
         val migratedUnlockMode = when {
             savedJson.hasField("appLockUnlockMode") -> saved.appLockUnlockMode
@@ -118,11 +120,9 @@ class LocalSettingStorage(
             dohUseDeviceCertificates = saved.dohUseDeviceCertificates,
             dohPreferIpv6 = saved.dohPreferIpv6,
         )
-    }
-
-    private fun nullableString(json: String, field: String, value: String?): String? =
-        if (json.hasField(field)) value else null
 }
+private fun nullableString(json: String, field: String, value: String?): String? =
+    if (json.hasField(field)) value else null
 
 private fun String?.hasField(name: String): Boolean = this != null && contains(QUOTE + name + QUOTE)
 

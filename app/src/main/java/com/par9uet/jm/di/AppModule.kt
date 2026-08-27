@@ -32,6 +32,7 @@ import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.DownloadToastAggregator
 import com.par9uet.jm.store.HistorySearchManager
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.MiscSettingsPreferences
 import com.par9uet.jm.store.PostStartupInitializer
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.SessionReadinessHolder
@@ -51,6 +52,25 @@ import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.bind
 import org.koin.dsl.binds
 import org.koin.dsl.module
+
+/**
+ * Single source of truth for LocalSettingManager's interface aliases; the Koin wiring smoke test
+ * binds the same list so tests cannot drift from production wiring.
+ */
+val LOCAL_SETTING_MANAGER_ALIASES = arrayOf(
+    ContentPreferences::class,
+    RecommendationPreferences::class,
+    ReaderPreferences::class,
+    CacheNotificationPreferences::class,
+    AppSecurityPreferences::class,
+    AppSecurityEditor::class,
+    DohPreferences::class,
+    DohPreferencesEditor::class,
+    AppearancePreferences::class,
+    AppearanceEditor::class,
+    ApiEndpointPreference::class,
+    MiscSettingsPreferences::class,
+)
 
 val appModule = module {
     single { DohManager(get(), get()) }
@@ -84,19 +104,7 @@ val appModule = module {
     single { com.par9uet.jm.store.SecureRemoteConfigStore(get()) } bind com.par9uet.jm.store.RemoteConfigStore::class
     single { RemoteConfigManager(get(), get()) } bind RemoteConfigPreferences::class
     // All interface aliases resolve to the same LocalSettingManager singleton.
-    single { LocalSettingManager(get<LocalSettingStorage>(), get()) } binds arrayOf(
-        ContentPreferences::class,
-        RecommendationPreferences::class,
-        ReaderPreferences::class,
-        CacheNotificationPreferences::class,
-        AppSecurityPreferences::class,
-        AppSecurityEditor::class,
-        DohPreferences::class,
-        DohPreferencesEditor::class,
-        AppearancePreferences::class,
-        AppearanceEditor::class,
-        ApiEndpointPreference::class,
-    )
+    single { LocalSettingManager(get<LocalSettingStorage>(), get()) } binds LOCAL_SETTING_MANAGER_ALIASES
     single { HistorySearchManager(get()) }
     single { ReadHistoryManager(get()) }
     single { ToastManager() }

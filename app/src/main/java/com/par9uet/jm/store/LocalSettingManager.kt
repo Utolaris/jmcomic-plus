@@ -58,6 +58,7 @@ class LocalSettingManager(
     override val doh = _projectingState(::toDohSettingsState)
 
     override val theme = _projectingState { it.theme }
+    override val launcherDisguiseId = _projectingState { it.launcherDisguise }
     override val colorPalette = _projectingState(::toColorPaletteState)
     override val editor: AppearanceEditor get() = this
     override val apiEndpoint = _projectingState { it.api }

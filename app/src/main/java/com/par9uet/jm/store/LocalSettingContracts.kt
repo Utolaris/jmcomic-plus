@@ -128,6 +128,8 @@ interface AppearancePreferences {
     /** auto | light | dark */
     val theme: StateFlow<String>
     val colorPalette: StateFlow<ColorPaletteState>
+    /** Currently selected launcher alias id ([LauncherDisguise]). */
+    val launcherDisguiseId: StateFlow<String>
     val editor: AppearanceEditor
 }
 
