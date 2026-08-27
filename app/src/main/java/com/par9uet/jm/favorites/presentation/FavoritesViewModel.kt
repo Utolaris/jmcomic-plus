@@ -7,14 +7,15 @@ import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.favorites.data.FavoriteLocalQuery
+import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.model.FavoritesFilter
 import com.par9uet.jm.favorites.model.FavoritesIntent
 import com.par9uet.jm.favorites.model.FavoritesModal
 import com.par9uet.jm.favorites.model.FavoritesSelectionState
 import com.par9uet.jm.favorites.model.FavoritesUiState
 import com.par9uet.jm.favorites.model.FavoritesViewportState
-import com.par9uet.jm.favorites.sync.FavoriteSyncController
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequestKind
+import com.par9uet.jm.favorites.sync.FavoriteSyncRequester
 import com.par9uet.jm.favorites.sync.FavoriteVisibilityPolicy
 import com.par9uet.jm.favorites.usecase.CreateFavoriteFolder
 import com.par9uet.jm.favorites.usecase.DeleteFavoriteFolder
@@ -22,9 +23,8 @@ import com.par9uet.jm.favorites.usecase.DownloadSelectedFavorites
 import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.favorites.usecase.RenameFavoriteFolder
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.AppLocalSettings
 import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.pagingSource.CollectComicPagingSource
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -48,8 +48,8 @@ private data class FavoritesPagerKey(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FavoritesViewModel(
-    private val userManager: UserManager,
-    private val localSettingManager: LocalSettingManager,
+    private val favoriteSession: FavoriteSession,
+    private val localSettings: AppLocalSettings,
     private val localQuery: FavoriteLocalQuery,
     private val toastManager: ToastManager,
     private val uncollectFavorites: UncollectFavorites,
@@ -58,13 +58,13 @@ class FavoritesViewModel(
     private val deleteFavoriteFolder: DeleteFavoriteFolder,
     private val renameFavoriteFolder: RenameFavoriteFolder,
     private val downloadSelectedFavorites: DownloadSelectedFavorites,
-    private val syncController: FavoriteSyncController,
+    private val syncController: FavoriteSyncRequester,
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(FavoritesUiState())
     val uiState = _uiState.asStateFlow()
 
     private val visibilityPolicy = FavoriteVisibilityPolicy()
-    private val accountIdFlow = userManager.userState.map { it.data?.id ?: 0 }
+    private val accountIdFlow = favoriteSession.accountIdFlow
     private val selectedFolderIdFlow = _uiState
         .map { it.selectedFolderId }
         .distinctUntilChanged()
@@ -87,7 +87,7 @@ class FavoritesViewModel(
                         selectedFolderId = 0,
                         selection = FavoritesSelectionState(),
                         searchActive = false,
-                        filter = state.filter.copy(searchText = ""),
+                        filter = FavoritesFilter(),
                         modal = null,
                         viewport = state.viewport.reset(),
                     )
@@ -123,7 +123,7 @@ class FavoritesViewModel(
     }
 
     val collectComicPager = combine(
-        localSettingManager.localSettingState,
+        localSettings.localSettingState,
         _uiState.map { it.selectedFolderId to it.filter }.distinctUntilChanged(),
         accountIdFlow,
     ) { localSetting, (folderId, filter), accountId ->
@@ -252,6 +252,7 @@ class FavoritesViewModel(
             it.copy(
                 searchActive = false,
                 filter = it.filter.copy(searchText = ""),
+                viewport = it.viewport.reset(),
             )
         }
     }
@@ -322,24 +323,24 @@ class FavoritesViewModel(
     }
 
     private fun moveSelected(folderId: Int) {
-        val accountId = currentAccountId()
+        val sessionSnapshot = favoriteSession.snapshot()
         val ids = _uiState.value.selection.selectedComicIds
-        if (accountId <= 0 || ids.isEmpty()) return
+        if (sessionSnapshot.accountId <= 0 || ids.isEmpty()) return
         dismissModal()
         viewModelScope.launch {
-            val result = moveFavorites(accountId, ids, folderId)
+            val result = moveFavorites(sessionSnapshot, ids, folderId)
             toastManager.showAsync(batchMessage(result.succeeded, result.failed, "移动"))
             clearSelection()
         }
     }
 
     private fun uncollectSelected() {
-        val accountId = currentAccountId()
+        val sessionSnapshot = favoriteSession.snapshot()
         val ids = _uiState.value.selection.selectedComicIds
-        if (accountId <= 0 || ids.isEmpty()) return
+        if (sessionSnapshot.accountId <= 0 || ids.isEmpty()) return
         dismissModal()
         viewModelScope.launch {
-            val result = uncollectFavorites(accountId, ids)
+            val result = uncollectFavorites(sessionSnapshot, ids)
             toastManager.showAsync(batchMessage(result.succeeded, result.failed, "取消收藏"))
             clearSelection()
         }
@@ -348,9 +349,11 @@ class FavoritesViewModel(
     private fun submitCreateFolder(name: String) {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) return
+        val sessionSnapshot = favoriteSession.snapshot()
+        if (sessionSnapshot.accountId <= 0) return
         showFolderManagement()
         viewModelScope.launch {
-            when (val result = createFavoriteFolder(trimmedName)) {
+            when (val result = createFavoriteFolder(sessionSnapshot, trimmedName)) {
                 is NetWorkResult.Error -> toastManager.showAsync(result.message)
                 is NetWorkResult.Success -> {
                     requestAutomaticSync()
@@ -364,11 +367,11 @@ class FavoritesViewModel(
     private fun submitRenameFolder(folderId: Int, name: String) {
         val trimmedName = name.trim()
         if (trimmedName.isBlank()) return
-        val accountId = currentAccountId()
-        if (accountId <= 0) return
+        val sessionSnapshot = favoriteSession.snapshot()
+        if (sessionSnapshot.accountId <= 0) return
         showFolderManagement()
         viewModelScope.launch {
-            when (val result = renameFavoriteFolder(accountId, folderId, trimmedName)) {
+            when (val result = renameFavoriteFolder(sessionSnapshot, folderId, trimmedName)) {
                 is NetWorkResult.Error -> toastManager.showAsync(result.message)
                 is NetWorkResult.Success -> {
                     requestAutomaticSync()
@@ -381,11 +384,11 @@ class FavoritesViewModel(
 
     private fun submitDeleteFolder() {
         val modal = _uiState.value.modal as? FavoritesModal.DeleteFolder ?: return
-        val accountId = currentAccountId()
-        if (accountId <= 0) return
+        val sessionSnapshot = favoriteSession.snapshot()
+        if (sessionSnapshot.accountId <= 0) return
         showFolderManagement()
         viewModelScope.launch {
-            when (val result = deleteFavoriteFolder(accountId, modal.folderId)) {
+            when (val result = deleteFavoriteFolder(sessionSnapshot, modal.folderId)) {
                 is NetWorkResult.Error -> toastManager.showAsync(result.message)
                 is NetWorkResult.Success -> {
                     if (_uiState.value.selectedFolderId == modal.folderId) {
@@ -441,6 +444,7 @@ class FavoritesViewModel(
                 filter = it.filter.copy(searchText = ""),
                 selection = FavoritesSelectionState(),
                 modal = null,
+                viewport = it.viewport.reset(),
             )
         }
     }
@@ -449,7 +453,7 @@ class FavoritesViewModel(
         syncController.request(FavoriteSyncRequestKind.AUTO, folderId)
     }
 
-    private fun currentAccountId(): Int = userManager.userState.value.data?.id ?: 0
+    private fun currentAccountId(): Int = favoriteSession.currentAccountId()
 
     private fun batchMessage(succeeded: Int, failed: Int, action: String): String =
         if (failed == 0) "已$action $succeeded 部漫画"

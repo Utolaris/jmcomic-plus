@@ -26,6 +26,15 @@ enum class FavoriteSyncRequestKind {
     FORCE,
 }
 
+interface FavoriteSyncRequester {
+    val state: StateFlow<FavoriteSyncUiState>
+
+    fun request(
+        kind: FavoriteSyncRequestKind,
+        folderId: Int = 0,
+    )
+}
+
 internal val FAVORITE_CANONICAL_ORDER = CollectComicOrderFilter.COLLECT_TIME
 
 /**
@@ -44,7 +53,7 @@ class FavoriteSyncController(
     ) -> NetWorkResult<FavoriteSyncReport>,
     private val applicationScope: CoroutineScope,
     private val autoSyncCoordinator: FavoriteAutoSyncCoordinator = FavoriteAutoSyncCoordinator(),
-) {
+) : FavoriteSyncRequester {
     constructor(
         userManager: UserManager,
         syncFavorites: SyncFavorites,
@@ -77,7 +86,7 @@ class FavoriteSyncController(
 
     private val lock = Any()
     private val _state = MutableStateFlow(FavoriteSyncUiState())
-    val state: StateFlow<FavoriteSyncUiState> = _state.asStateFlow()
+    override val state: StateFlow<FavoriteSyncUiState> = _state.asStateFlow()
     private var trailingJob: Job? = null
 
     private var observedAccountId = currentAccountId()
@@ -97,9 +106,9 @@ class FavoriteSyncController(
         }
     }
 
-    fun request(
+    override fun request(
         kind: FavoriteSyncRequestKind,
-        folderId: Int = 0,
+        folderId: Int,
     ) {
         synchronized(lock) {
             val accountId = currentAccountId()

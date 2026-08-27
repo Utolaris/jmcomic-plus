@@ -3,12 +3,19 @@ package com.par9uet.jm.favorites.usecase
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
+import com.par9uet.jm.favorites.data.FavoriteSession
+import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class FavoriteUseCasesTest {
+    private val session = TestFavoriteSession()
+    private val sessionSnapshot = FavoriteSessionSnapshot(accountId = 42, generation = 0)
+
     @Test
     fun `uncollect removes local state only after remote success`() = runTest {
         val remote = RecordingRemoteMutation().apply {
@@ -16,7 +23,7 @@ class FavoriteUseCasesTest {
         }
         val local = RecordingLocalMutation()
 
-        val result = UncollectFavorites(remote, local)(42, listOf(1, 2, 1))
+        val result = UncollectFavorites(remote, local, session)(sessionSnapshot, listOf(1, 2, 1))
 
         assertEquals(FavoritesBatchResult(succeeded = 1, failed = 1), result)
         assertEquals(listOf(1, 2), remote.uncollectedIds)
@@ -30,7 +37,7 @@ class FavoriteUseCasesTest {
         }
         val local = RecordingLocalMutation()
 
-        val result = MoveFavorites(remote, local)(42, listOf(1, 2, 1), folderId = 7)
+        val result = MoveFavorites(remote, local, session)(sessionSnapshot, listOf(1, 2, 1), folderId = 7)
 
         assertEquals(FavoritesBatchResult(succeeded = 1, failed = 1), result)
         assertEquals(listOf(1, 2), remote.movedIds)
@@ -42,13 +49,38 @@ class FavoriteUseCasesTest {
         val remote = RecordingRemoteMutation()
         val local = RecordingLocalMutation()
 
-        assertEquals(NetWorkResult.Success(Unit), CreateFavoriteFolder(remote)("New"))
-        assertEquals(NetWorkResult.Success(Unit), DeleteFavoriteFolder(remote, local)(42, 7))
-        assertEquals(NetWorkResult.Success(Unit), RenameFavoriteFolder(remote, local)(42, 7, "Renamed"))
+        assertEquals(
+            NetWorkResult.Success(Unit),
+            CreateFavoriteFolder(remote, session)(sessionSnapshot, "New"),
+        )
+        assertEquals(
+            NetWorkResult.Success(Unit),
+            DeleteFavoriteFolder(remote, local, session)(sessionSnapshot, 7),
+        )
+        assertEquals(
+            NetWorkResult.Success(Unit),
+            RenameFavoriteFolder(remote, local, session)(sessionSnapshot, 7, "Renamed"),
+        )
 
         assertEquals(listOf(7), local.removedFolderIds)
         assertEquals(listOf(7 to "Renamed"), local.renamedFolders)
         assertEquals(listOf("New"), remote.createdFolderNames)
+    }
+
+    private class TestFavoriteSession : FavoriteSession {
+        override val accountIdFlow: Flow<Int> = flowOf(42)
+
+        override fun currentAccountId(): Int = 42
+
+        override fun snapshot(): FavoriteSessionSnapshot = FavoriteSessionSnapshot(42, 0)
+
+        override fun isCurrent(snapshot: FavoriteSessionSnapshot): Boolean =
+            snapshot == FavoriteSessionSnapshot(42, 0)
+
+        override suspend fun <T> withCurrentSession(
+            snapshot: FavoriteSessionSnapshot,
+            block: suspend () -> T,
+        ): T? = if (isCurrent(snapshot)) block() else null
     }
 
     private class RecordingRemoteMutation : FavoriteRemoteMutation {

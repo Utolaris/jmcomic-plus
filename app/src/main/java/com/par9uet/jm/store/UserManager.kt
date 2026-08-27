@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.util.concurrent.atomic.AtomicLong
@@ -57,6 +58,25 @@ class UserManager(
     @Volatile
     private var backgroundJob: Job? = null
 
+    fun currentSessionSnapshot(): UserSessionSnapshot = UserSessionSnapshot(
+        accountId = _userState.value.data?.id ?: 0,
+        generation = sessionGeneration.get(),
+    )
+
+    fun isCurrentSession(accountId: Int, generation: Long): Boolean {
+        val currentUser = _userState.value.data ?: return false
+        return sessionGeneration.get() == generation && currentUser.id == accountId
+    }
+
+    suspend fun <T> withCurrentSession(
+        accountId: Int,
+        generation: Long,
+        block: suspend () -> T,
+    ): T? = loginMutex.withLock {
+        if (!isCurrentSession(accountId, generation)) return@withLock null
+        block()
+    }
+
     init {
         // Restoring the local identity is cheap and keeps the first frame consistent with the
         // last session. Network verification is deliberately started after the UI is ready.
@@ -66,10 +86,14 @@ class UserManager(
 
     /** Compatibility entry point for callers that replace the active identity directly. */
     fun updateUser(user: User) {
-        sessionGeneration.incrementAndGet()
-        _userState.update { it.copy(data = user) }
-        userStorage.set(user)
-        sessionReadinessHolder.set(readinessForCachedUser(user))
+        runBlocking {
+            loginMutex.withLock {
+                sessionGeneration.incrementAndGet()
+                _userState.update { it.copy(data = user) }
+                userStorage.set(user)
+                sessionReadinessHolder.set(readinessForCachedUser(user))
+            }
+        }
     }
 
     suspend fun clearUser() {
@@ -338,3 +362,8 @@ class UserManager(
         val user: User,
     )
 }
+
+data class UserSessionSnapshot(
+    val accountId: Int,
+    val generation: Long,
+)
