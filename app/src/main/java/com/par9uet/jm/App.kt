@@ -50,7 +50,7 @@ import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.PostStartupInitializer
-import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.AppSnackbarHost
@@ -270,10 +270,10 @@ private fun ClipboardDetectedComicDialog(
     comic: Comic,
     onDismiss: () -> Unit,
     onNavigate: (Int) -> Unit,
-    remoteConfigManager: RemoteConfigManager = getKoin().get(),
+    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
 ) {
-    val remoteHost by remoteConfigManager.remoteImageHost.collectAsState()
+    val remoteHost by remoteConfigPreferences.remoteImageHost.collectAsState()
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("检测到漫画编码", fontWeight = FontWeight.Bold) },

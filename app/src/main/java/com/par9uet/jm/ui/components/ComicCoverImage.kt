@@ -36,7 +36,7 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.ToastManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -49,11 +49,11 @@ fun ComicCoverImage(
     comic: Comic,
     modifier: Modifier = Modifier.fillMaxWidth(),
     showIdChip: Boolean = false,
-    remoteConfigManager: RemoteConfigManager = getKoin().get(),
+    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
     toastManager: ToastManager = getKoin().get(),
 ) {
-    val remoteImageHost by remoteConfigManager.remoteImageHost.collectAsState()
+    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
     val clipboardManager = LocalClipboardManager.current
     val comicRepository: ComicRepository = getKoin().get()
     val scope = rememberCoroutineScope()

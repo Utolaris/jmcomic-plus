@@ -26,7 +26,6 @@ class AppLockAtomicMutationTest {
             override fun persist(localSetting: LocalSetting) {
                 persisted += localSetting
             }
-            override fun isLoaded(): Boolean = true
         }
         manager = LocalSettingManager(persistence, NoOpLauncherIdentityApplier())
     }

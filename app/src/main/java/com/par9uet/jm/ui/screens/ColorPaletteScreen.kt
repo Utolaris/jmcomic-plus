@@ -301,10 +301,10 @@ private fun PresetGrid(
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
+                // 状态展示卡，不是可选项；进入自定义只能通过调色槽，避免误清空颜色。
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onSelect(COLOR_PALETTE_PRESET_CUSTOM) }
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -317,7 +317,7 @@ private fun PresetGrid(
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "已自定义颜色，点击预设恢复",
+                            text = "已自定义颜色；点击任意预设可恢复该方案",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )

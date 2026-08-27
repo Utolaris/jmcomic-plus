@@ -29,6 +29,7 @@ class LocalSettingManager(
     RecommendationPreferences,
     ReaderPreferences,
     CacheNotificationPreferences,
+    MiscSettingsPreferences,
     AppSecurityPreferences,
     AppSecurityEditor,
     DohPreferences,
@@ -52,12 +53,9 @@ class LocalSettingManager(
     override val memoryOptEnabled = _projectingState { it.readMemoryOptEnabled }
     override val decodeConcurrency = _projectingState { it.readDecodeConcurrency }
     override val cacheNotification = _projectingState(::toCacheNotificationSetting)
+    override val misc = _projectingState(::toMiscSettingsState)
     override val appLock = _projectingState(::toAppLockState)
     override val doh = _projectingState(::toDohSettingsState)
-
-    /** True once DoH init ran or settings toggled DoH on in this session. */
-    private val _sessionDohActive = MutableStateFlow(false)
-    override val sessionDohActive = _sessionDohActive.asStateFlow()
 
     override val theme = _projectingState { it.theme }
     override val colorPalette = _projectingState(::toColorPaletteState)
@@ -161,15 +159,23 @@ class LocalSettingManager(
 
     // ---- Appearance / palette: compound transitions ----
 
-    /** Selecting a preset clears any custom color overrides in the same transition. */
-    override fun selectColorPreset(presetId: String) = updateSetting {
-        it.copy(
-            colorPalettePreset = presetId,
-            customColorPrimary = null,
-            customColorSecondary = null,
-            customColorTertiary = null,
-            customColorError = null,
-        )
+    /**
+     * Selecting a real preset clears any custom color overrides in the same transition. CUSTOM is
+     * not a selectable preset: entering it only happens through [applyCustomColors], so this call
+     * keeps existing custom values instead of destroying them.
+     */
+    override fun selectColorPreset(presetId: String) = updateSetting { current ->
+        if (presetId == COLOR_PALETTE_PRESET_CUSTOM || presetId == current.colorPalettePreset) {
+            current
+        } else {
+            current.copy(
+                colorPalettePreset = presetId,
+                customColorPrimary = null,
+                customColorSecondary = null,
+                customColorTertiary = null,
+                customColorError = null,
+            )
+        }
     }
 
     /** Confirming a custom color switches the palette to custom in the same transition. */
@@ -346,9 +352,6 @@ class LocalSettingManager(
     override fun persistPreferIpv6(enabled: Boolean) =
         updateSetting { it.copy(dohPreferIpv6 = enabled) }
 
-    override fun setDohSessionActive(active: Boolean) {
-        _sessionDohActive.value = active
-    }
 
     private fun updateSetting(update: (LocalSetting) -> LocalSetting) {
         _localSettingState.update(update)
@@ -371,6 +374,17 @@ class LocalSettingManager(
     private fun toCacheNotificationSetting(setting: LocalSetting) = CacheNotificationSetting(
         show = setting.showComicCacheNotification,
         showName = setting.showComicCacheNotificationName,
+    )
+    private fun toMiscSettingsState(setting: LocalSetting) = MiscSettingsState(
+        clipboardAutoDetectEnabled = setting.clipboardAutoDetectEnabled,
+        autoSignInEnabled = setting.autoSignInEnabled,
+        gridColumns = GridColumnsSetting(
+            home = setting.homeGridColumns,
+            collect = setting.collectGridColumns,
+            download = setting.downloadGridColumns,
+            history = setting.historyGridColumns,
+            search = setting.searchGridColumns,
+        ),
     )
 
     private fun toAppLockState(setting: LocalSetting) = AppLockState(

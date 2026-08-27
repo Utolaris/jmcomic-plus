@@ -12,6 +12,4 @@ interface LocalSettingPersistence {
     fun load(): LocalSetting?
 
     fun persist(localSetting: LocalSetting)
-
-    fun isLoaded(): Boolean
 }

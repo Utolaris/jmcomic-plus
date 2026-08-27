@@ -5,6 +5,9 @@ import com.google.gson.reflect.TypeToken
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.data.models.BlockedTagTemplate
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
+import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
@@ -12,7 +15,6 @@ import com.par9uet.jm.utils.flattenBlockedTagTemplates
 import com.par9uet.jm.utils.normalizeBlockedTagList
 import com.par9uet.jm.utils.normalizeBlockedTagTemplates
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
@@ -29,7 +31,6 @@ class LocalSettingStorage(
     }
 
     private var _state = MutableStateFlow<LocalSetting?>(null)
-    val state = _state.asStateFlow()
 
     override fun load(): LocalSetting? {
         _state.value?.let { return it }
@@ -46,8 +47,6 @@ class LocalSettingStorage(
         _state.update { localSetting }
         secureStorage.setStartup(STORAGE_KEY, localSetting)
     }
-
-    override fun isLoaded(): Boolean = _state.value != null
 
     fun remove() {
         _state.update { null }
@@ -77,6 +76,7 @@ class LocalSettingStorage(
                 listOf(BlockedTagTemplate(name = "默认排除", tagList = legacyBlockedTags))
             else -> listOf()
         }
+        val appLock = canonicalizeAppLock(saved, migratedUnlockMode)
         return saved.copy(
             showComicCacheNotification = if (savedJson.hasField("showComicCacheNotification")) {
                 saved.showComicCacheNotification
@@ -95,10 +95,11 @@ class LocalSettingStorage(
             },
             blockedTagList = flattenBlockedTagTemplates(migratedTemplates),
             blockedTagTemplateList = migratedTemplates,
-            appLockPassword = saved.appLockPassword.orEmpty(),
-            appLockPasswordLength = saved.appLockPasswordLength.coerceIn(4, 8),
-            appLockPattern = saved.appLockPattern.orEmpty(),
-            appLockUnlockMode = migratedUnlockMode,
+            appLockPassword = appLock.password,
+            appLockPasswordLength = appLock.passwordLength,
+            appLockPattern = appLock.pattern,
+            appLockEnabled = appLock.enabled,
+            appLockUnlockMode = appLock.unlockMode,
             colorPalettePreset = if (savedJson.hasField("colorPalettePreset")) {
                 saved.colorPalettePreset
             } else {
@@ -124,6 +125,42 @@ class LocalSettingStorage(
 }
 
 private fun String?.hasField(name: String): Boolean = this != null && contains(QUOTE + name + QUOTE)
+
+internal data class CanonicalAppLock(
+    val enabled: Boolean,
+    val password: String,
+    val passwordLength: Int,
+    val pattern: String,
+    val unlockMode: String,
+)
+
+/**
+ * Older versions let callers sequence multiple setters, so persisted JSON can hold lock states
+ * the atomic mutator can no longer produce (a credential-less enabled lock, a mode without its
+ * credential, or BOTH with one credential). Every load is rewritten to the closest valid state.
+ */
+internal fun canonicalizeAppLock(saved: LocalSetting, migratedUnlockMode: String): CanonicalAppLock {
+    val password = saved.appLockPassword.orEmpty()
+    val pattern = saved.appLockPattern.orEmpty()
+    val unlockMode = when {
+        password.isNotEmpty() && pattern.isNotEmpty() -> when (migratedUnlockMode) {
+            APP_LOCK_UNLOCK_MODE_PASSWORD, APP_LOCK_UNLOCK_MODE_PATTERN, APP_LOCK_UNLOCK_MODE_BOTH ->
+                migratedUnlockMode
+            else -> APP_LOCK_UNLOCK_MODE_BOTH
+        }
+        password.isNotEmpty() -> APP_LOCK_UNLOCK_MODE_PASSWORD
+        pattern.isNotEmpty() -> APP_LOCK_UNLOCK_MODE_PATTERN
+        else -> APP_LOCK_UNLOCK_MODE_PASSWORD
+    }
+    return CanonicalAppLock(
+        // 启用锁但没有可解锁的凭据是非法状态；恢复为关闭。
+        enabled = saved.appLockEnabled && (password.isNotEmpty() || pattern.isNotEmpty()),
+        password = password,
+        passwordLength = saved.appLockPasswordLength.coerceIn(4, 8),
+        pattern = pattern,
+        unlockMode = unlockMode,
+    )
+}
 
 /**
  * 旧版本存储中的 appLockType 字段（已废弃）迁移到 appLockUnlockMode。

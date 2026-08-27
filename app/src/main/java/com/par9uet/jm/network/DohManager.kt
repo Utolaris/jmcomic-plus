@@ -146,7 +146,6 @@ class DohManager(
     suspend fun init() {
         val setting = dohPrefs.doh.value
         sessionEnabled = setting.enabled && setting.autoStart
-        dohEditor.setDohSessionActive(sessionEnabled)
         rebuildResolver()
     }
 

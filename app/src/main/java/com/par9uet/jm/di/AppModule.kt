@@ -15,7 +15,19 @@ import com.par9uet.jm.storage.SecureCookieStorage
 import com.par9uet.jm.storage.SecureStorage
 import com.par9uet.jm.storage.SecureUserStorage
 import com.par9uet.jm.storage.UserStorage
+import com.par9uet.jm.store.ApiEndpointPreference
+import com.par9uet.jm.store.AppSecurityEditor
+import com.par9uet.jm.store.AppSecurityPreferences
 import com.par9uet.jm.store.AppUpdateDownloadManager
+import com.par9uet.jm.store.AppearanceEditor
+import com.par9uet.jm.store.AppearancePreferences
+import com.par9uet.jm.store.CacheNotificationPreferences
+import com.par9uet.jm.store.ContentPreferences
+import com.par9uet.jm.store.DohPreferences
+import com.par9uet.jm.store.DohPreferencesEditor
+import com.par9uet.jm.store.ReaderPreferences
+import com.par9uet.jm.store.RecommendationPreferences
+import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.DownloadToastAggregator
 import com.par9uet.jm.store.HistorySearchManager
@@ -27,6 +39,7 @@ import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.utils.LauncherDisguiseApplier
+import com.par9uet.jm.utils.LauncherIdentityApplier
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -36,6 +49,7 @@ import kotlinx.coroutines.flow.map
 import org.koin.core.context.GlobalContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.bind
+import org.koin.dsl.binds
 import org.koin.dsl.module
 
 val appModule = module {
@@ -53,12 +67,12 @@ val appModule = module {
     single { LocalSettingStorage(get()) }
     single { HistorySearchStorage(get()) }
     single { ReadHistoryStorage(get()) }
-    single { LauncherDisguiseApplier(get()) }
+    single { LauncherDisguiseApplier(get()) } bind LauncherIdentityApplier::class
     single {
         JmImageHostHealthManager(
             context = get(),
             scope = get(),
-            configuredHostFlow = get<RemoteConfigManager>().remoteImageHost,
+            configuredHostFlow = get<RemoteConfigPreferences>().remoteImageHost,
         )
     }
     single { CoverImageHostResolver(get<JmImageHostHealthManager>()) }
@@ -67,15 +81,29 @@ val appModule = module {
 
     single { SessionReadinessHolder() }
     single { UserManager(get(), get(), get(), get(), get()) }
-    single { RemoteConfigManager(get(), get()) }
-    single { LocalSettingManager(get<LocalSettingStorage>(), get()) }
+    single { com.par9uet.jm.store.SecureRemoteConfigStore(get()) } bind com.par9uet.jm.store.RemoteConfigStore::class
+    single { RemoteConfigManager(get(), get()) } bind RemoteConfigPreferences::class
+    // All interface aliases resolve to the same LocalSettingManager singleton.
+    single { LocalSettingManager(get<LocalSettingStorage>(), get()) } binds arrayOf(
+        ContentPreferences::class,
+        RecommendationPreferences::class,
+        ReaderPreferences::class,
+        CacheNotificationPreferences::class,
+        AppSecurityPreferences::class,
+        AppSecurityEditor::class,
+        DohPreferences::class,
+        DohPreferencesEditor::class,
+        AppearancePreferences::class,
+        AppearanceEditor::class,
+        ApiEndpointPreference::class,
+    )
     single { HistorySearchManager(get()) }
     single { ReadHistoryManager(get()) }
     single { ToastManager() }
     single { DownloadToastAggregator(get()) }
     single { PostStartupInitializer(get(), GlobalContext.get()) }
     single { AppUpdateDownloadManager(get(), get(), get(), get()) }
-    viewModel { com.par9uet.jm.ui.viewModel.SettingsViewModel(get(), get()) }
+    viewModel { com.par9uet.jm.ui.viewModel.SettingsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
 
     single<Gson> { GsonBuilder().setStrictness(Strictness.LENIENT).serializeNulls().create() }
 }

@@ -32,7 +32,7 @@ import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.store.CacheNotificationPreferences
 import com.par9uet.jm.store.DownloadToastAggregator
-import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.utils.COMIC_CACHE_NOTIFICATION_ID_BASE
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.cancelProgressNotification
@@ -52,7 +52,7 @@ class DownloadComicWorker(
     private val appContext: Context,
     params: WorkerParameters,
     private val downloadComicDao: DownloadComicDao,
-    private val remoteConfigManager: RemoteConfigManager,
+    private val remoteConfigPreferences: RemoteConfigPreferences,
     private val cacheNotificationPreferences: CacheNotificationPreferences,
     private val comicRepository: ComicRepository,
     private val downloadToastAggregator: DownloadToastAggregator,
@@ -117,7 +117,7 @@ class DownloadComicWorker(
             val cacheKey = jmCoverCacheKey(coverOwnerId)
             val candidates = coverImageHostResolver.coverUrls(
                 comicId = coverOwnerId,
-                remoteHost = remoteConfigManager.remoteImageHost.value,
+                remoteHost = remoteConfigPreferences.remoteImageHost.value,
             )
             candidates.forEachIndexed { index, coverUrl ->
                 val request = ImageRequest.Builder(appContext)

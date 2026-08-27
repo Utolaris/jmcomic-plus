@@ -81,16 +81,11 @@ import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.AVAILABLE_APIS
 import com.par9uet.jm.data.models.AVAILABLE_THEMES
 import com.par9uet.jm.data.models.LauncherDisguise
-import com.par9uet.jm.data.models.LocalSetting
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.ui.viewModel.SettingsUiState
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
-import com.par9uet.jm.favorites.model.FavoritesIntent
-import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.ui.glass.GlassModal
-import org.koin.compose.getKoin
-import org.koin.compose.viewmodel.koinActivityViewModel
 
 private sealed class SettingType {
     object Api : SettingType()
@@ -119,10 +114,9 @@ private fun gridColumnsText(columns: Int): String =
 @Composable
 fun LocalSettingScreen(
     settingsViewModel: com.par9uet.jm.ui.viewModel.SettingsViewModel = org.koin.compose.viewmodel.koinViewModel(),
-    localSettingManager: LocalSettingManager = getKoin().get(),
 ) {
     val mainNavController = LocalMainNavController.current
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val ui by settingsViewModel.uiState.collectAsState()
     val favoriteSyncState by settingsViewModel.favoriteSyncState.collectAsState()
     var settingType by remember { mutableStateOf<SettingType>(SettingType.Api) }
     var isOpenSettingSelectDialog by remember { mutableStateOf(false) }
@@ -133,24 +127,8 @@ fun LocalSettingScreen(
         isOpenSettingSelectDialog = true
     }
 
-    // 应用锁状态文本
-    val appLockStatusText by remember(localSetting) {
-        derivedStateOf {
-            if (!localSetting.appLockEnabled) {
-                "\u672a\u542f\u7528"
-            } else {
-                val methods = buildList {
-                    if (localSetting.appLockPassword.isNotEmpty()) add("\u5bc6\u7801")
-                    if (localSetting.appLockPattern.isNotEmpty()) add("\u56fe\u6848")
-                }
-                if (methods.isEmpty()) {
-                    "\u5df2\u542f\u7528"
-                } else {
-                    "\u5df2\u542f\u7528 - ${methods.joinToString("+")}"
-                }
-            }
-        }
-    }
+    // 应用锁状态文本由 SettingsUiState 从窄状态推导。
+    val appLockStatusText = ui.appLockSummaryText()
 
     CommonScaffold(
         title = "\u8bbe\u7f6e",
@@ -158,13 +136,13 @@ fun LocalSettingScreen(
             SettingSelectDialogContent(
                 visible = isOpenSettingSelectDialog,
                 settingType = settingType,
-                localSetting = localSetting,
+                ui = ui,
                 settingsViewModel = settingsViewModel,
                 onDismiss = { isOpenSettingSelectDialog = false }
             )
             HomeExcludedTagsDialog(
                 visible = showHomeExcludedTagsDialog,
-                tags = localSetting.homeExcludedTags,
+                tags = ui.homeExcludedTags,
                 onConfirm = { tags ->
                     settingsViewModel.updateHomeExcludedTags(tags)
                     showHomeExcludedTagsDialog = false
@@ -185,13 +163,13 @@ fun LocalSettingScreen(
         ) {
             item {
                 SettingsSection(title = "\u663e\u793a") {
-                    SettingsRow(Icons.Rounded.DarkMode, "\u4e3b\u9898", themeTextMap[localSetting.theme].orEmpty()) {
+                    SettingsRow(Icons.Rounded.DarkMode, "\u4e3b\u9898", themeTextMap[ui.theme].orEmpty()) {
                         openSetting(SettingType.Theme)
                     }
                     SettingsRow(
                         icon = Icons.Rounded.Palette,
                         title = "\u8c03\u8272\u677f",
-                        value = when (localSetting.colorPalettePreset) {
+                        value = when (ui.colorPalette.presetId) {
                             "custom" -> "\u81ea\u5b9a\u4e49"
                             "monet" -> "\u83ab\u5948\u53d6\u8272"
                             else -> "\u9884\u8bbe\u65b9\u6848"
@@ -199,19 +177,19 @@ fun LocalSettingScreen(
                     ) {
                         mainNavController.navigate("colorPalette")
                     }
-                    SettingsRow(Icons.Rounded.Image, "\u56fe\u6807\u4f2a\u88c5", LauncherDisguise.fromId(localSetting.launcherDisguise).label) {
+                    SettingsRow(Icons.Rounded.Image, "\u56fe\u6807\u4f2a\u88c5", LauncherDisguise.fromId(ui.launcherDisguiseId).label) {
                         openSetting(SettingType.LauncherDisguise)
                     }
                     SettingsSwitchRow(
                         icon = Icons.Rounded.ContentPaste,
                         title = "\u526a\u5207\u677f\u81ea\u52a8\u68c0\u6d4b",
-                        value = localSetting.clipboardAutoDetectEnabled,
+                        value = ui.clipboardAutoDetectEnabled,
                         onCheckedChange = settingsViewModel::setClipboardAutoDetectEnabled
                     )
                     SettingsRow(
                         Icons.Rounded.GridView,
                         "\u7f51\u683c\u5217\u6570",
-                        "\u9996\u9875 ${gridColumnsText(localSetting.homeGridColumns)} \u00b7 \u6536\u85cf ${gridColumnsText(localSetting.collectGridColumns)} \u00b7 \u7f13\u5b58 ${gridColumnsText(localSetting.downloadGridColumns)} \u00b7 \u5386\u53f2 ${gridColumnsText(localSetting.historyGridColumns)} \u00b7 \u641c\u7d22 ${gridColumnsText(localSetting.searchGridColumns)}"
+                        "\u9996\u9875 ${gridColumnsText(ui.gridColumns.home)} \u00b7 \u6536\u85cf ${gridColumnsText(ui.gridColumns.collect)} \u00b7 \u7f13\u5b58 ${gridColumnsText(ui.gridColumns.download)} \u00b7 \u5386\u53f2 ${gridColumnsText(ui.gridColumns.history)} \u00b7 \u641c\u7d22 ${gridColumnsText(ui.gridColumns.search)}"
                     ) {
                         openSetting(SettingType.AllGridColumns)
                     }
@@ -233,19 +211,19 @@ fun LocalSettingScreen(
                     SettingsRow(
                         Icons.Rounded.Api,
                         "网络推荐节点",
-                        localSetting.api
+                        ui.apiEndpoint
                     ) {
                         openSetting(SettingType.Api)
                     }
                     SettingsRow(
                         Icons.Rounded.Dns,
                         "DoH 加密 DNS",
-                        if (localSetting.dohEnabled) {
-                            if (localSetting.dohEnabled && localSetting.dohAutoStart) {
+                        if (ui.doh.enabled) {
+                            if (ui.doh.enabled && ui.doh.autoStart) {
                                 val serverName = com.par9uet.jm.network.resolveDohServer(
-                                    localSetting.dohServerId,
-                                    localSetting.dohCustomServerName,
-                                    localSetting.dohCustomServerUrl,
+                                    ui.doh.serverId,
+                                    ui.doh.customServerName,
+                                    ui.doh.customServerUrl,
                                 ).name
                                 "已启用 · $serverName"
                             } else {
@@ -260,10 +238,10 @@ fun LocalSettingScreen(
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Recommend,
                         title = "\u7f51\u7edc\u63a8\u8350",
-                        value = localSetting.preferenceRecommendEnabled,
+                        value = ui.recommendationEnabled,
                         onCheckedChange = { settingsViewModel.setPreferenceRecommendEnabled(it) }
                     )
-                    if (localSetting.preferenceRecommendEnabled) {
+                    if (ui.recommendationEnabled) {
                         Text(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                             text = "\u5f00\u542f\u540e\u9996\u9875\u9ed8\u8ba4\u5c55\u793a\u57fa\u4e8e\u767b\u5f55\u8d26\u53f7\u7684\u4e2a\u6027\u5316\u63a8\u8350\uff0c\u53ef\u80fd\u4e0d\u7a33\u5b9a",
@@ -274,7 +252,7 @@ fun LocalSettingScreen(
                     SettingsRow(
                         icon = Icons.Rounded.Block,
                         title = "\u9996\u9875\u6807\u7b7e\u6392\u9664",
-                        value = if (localSetting.homeExcludedTags.isEmpty()) "\u672a\u8bbe\u7f6e" else "${localSetting.homeExcludedTags.size} \u4e2a\u6807\u7b7e"
+                        value = if (ui.homeExcludedTags.isEmpty()) "\u672a\u8bbe\u7f6e" else "${ui.homeExcludedTags.size} \u4e2a\u6807\u7b7e"
                     ) {
                         showHomeExcludedTagsDialog = true
                     }
@@ -282,19 +260,19 @@ fun LocalSettingScreen(
             }
             item {
                 SettingsSection(title = "\u9605\u8bfb") {
-                    SettingsRow(Icons.Rounded.Tune, "\u56fe\u7247\u9884\u52a0\u8f7d", prefetchText(localSetting.prefetchCount)) {
+                    SettingsRow(Icons.Rounded.Tune, "\u56fe\u7247\u9884\u52a0\u8f7d", prefetchText(ui.prefetchCount)) {
                         openSetting(SettingType.PrefetchCount)
                     }
-                    SettingsRow(Icons.AutoMirrored.Rounded.MenuBook, "\u9605\u8bfb\u6a21\u5f0f", readModeText(localSetting.readMode)) {
+                    SettingsRow(Icons.AutoMirrored.Rounded.MenuBook, "\u9605\u8bfb\u6a21\u5f0f", readModeText(ui.readMode)) {
                         openSetting(SettingType.ReadMode)
                     }
                     SettingsSwitchRow(
                         icon = Icons.Rounded.Memory,
                         title = "\u56fe\u7247\u5185\u5b58\u4f18\u5316",
-                        value = localSetting.readMemoryOptEnabled,
+                        value = ui.memoryOptEnabled,
                         onCheckedChange = { settingsViewModel.setMemoryOptEnabled(it) }
                     )
-                    if (localSetting.readMemoryOptEnabled) {
+                    if (ui.memoryOptEnabled) {
                         Text(
                             modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                             text = "\u5f00\u542f\u540e\u9650\u5236\u5e76\u53d1\u89e3\u7801\u6570\u5e76\u964d\u4f4e\u91c7\u6837\u7387\uff0c\u7f13\u89e3\u4f4e\u7aef\u8bbe\u5907 OOM\uff1b\u63a8\u8350\u503c 2",
@@ -304,7 +282,7 @@ fun LocalSettingScreen(
                         SettingsRow(
                             icon = Icons.Rounded.Memory,
                             title = "\u5e76\u53d1\u89e3\u7801\u6570",
-                            value = "\u63a8\u8350 ${localSetting.readDecodeConcurrency}"
+                            value = "\u63a8\u8350 ${ui.decodeConcurrency}"
                         ) {
                             openSetting(SettingType.ReadDecodeConcurrency)
                         }
@@ -313,7 +291,7 @@ fun LocalSettingScreen(
             }
             item {
                 SettingsSection(title = "\u901a\u77e5") {
-                    SettingsRow(Icons.Rounded.Notifications, "\u901a\u77e5\u7ba1\u7406", notificationText(localSetting)) {
+                    SettingsRow(Icons.Rounded.Notifications, "\u901a\u77e5\u7ba1\u7406", notificationText(ui.notification)) {
                         openSetting(SettingType.NotificationManagement)
                     }
                 }
@@ -323,7 +301,7 @@ fun LocalSettingScreen(
                     SettingsSwitchRow(
                         icon = Icons.Rounded.EventAvailable,
                         title = "\u81ea\u52a8\u7b7e\u5230",
-                        value = localSetting.autoSignInEnabled,
+                        value = ui.autoSignInEnabled,
                         onCheckedChange = { settingsViewModel.setAutoSignInEnabled(it) }
                     )
                     SettingsRow(
@@ -366,7 +344,7 @@ fun LocalSettingScreen(
 private fun SettingSelectDialogContent(
     visible: Boolean,
     settingType: SettingType,
-    localSetting: LocalSetting,
+    ui: SettingsUiState,
     settingsViewModel: com.par9uet.jm.ui.viewModel.SettingsViewModel,
     onDismiss: () -> Unit
 ) {
@@ -374,11 +352,11 @@ private fun SettingSelectDialogContent(
     if (settingType is SettingType.AllGridColumns) {
         AllGridColumnSliderDialog(
             visible = visible,
-            homeColumns = localSetting.homeGridColumns,
-            collectColumns = localSetting.collectGridColumns,
-            downloadColumns = localSetting.downloadGridColumns,
-            historyColumns = localSetting.historyGridColumns,
-            searchColumns = localSetting.searchGridColumns,
+            homeColumns = ui.gridColumns.home,
+            collectColumns = ui.gridColumns.collect,
+            downloadColumns = ui.gridColumns.download,
+            historyColumns = ui.gridColumns.history,
+            searchColumns = ui.gridColumns.search,
             onConfirm = { home, collect, download, history, search ->
                 settingsViewModel.applyGridColumns(home, collect, download, history, search)
                 onDismiss()
@@ -440,7 +418,7 @@ private fun SettingSelectDialogContent(
     SelectDialog(
         visible = visible,
         title = settingTitle(settingType),
-        value = settingValue(settingType, localSetting),
+        value = settingValue(settingType, ui),
         selectOptionList = when (settingType) {
             is SettingType.Api -> apiSelectOptionList
             is SettingType.Theme -> themeSelectOptionList
@@ -804,10 +782,10 @@ private fun readModeText(value: String): String {
     }
 }
 
-private fun notificationText(localSetting: LocalSetting): String {
+private fun notificationText(notification: com.par9uet.jm.store.CacheNotificationSetting): String {
     return when {
-        !localSetting.showComicCacheNotification -> "\u5173\u95ed"
-        localSetting.showComicCacheNotificationName -> "\u5f00\u542f\u5e76\u663e\u793a\u6f2b\u753b\u540d"
+        !notification.show -> "\u5173\u95ed"
+        notification.showName -> "\u5f00\u542f\u5e76\u663e\u793a\u6f2b\u753b\u540d"
         else -> "\u5f00\u542f\u4f46\u4e0d\u663e\u793a\u6f2b\u753b\u540d"
     }
 }
@@ -825,19 +803,19 @@ private fun settingTitle(type: SettingType): String {
     }
 }
 
-private fun settingValue(type: SettingType, localSetting: LocalSetting): String {
+private fun settingValue(type: SettingType, ui: SettingsUiState): String {
     return when (type) {
-        is SettingType.Api -> localSetting.api
-        is SettingType.Theme -> localSetting.theme
-        is SettingType.LauncherDisguise -> LauncherDisguise.fromId(localSetting.launcherDisguise).id
-        is SettingType.PrefetchCount -> "${localSetting.prefetchCount}"
-        is SettingType.ReadMode -> localSetting.readMode
+        is SettingType.Api -> ui.apiEndpoint
+        is SettingType.Theme -> ui.theme
+        is SettingType.LauncherDisguise -> LauncherDisguise.fromId(ui.launcherDisguiseId).id
+        is SettingType.PrefetchCount -> "${ui.prefetchCount}"
+        is SettingType.ReadMode -> ui.readMode
         is SettingType.NotificationManagement -> when {
-            !localSetting.showComicCacheNotification -> NOTIFICATION_OFF
-            localSetting.showComicCacheNotificationName -> NOTIFICATION_ON_WITH_NAME
+            !ui.notification.show -> NOTIFICATION_OFF
+            ui.notification.showName -> NOTIFICATION_ON_WITH_NAME
             else -> NOTIFICATION_ON_WITHOUT_NAME
         }
         is SettingType.AllGridColumns -> ""
-        is SettingType.ReadDecodeConcurrency -> "${localSetting.readDecodeConcurrency}"
+        is SettingType.ReadDecodeConcurrency -> "${ui.decodeConcurrency}"
     }
 }

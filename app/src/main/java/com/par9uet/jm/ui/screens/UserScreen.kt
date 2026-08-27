@@ -54,7 +54,7 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.par9uet.jm.R
 import com.par9uet.jm.data.models.User
-import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.ui.viewModel.UserViewModel
@@ -318,7 +318,7 @@ private fun MenuDivider() {
 @Composable
 fun UserScreen(
     userManager: UserManager = getKoin().get(),
-    remoteConfigManager: RemoteConfigManager = getKoin().get(),
+    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     userViewModel: UserViewModel = koinActivityViewModel(),
     topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
@@ -328,7 +328,7 @@ fun UserScreen(
     val authState by userManager.authState.collectAsState()
     val hasCachedIdentity = authState != SessionReadiness.Unauthenticated &&
         (userState.data?.id ?: 0) > 0
-    val remoteImageHost by remoteConfigManager.remoteImageHost.collectAsState()
+    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
     val mainNavController = LocalMainNavController.current
 
     fun checkLoginThenDo(onDo: () -> Unit) {

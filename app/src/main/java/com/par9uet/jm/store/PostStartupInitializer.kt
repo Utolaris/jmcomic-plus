@@ -6,6 +6,7 @@ import com.par9uet.jm.network.DohManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.supervisorScope
 import org.koin.core.Koin
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -23,17 +24,18 @@ class PostStartupInitializer(
     fun start() {
         if (!started.compareAndSet(false, true)) return
 
-        // DoH must be active before the first authenticated/network request resolves DNS:
-        // those requests (remote settings, user verification) wait for init below. Everything
-        // purely local runs in parallel and never waits on DNS.
         launchTask("DoH 网络配置") {
-            val dohManager = koin.get<DohManager>()
-            dohManager.init()
-            koin.get<RemoteConfigManager>().refresh()
-            koin.get<UserManager>().verifyStoredLogin()
-            koin.get<UserManager>().autoSignInIfNeeded(
-                enabled = koin.get<LocalSettingManager>().currentAutoSignInEnabled(),
-                toastManager = koin.get()
+            runAuthenticatedStartupTasks(
+                initDoh = { koin.get<DohManager>().init() },
+                refreshRemoteConfig = { koin.get<RemoteConfigManager>().refresh() },
+                verifyUser = {
+                    val userManager = koin.get<UserManager>()
+                    userManager.verifyStoredLogin()
+                    userManager.autoSignInIfNeeded(
+                        enabled = koin.get<LocalSettingManager>().currentAutoSignInEnabled(),
+                        toastManager = koin.get(),
+                    )
+                },
             )
         }
         launchTask("桌面图标入口") {
@@ -61,5 +63,22 @@ class PostStartupInitializer(
             }
         }
     }
+}
 
+/**
+ * DoH must be active before the first authenticated/network request resolves DNS: init runs
+ * first; only then do remote-config and user verification start, in parallel branches inside a
+ * supervisorScope so one slow/failing branch never blocks or cancels the other. Cancellation
+ * still propagates to both branches.
+ */
+internal suspend fun runAuthenticatedStartupTasks(
+    initDoh: suspend () -> Unit,
+    refreshRemoteConfig: suspend () -> Unit,
+    verifyUser: suspend () -> Unit,
+) {
+    initDoh()
+    supervisorScope {
+        launch { refreshRemoteConfig() }
+        launch { verifyUser() }
+    }
 }

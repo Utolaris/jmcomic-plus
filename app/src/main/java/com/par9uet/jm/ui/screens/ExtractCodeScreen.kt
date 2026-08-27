@@ -46,7 +46,7 @@ import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
@@ -64,13 +64,13 @@ import org.koin.compose.getKoin
 @Composable
 fun ExtractCodeScreen(
     comicRepository: ComicRepository = getKoin().get(),
-    remoteConfigManager: RemoteConfigManager = getKoin().get(),
+    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     toastManager: ToastManager = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
 ) {
     val mainNavController = LocalMainNavController.current
     val clipboardManager = LocalClipboardManager.current
-    val remoteImageHost by remoteConfigManager.remoteImageHost.collectAsState()
+    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
     var extractedCode by remember { mutableStateOf<String?>(null) }

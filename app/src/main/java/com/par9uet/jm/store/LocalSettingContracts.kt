@@ -40,6 +40,25 @@ interface CacheNotificationPreferences {
     val cacheNotification: StateFlow<CacheNotificationSetting>
 }
 
+data class GridColumnsSetting(
+    val home: Int = 0,
+    val collect: Int = 0,
+    val download: Int = 0,
+    val history: Int = 0,
+    val search: Int = 0,
+)
+
+/** Small single-purpose toggles shown on the Settings home screen. */
+data class MiscSettingsState(
+    val clipboardAutoDetectEnabled: Boolean = false,
+    val autoSignInEnabled: Boolean = false,
+    val gridColumns: GridColumnsSetting = GridColumnsSetting(),
+)
+
+interface MiscSettingsPreferences {
+    val misc: StateFlow<MiscSettingsState>
+}
+
 data class AppLockState(
     val enabled: Boolean = false,
     val password: String = "",
@@ -82,12 +101,6 @@ data class DohSettingsState(
 
 interface DohPreferences {
     val doh: StateFlow<DohSettingsState>
-
-    /**
-     * True while DoH resolution is expected for this session: toggled in settings or
-     * auto-started at launch. While inactive, lookups intentionally use system DNS.
-     */
-    val sessionDohActive: StateFlow<Boolean>
 }
 
 interface DohPreferencesEditor {
@@ -97,9 +110,6 @@ interface DohPreferencesEditor {
     fun persistCustomServer(name: String, url: String)
     fun persistUseDeviceCertificates(enabled: Boolean)
     fun persistPreferIpv6(enabled: Boolean)
-
-    /** Marks whether DoH resolution is expected for the current app session. */
-    fun setDohSessionActive(active: Boolean)
 }
 
 data class ColorPaletteState(

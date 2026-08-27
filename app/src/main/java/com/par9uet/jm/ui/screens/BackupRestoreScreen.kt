@@ -70,7 +70,7 @@ import com.par9uet.jm.store.ComicCacheBackup
 import com.par9uet.jm.store.ComicGroupBackup
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
@@ -106,13 +106,13 @@ fun BackupRestoreScreen(
     localSettingManager: LocalSettingManager = getKoin().get(),
     downloadComicDao: DownloadComicDao = getKoin().get(),
     downloadManager: DownloadManager = getKoin().get(),
-    remoteConfigManager: RemoteConfigManager = getKoin().get(),
+    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     toastManager: ToastManager = getKoin().get(),
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val localSetting by localSettingManager.localSettingState.collectAsState()
-    val remoteImageHost by remoteConfigManager.remoteImageHost.collectAsState()
+    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
     val backupManager = remember { BackupManager() }
 
     // 备份流程状态
