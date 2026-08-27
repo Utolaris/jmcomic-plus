@@ -21,9 +21,10 @@ import java.util.concurrent.atomic.AtomicReference
 
 /**
  * 共享内置 API 客户端管理器。
- * 确保 UserRepositoryImpl 和 ComicRepositoryImpl 使用同一个 JmApiClient 实例，
- * 这样 login() 设置的 loggedInUserName 和内部 Cookie 状态可以被所有 Repository 共享。
- * 解决内置 API 模式下 POST 请求（如创建收藏夹）返回 401 "請先登入會員" 的问题。
+ * 所有活动认证请求共享同一个 JmApiClient。登录本身在隔离 candidate client 上完成；
+ * UserManager 通过 generation 校验后，才把完整认证 cookie 提升到活动客户端，避免登录
+ * 网络阶段提前改写 A 的 shared client。这样 POST 请求仍能共享 AVS 会话，同时 transition
+ * 期间不会把 shared client 悄悄切成另一个账号。
  *
  * 会话持久化不变量：
  * 1. CookieStorage 只保存“活动会话”的完整 cookie 快照（含 JMComic-Api-Java 登录时根据
@@ -94,33 +95,6 @@ class EmbeddedClientManager(
                     clientSessionGeneration = sessionGeneration,
                 ).also { sharedClient = it }
             }
-        }
-    }
-
-    /**
-     * 主动登录：在共享客户端上执行登录，并返回完整认证 cookie 快照（含 AVS）。
-     *
-     * 注意：这里不直接写入 CookieStorage。cookie 提交由 UserManager 在会话锁内、确认
-     * session generation 仍然有效之后调用 [activateCandidateSession] 完成，这样
-     * “登录过程中用户登出/切换账号”的迟到结果不会污染持久化会话。
-     */
-    fun loginActive(
-        username: String,
-        password: String,
-    ): EmbeddedLoginResult {
-        val shared = getSharedClient()
-        val loginBusinessCode = shared.loginBusinessCode
-        loginBusinessCode.set(null)
-        return try {
-            val userInfo = shared.client.login(username, password)
-            val sessionCookies = shared.client.getCookies()
-            EmbeddedLoginResult.Success(userInfo, sessionCookies)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: ResponseException) {
-            EmbeddedLoginResult.Failure(e, loginBusinessCode.get())
-        } finally {
-            loginBusinessCode.remove()
         }
     }
 

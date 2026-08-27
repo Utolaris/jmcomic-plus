@@ -31,8 +31,9 @@ import kotlin.coroutines.coroutineContext
  * 用户会话状态机。
  *
  * 会话正确性边界：sessionGeneration。任何“把结果应用到活动会话”的提交都必须在
- * loginMutex 内做 generation + 身份双重校验；网络请求本身（登录/验证）始终在锁外执行，
- * 因此手动登录/登出不会被 10-20 秒的阻塞网络调用拖住。
+ * loginMutex 内做 generation + 身份双重校验；登录/验证网络请求本身始终在锁外执行。
+ * Favorites 的阻塞式远程请求由独立 gate 与 transition 串行化，transition 等待时不占用
+ * loginMutex，因此 guarded local commit 与账号切换之间不存在 ABBA。
  *
  * Cookie 提交统一走 [UserRepository.activateVerifiedSession]：只有 generation 仍然有效时
  * 才把候选/登录会话的完整 cookie（内置 API 含 AVS）持久化并同步到活动客户端。
@@ -52,11 +53,6 @@ class UserManager(
     private val loginMutex = Mutex()
     private val sessionGeneration = AtomicLong(0L)
 
-    /**
-     * Serialization gate for session-bound Favorites remote mutations. Deliberately separate
-     * from [loginMutex]: bound network work holds THIS lock, while session transitions keep
-     * taking loginMutex quickly so manual login/logout never queues behind a 10-20s request.
-     */
     /** Serializes session transitions with session-bound remote work (see [withBoundRemoteSession]). */
     private val boundRemoteGate = Mutex()
 
@@ -85,6 +81,16 @@ class UserManager(
         if (!isCurrentSession(accountId, generation)) return@withLock null
         block()
     }
+
+    /**
+     * Every session transition takes locks in exactly this order. Bound Favorites work already
+     * owns [boundRemoteGate] when it performs its guarded local commit through [loginMutex], so
+     * using the same `bound -> login` order here removes the former ABBA cycle.
+     */
+    private suspend fun <T> withSessionTransition(block: suspend () -> T): T =
+        boundRemoteGate.withLock {
+            loginMutex.withLock { block() }
+        }
 
     /**
      * 会话绑定的远程执行原语：把“快照仍是当前会话”校验与“远程能力归属于该会话”合并为
@@ -119,8 +125,8 @@ class UserManager(
     /** Compatibility entry point for callers that replace the active identity directly. */
     fun updateUser(user: User) {
         runBlocking {
-            loginMutex.withLock {
-                boundRemoteGate.withLock { sessionGeneration.incrementAndGet() }
+            withSessionTransition {
+                sessionGeneration.incrementAndGet()
                 _userState.update { it.copy(data = user) }
                 userStorage.set(user)
                 sessionReadinessHolder.set(readinessForCachedUser(user))
@@ -130,8 +136,8 @@ class UserManager(
 
     suspend fun clearUser() {
         cancelBackgroundJob()
-        loginMutex.withLock {
-            boundRemoteGate.withLock { sessionGeneration.incrementAndGet() }
+        withSessionTransition {
+            sessionGeneration.incrementAndGet()
             clearIdentityWhileLocked()
             sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
         }
@@ -183,8 +189,8 @@ class UserManager(
             val result = userRepository.verifyLogin(snapshot.user.username, snapshot.user.password)
             coroutineContext.ensureActive()
 
-            loginMutex.withLock {
-                if (!isCurrentSession(snapshot)) return@withLock
+            withSessionTransition {
+                if (!isCurrentSession(snapshot)) return@withSessionTransition
                 when (result) {
                     is NetWorkResult.Error -> {
                         if (result.authFailure == AuthFailure.InvalidCredentials) {
@@ -279,8 +285,8 @@ class UserManager(
         backgroundJob?.cancel()
     }
 
-    private suspend fun beginManualLogin(): Long = loginMutex.withLock {
-        val generation = boundRemoteGate.withLock { sessionGeneration.incrementAndGet() }
+    private suspend fun beginManualLogin(): Long = withSessionTransition {
+        val generation = sessionGeneration.incrementAndGet()
         _userState.update {
             it.copy(
                 isLoading = true,
@@ -298,8 +304,8 @@ class UserManager(
         clearUserOnError: Boolean,
     ): NetWorkResult<LoginSession> {
         coroutineContext.ensureActive()
-        return loginMutex.withLock {
-            if (sessionGeneration.get() != generation) return@withLock result
+        return withSessionTransition {
+            if (sessionGeneration.get() != generation) return@withSessionTransition result
             when (result) {
                 is NetWorkResult.Error -> {
                     if (clearUserOnError && result.authFailure == AuthFailure.InvalidCredentials) {

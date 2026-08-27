@@ -19,14 +19,6 @@ import org.junit.Test
 
 private fun <T> routingStub(): NetWorkResult<T> = NetWorkResult.Error("stub")
 
-/** Routing tests never reach authenticated paths; this stub fails fast if one ever does. */
-private val UnauthenticatedEmbeddedClientStub = AuthenticatedEmbeddedClient(
-    clientProvider = { error("routing tests must not use the authenticated embedded client") },
-    sessionReadinessHolder = com.par9uet.jm.store.SessionReadinessHolder().apply {
-        set(com.par9uet.jm.store.SessionReadiness.Unauthenticated)
-    },
-)
-
 class ComicRepositoryRoutingTest {
     private class NetworkFake : NetworkHomeDataSource {
         var homeCalls = 0
@@ -99,7 +91,7 @@ class ComicRepositoryRoutingTest {
     fun normalBusinessAndReaderMetadataAlwaysUseEmbedded() = runTest {
         val network = NetworkFake()
         val embedded = EmbeddedFake()
-        val repository = ComicRepositoryImpl(network, embedded, UnauthenticatedEmbeddedClientStub)
+        val repository = ComicRepositoryImpl(network, embedded)
 
         repository.getComicDetail(1)
         repository.getComicPicList(1)
@@ -115,7 +107,7 @@ class ComicRepositoryRoutingTest {
     fun networkDataSourceIsUsedOnlyForExplicitHomeRecommendation() = runTest {
         val network = NetworkFake()
         val embedded = EmbeddedFake()
-        val repository = ComicRepositoryImpl(network, embedded, UnauthenticatedEmbeddedClientStub)
+        val repository = ComicRepositoryImpl(network, embedded)
 
         repository.getNetworkHomePage()
 

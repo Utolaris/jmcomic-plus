@@ -5,6 +5,7 @@ import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
+import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -16,6 +17,24 @@ import org.junit.Test
 class FavoriteUseCasesTest {
     private val session = TestFavoriteSession()
     private val sessionSnapshot = FavoriteSessionSnapshot(accountId = 42, generation = 0)
+
+    @Test
+    fun `collect preserves the real remote error and does not write local state`() = runTest {
+        val expected = NetWorkResult.Error(
+            message = "server rejected collect",
+            code = 503,
+            authFailure = AuthFailure.TemporaryFailure,
+        )
+        val remote = RecordingRemoteMutation().apply { collectResult = expected }
+        val local = RecordingLocalMutation()
+        val comic = Comic.create(id = 11, name = "Comic", authorList = listOf("Author"))
+
+        val result = CollectFavorite(remote, local, session)(sessionSnapshot, comic)
+
+        assertEquals(expected, result)
+        assertEquals(listOf(11), remote.collectedIds)
+        assertTrue(local.addedFavorites.isEmpty())
+    }
 
     @Test
     fun `stale snapshot before remote execution never starts the bound batch`() = runTest {
@@ -200,6 +219,7 @@ class FavoriteUseCasesTest {
     }
 
     private class RecordingRemoteMutation : FavoriteRemoteMutation {
+        val collectedIds = mutableListOf<Int>()
         val uncollectedIds = mutableListOf<Int>()
         val movedIds = mutableListOf<Int>()
         val createdFolderNames = mutableListOf<String>()
@@ -207,8 +227,12 @@ class FavoriteUseCasesTest {
         val moveResults = mutableMapOf<Int, NetWorkResult<Unit>>()
         var uncollectHandler: (suspend (Int) -> NetWorkResult<Unit>)? = null
         var moveHandler: (suspend (Int, Int) -> NetWorkResult<Unit>)? = null
+        var collectResult: NetWorkResult<Unit> = NetWorkResult.Success(Unit)
 
-        override suspend fun collectComic(comicId: Int): NetWorkResult<Unit> = NetWorkResult.Success(Unit)
+        override suspend fun collectComic(comicId: Int): NetWorkResult<Unit> {
+            collectedIds += comicId
+            return collectResult
+        }
 
         override suspend fun uncollectComic(comicId: Int): NetWorkResult<Unit> {
             uncollectedIds += comicId
@@ -236,12 +260,15 @@ class FavoriteUseCasesTest {
     }
 
     private class RecordingLocalMutation : FavoriteLocalMutation {
+        val addedFavorites = mutableListOf<Pair<Int, Int>>()
         val removedIds = mutableListOf<Int>()
         val movedIds = mutableListOf<Pair<Int, Int>>()
         val removedFolderIds = mutableListOf<Int>()
         val renamedFolders = mutableListOf<Pair<Int, String>>()
 
-        override suspend fun addFromComic(accountId: Int, comic: Comic, folderId: Int) = Unit
+        override suspend fun addFromComic(accountId: Int, comic: Comic, folderId: Int) {
+            addedFavorites += accountId to comic.id
+        }
 
         override suspend fun remove(accountId: Int, albumIds: Collection<Int>) {
             removedIds += albumIds

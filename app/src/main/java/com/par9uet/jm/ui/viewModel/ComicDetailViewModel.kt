@@ -6,24 +6,22 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.database.dao.DownloadComicDao
-import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteLocalQuery
 import com.par9uet.jm.favorites.data.FavoriteSession
-import com.par9uet.jm.favorites.usecase.CollectFavorite
+import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequestKind
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequester
+import com.par9uet.jm.favorites.usecase.CollectFavorite
+import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.RemoteSettingManager
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.models.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
 import com.par9uet.jm.ui.state.CommentSubmissionGate
-import com.par9uet.jm.favorites.usecase.MoveFavorites
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -31,6 +29,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -39,10 +39,7 @@ private const val COMMENT_ERROR_VISIBLE_MILLIS = 5_000L
 class ComicDetailViewModel(
     private val comicRepository: ComicRepository,
     private val toastManager: ToastManager,
-    private val downloadComicDao: DownloadComicDao,
-    private val remoteSettingManager: RemoteSettingManager,
     private val favoriteLocalQuery: FavoriteLocalQuery,
-    private val favoriteLocalMutation: FavoriteLocalMutation,
     private val favoriteSession: FavoriteSession,
     private val collectFavorite: CollectFavorite,
     private val uncollectFavorites: UncollectFavorites,
@@ -147,6 +144,21 @@ class ComicDetailViewModel(
 
     private val _collectComicState = MutableStateFlow(CommonUIState(data = null))
     val collectComicState = _collectComicState.asStateFlow()
+
+    private suspend fun commitFavoriteUiIfCurrent(
+        snapshot: FavoriteSessionSnapshot,
+        block: () -> Unit,
+    ): Boolean = favoriteSession.withCurrentSession(snapshot) {
+        block()
+        true
+    } == true
+
+    private fun showStaleFavoriteAction() {
+        _collectComicState.update {
+            it.copy(isError = true, errorMsg = "登录状态已变化，请重试")
+        }
+    }
+
     fun collect(id: Int) {
         viewModelScope.launch {
             _collectComicState.update {
@@ -159,7 +171,14 @@ class ComicDetailViewModel(
             // One snapshot guards the whole action: remote toggle and local write both belong
             // to the account captured here, never to whoever is active after a mid-flight switch.
             val snapshot = favoriteSession.snapshot()
-            when (val data = collectFavorite(snapshot, id, _comicDetailState.value.data?.takeIf { it.id == id })) {
+            val comic = _comicDetailState.value.data?.takeIf { it.id == id }
+            if (comic == null) {
+                _collectComicState.update {
+                    it.copy(isLoading = false, isError = true, errorMsg = "漫画信息尚未加载")
+                }
+                return@launch
+            }
+            when (val data = collectFavorite(snapshot, comic)) {
                 is NetWorkResult.Error -> {
                     _collectComicState.update {
                         it.copy(
@@ -170,15 +189,18 @@ class ComicDetailViewModel(
                 }
 
                 is NetWorkResult.Success -> {
-                    toastManager.showAsync("收藏成功")
-                    _comicDetailState.update { state ->
-                        val currentData = state.data
-                        if (currentData != null) {
-                            state.copy(data = currentData.copy(isCollect = true))
-                        } else {
-                            state
+                    val committed = commitFavoriteUiIfCurrent(snapshot) {
+                        toastManager.showAsync("收藏成功")
+                        _comicDetailState.update { state ->
+                            val currentData = state.data?.takeIf { it.id == id }
+                            if (currentData != null) {
+                                state.copy(data = currentData.copy(isCollect = true))
+                            } else {
+                                state
+                            }
                         }
                     }
+                    if (!committed) showStaleFavoriteAction()
                 }
             }
             _collectComicState.update {
@@ -204,19 +226,27 @@ class ComicDetailViewModel(
             val batch = uncollectFavorites(snapshot, listOf(id))
             when {
                 batch.succeeded > 0 -> {
-                    toastManager.showAsync("取消收藏成功")
-                    _comicDetailState.update { state ->
-                        val currentData = state.data
-                        if (currentData != null) {
-                            state.copy(data = currentData.copy(isCollect = false))
-                        } else {
-                            state
+                    val committed = commitFavoriteUiIfCurrent(snapshot) {
+                        toastManager.showAsync("取消收藏成功")
+                        _comicDetailState.update { state ->
+                            val currentData = state.data?.takeIf { it.id == id }
+                            if (currentData != null) {
+                                state.copy(data = currentData.copy(isCollect = false))
+                            } else {
+                                state
+                            }
                         }
                     }
+                    if (!committed) showStaleFavoriteAction()
                 }
 
                 else -> _collectComicState.update {
-                    it.copy(isError = true, errorMsg = "登录状态已变化，请重试")
+                    val message = if (favoriteSession.isCurrent(snapshot)) {
+                        "取消收藏失败，请重试"
+                    } else {
+                        "登录状态已变化，请重试"
+                    }
+                    it.copy(isError = true, errorMsg = message)
                 }
             }
             _collectComicState.update {
@@ -236,22 +266,25 @@ class ComicDetailViewModel(
 
     private var folderObservationJob: Job? = null
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     fun refreshFolderList() {
         // Local-first + account-scoped: show the new account's cached folders immediately,
         // then keep observing Room so background sync results flow in automatically. An
         // account switch rebinds the stream, so A's folders never leak into B.
         folderObservationJob?.cancel()
         folderObservationJob = viewModelScope.launch {
-            favoriteSession.accountIdFlow.distinctUntilChanged().collect { accountId ->
-                if (accountId <= 0) {
-                    _folderList.value = emptyMap()
-                    return@collect
+            favoriteSession.accountIdFlow
+                .distinctUntilChanged()
+                .flatMapLatest { accountId ->
+                    if (accountId <= 0) {
+                        flowOf(emptyMap())
+                    } else {
+                        favoriteLocalQuery.observeFolders(accountId).onStart {
+                            emit(favoriteLocalQuery.getCachedFolders(accountId))
+                        }
+                    }
                 }
-                _folderList.value = favoriteLocalQuery.getCachedFolders(accountId)
-                favoriteLocalQuery.observeFolders(accountId).collect { folders ->
-                    _folderList.value = folders
-                }
-            }
+                .collect { folders -> _folderList.value = folders }
         }
         syncRequester.request(FavoriteSyncRequestKind.AUTO, folderId = 0)
     }
@@ -275,32 +308,49 @@ class ComicDetailViewModel(
             // of letting "collect on A → move on B" happen.
             val snapshot = favoriteSession.snapshot()
             val comic = _comicDetailState.value.data?.takeIf { it.id == comicId }
-            val collectResult = collectFavorite(snapshot, comicId, comic)
+            if (comic == null) {
+                _collectComicState.update {
+                    it.copy(isLoading = false, isError = true, errorMsg = "漫画信息尚未加载")
+                }
+                return@launch
+            }
+            val collectResult = collectFavorite(snapshot, comic)
             when {
                 collectResult is NetWorkResult.Error -> {
                     _collectComicState.update { it.copy(isError = true, errorMsg = collectResult.message) }
                 }
 
                 else -> {
-                    _comicDetailState.update { state ->
-                        val currentData = state.data
-                        if (currentData != null) {
-                            state.copy(data = currentData.copy(isCollect = true))
-                        } else {
-                            state
-                        }
-                    }
-                    if (folderId != "0") {
+                    val successMessage = if (folderId != "0") {
                         val targetFolderId = folderId.toIntOrNull() ?: 0
                         val moveResult = moveFavorites(snapshot, listOf(comicId), targetFolderId)
-                        if (moveResult.succeeded > 0) {
-                            val folderName = _folderList.value[folderId] ?: "收藏夹"
-                            toastManager.showAsync("已收藏到 $folderName")
-                        } else {
-                            toastManager.showAsync("已收藏，但移动到收藏夹失败")
+                        when {
+                            moveResult.succeeded > 0 -> {
+                                val folderName = _folderList.value[folderId] ?: "收藏夹"
+                                "已收藏到 $folderName"
+                            }
+                            favoriteSession.isCurrent(snapshot) -> "已收藏，但移动到收藏夹失败"
+                            else -> null
                         }
                     } else {
-                        toastManager.showAsync("收藏成功")
+                        "收藏成功"
+                    }
+
+                    if (successMessage == null) {
+                        showStaleFavoriteAction()
+                    } else {
+                        val committed = commitFavoriteUiIfCurrent(snapshot) {
+                            toastManager.showAsync(successMessage)
+                            _comicDetailState.update { state ->
+                                val currentData = state.data?.takeIf { it.id == comicId }
+                                if (currentData != null) {
+                                    state.copy(data = currentData.copy(isCollect = true))
+                                } else {
+                                    state
+                                }
+                            }
+                        }
+                        if (!committed) showStaleFavoriteAction()
                     }
                 }
             }

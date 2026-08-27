@@ -45,8 +45,6 @@ class SearchComicPagingSourceTest {
     }
 
     private class FakeComicRepository : ComicRepository {
-        override suspend fun <R> withEmbeddedClient(block: (io.github.jukomu.jmcomic.core.client.impl.JmApiClient) -> R): R? = null
-
         var lastSearchContent: String? = null
 
         override suspend fun getComicList(

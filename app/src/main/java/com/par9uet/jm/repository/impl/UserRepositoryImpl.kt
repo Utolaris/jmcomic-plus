@@ -33,7 +33,11 @@ class UserRepositoryImpl(
     override suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
         return withContext(Dispatchers.IO) {
             try {
-                when (val result = embeddedClientManager.loginActive(username, password)) {
+                // Manual login is a candidate operation too: it must never mutate the active
+                // shared client while UserManager is between begin/commit transition phases.
+                // Only activateVerifiedSession(), inside the generation-checked commit, promotes
+                // these isolated cookies to the shared session.
+                when (val result = embeddedClientManager.verifyCandidate(username, password)) {
                     is EmbeddedClientManager.EmbeddedLoginResult.Success -> {
                         NetWorkResult.Success(
                             LoginSession(

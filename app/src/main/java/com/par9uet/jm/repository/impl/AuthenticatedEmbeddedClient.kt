@@ -10,11 +10,10 @@ import kotlinx.coroutines.CancellationException
 
 /** The single entry point for requests that require an authenticated Embedded session. */
 class AuthenticatedEmbeddedClient(
-    // Provider indirection keeps construction cheap and lets tests inject a failing supplier
-    // without building a real EmbeddedClientManager.
-    private val clientProvider: () -> JmApiClient,
+    embeddedClientManager: EmbeddedClientManager,
     sessionReadinessHolder: SessionReadinessHolder,
 ) {
+    private val clientProvider = embeddedClientManager::getClient
     private val sessionGate = AuthenticatedSessionGate(sessionReadinessHolder)
 
     suspend fun <T> withClient(block: (JmApiClient) -> T): T? = sessionGate.run {

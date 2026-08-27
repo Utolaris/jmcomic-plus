@@ -19,6 +19,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -27,7 +28,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Cookie
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -35,6 +39,8 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * UserManager 会话状态机测试：验证 generation + 身份校验边界下，
@@ -518,8 +524,9 @@ class UserManagerSessionTest {
         assertEquals(0, remoteCalls)
     }
 
+    @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun sessionChangeDuringBoundRemoteExecutionCancelsTheCallInsteadOfTargetingNewAccount() = runBlocking {
+    fun sessionTransitionCannotDeadlockBoundRemoteLocalCommit() = runTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
@@ -527,27 +534,110 @@ class UserManagerSessionTest {
         manager.updateUser(user(1, "accountA"))
         val snapshotA = manager.currentSessionSnapshot()
         val blockStarted = CompletableDeferred<Unit>()
-        val switchGate = CompletableDeferred<Unit>()
-        val remoteAccountIds = mutableListOf<Int>()
+        val allowLocalCommit = CompletableDeferred<Unit>()
 
-        val boundJob = launch {
-            val outcome = manager.withBoundRemoteSession(
+        val boundJob = async {
+            manager.withBoundRemoteSession(
                 accountId = snapshotA.accountId,
                 generation = snapshotA.generation,
             ) {
-                remoteAccountIds += snapshotA.accountId
                 blockStarted.complete(Unit)
-                switchGate.await()
-                "should-never-return-after-switch"
+                allowLocalCommit.await()
+                manager.withCurrentSession(
+                    accountId = snapshotA.accountId,
+                    generation = snapshotA.generation,
+                ) { "committed-A" }
             }
-            assertNull(outcome)
         }
 
         blockStarted.await()
-        manager.updateUser(user(2, "accountB"))
-        switchGate.complete(Unit)
-        boundJob.join()
+        val logoutJob = async { manager.clearUser() }
+        // Let logout reach its first contested lock before the bound work requests loginMutex.
+        runCurrent()
+        allowLocalCommit.complete(Unit)
 
-        assertEquals(listOf(1), remoteAccountIds)
+        withTimeout(1_000) {
+            assertEquals("committed-A", boundJob.await())
+            logoutJob.await()
+        }
+        assertEquals(0, manager.userState.value.data?.id)
+    }
+
+    @Test
+    fun manualLoginPromotesCandidateOnlyAfterItsNetworkResultReturns() = runTest {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
+        val repository = GateUserRepository(cookieStorage)
+        val candidateStarted = CompletableDeferred<Unit>()
+        val candidateResult = CompletableDeferred<NetWorkResult<LoginSession>>()
+        repository.loginHandler = { _, _ ->
+            candidateStarted.complete(Unit)
+            candidateResult.await()
+        }
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+
+        val loginJob = async { manager.login("accountB", "pwdB") }
+        candidateStarted.await()
+
+        // The candidate network request is in flight. No shared-session promotion or identity
+        // write may happen before UserManager enters its generation-checked commit.
+        assertTrue(repository.activated.isEmpty())
+        assertEquals(1, manager.userState.value.data?.id)
+        assertEquals("session-A", cookieStorage.get().single().value)
+
+        candidateResult.complete(
+            NetWorkResult.Success(
+                LoginSession(
+                    loginResponse = loginResponse(2, "accountB"),
+                    embeddedCookies = listOf(avsCookie("session-B")),
+                )
+            )
+        )
+
+        assertTrue(loginJob.await() is NetWorkResult.Success)
+        assertEquals(2, manager.userState.value.data?.id)
+        assertEquals("session-B", cookieStorage.get().single().value)
+        assertEquals(1, repository.activated.size)
+    }
+
+    @Test
+    fun nonCancellableBoundRemoteFinishesBeforeManualLoginCandidateStarts() = runBlocking {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
+        val repository = GateUserRepository(cookieStorage)
+        val candidateStarted = CompletableDeferred<Unit>()
+        repository.loginHandler = { _, _ ->
+            candidateStarted.complete(Unit)
+            NetWorkResult.Success(
+                LoginSession(
+                    loginResponse = loginResponse(2, "accountB"),
+                    embeddedCookies = listOf(avsCookie("session-B")),
+                )
+            )
+        }
+        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        manager.updateUser(user(1, "accountA"))
+        val snapshotA = manager.currentSessionSnapshot()
+        val remoteStarted = CountDownLatch(1)
+        val releaseRemote = CountDownLatch(1)
+
+        val remoteJob = async(Dispatchers.IO) {
+            manager.withBoundRemoteSession(snapshotA.accountId, snapshotA.generation) {
+                remoteStarted.countDown()
+                // Deliberately blocking Java primitive: coroutine cancellation cannot release it.
+                check(releaseRemote.await(2, TimeUnit.SECONDS))
+                "remote-A"
+            }
+        }
+        assertTrue(remoteStarted.await(1, TimeUnit.SECONDS))
+
+        val loginJob = async(Dispatchers.Default) { manager.login("accountB", "pwdB") }
+        assertNull(withTimeoutOrNull(150) { candidateStarted.await() })
+
+        releaseRemote.countDown()
+        assertEquals("remote-A", withTimeout(2_000) { remoteJob.await() })
+        withTimeout(2_000) { candidateStarted.await() }
+        assertTrue(withTimeout(2_000) { loginJob.await() } is NetWorkResult.Success)
+        assertEquals(2, manager.userState.value.data?.id)
     }
 }

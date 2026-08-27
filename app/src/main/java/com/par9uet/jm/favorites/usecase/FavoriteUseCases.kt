@@ -7,7 +7,6 @@ import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.data.FavoriteDownloader
-import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 
 data class FavoritesBatchResult(
@@ -17,32 +16,27 @@ data class FavoritesBatchResult(
 
 /** Canonical "collect this comic into favorites" operation, session-bound end to end. */
 class CollectFavorite(
-    private val comicRepository: ComicRepository,
+    private val remoteMutation: FavoriteRemoteMutation,
     private val localMutation: FavoriteLocalMutation,
     private val session: FavoriteSession,
 ) {
     suspend operator fun invoke(
         sessionSnapshot: FavoriteSessionSnapshot,
-        comicId: Int,
-        comic: Comic?,
+        comic: Comic,
     ): NetWorkResult<Unit> {
-        val completed = session.withBoundRemoteSession(sessionSnapshot) {
-            when (val result = comicRepository.collectComic(comicId)) {
-                is NetWorkResult.Error -> null
+        return session.withBoundRemoteSession(sessionSnapshot) {
+            when (val result = remoteMutation.collectComic(comic.id)) {
+                // Preserve the real server/network failure verbatim. A stale-session failure is
+                // synthesized only when the bound capability or guarded local commit is refused.
+                is NetWorkResult.Error -> result
                 is NetWorkResult.Success -> {
-                    // Remote toggle succeeded while the captured session was still exclusive.
-                    // The local cache write targets snapshot.accountId inside the same boundary.
-                    if (comic != null) {
+                    val committed = session.withCurrentSession(sessionSnapshot) {
                         localMutation.addFromComic(sessionSnapshot.accountId, comic)
                     }
-                    true
+                    if (committed == null) staleSessionError() else result
                 }
             }
-        }
-        return when {
-            completed == true -> NetWorkResult.Success(Unit)
-            else -> staleSessionError()
-        }
+        } ?: staleSessionError()
     }
 }
 

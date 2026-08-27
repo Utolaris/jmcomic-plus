@@ -11,15 +11,10 @@ import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
-import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 
 interface ComicRepository {
     suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse>
     suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse>
-
-    /** Runs [block] with the live authenticated embedded client; for session-bound callers only. */
-    suspend fun <R> withEmbeddedClient(block: (JmApiClient) -> R): R?
-
     suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse>
     /** Embedded API: load one Home category lazily. */
     suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>
