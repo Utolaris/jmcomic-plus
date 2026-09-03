@@ -1,7 +1,5 @@
 package com.par9uet.jm.ui.screens.readScreen
 
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,10 +19,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.ComicPicImage
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
@@ -119,64 +114,44 @@ fun ComicScrollRead(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(localSetting.readTapMode) {
-                awaitPointerEventScope {
-                    while (true) {
-                        // 1. 在 Initial 阶段观察按下，不消耗事件，确保 Pager 能收到
-                        val down =
-                            awaitFirstDown(
-                                requireUnconsumed = true,
-                                pass = PointerEventPass.Final
-                            )
-                        // 2. 等待抬起
-                        val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
-                        // 3. 判定逻辑：只有在没被消费（说明不是滑动）且距离很短时触发
-                        if (up != null && !up.isConsumed) {
-                            val distance = (up.position - down.position).getDistance()
-                            if (distance < 10.dp.toPx()) {
-                                // --- 获取点击位置 ---
-                                val screenHeight = size.height
-                                val screenWidth = size.width
-                                val clickY = up.position.y
-                                val clickX = up.position.x
-
-                                when {
-                                    localSetting.readTapMode == "side" && clickX < screenWidth / 3 -> {
-                                        comicReadViewModel.prev(context)
-                                        scrollToCurrentPage()
-                                    }
-
-                                    localSetting.readTapMode == "side" && clickX > screenWidth * 2 / 3 -> {
-                                        comicReadViewModel.next(context)
-                                        scrollToCurrentPage()
-                                    }
-
-                                    localSetting.readTapMode != "side" && clickY < screenHeight / 3 -> {
-                                        comicReadViewModel.prev(context)
-                                        scrollToCurrentPage()
-                                    }
-
-                                    localSetting.readTapMode != "side" && clickY > screenHeight * 2 / 3 -> {
-                                        comicReadViewModel.next(context)
-                                        scrollToCurrentPage()
-                                    }
-
-                                    else -> {
-                                        comicReadViewModel.triggerToolBar()
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
     ) {
         LazyColumn(
             state = lazyListState,
-            userScrollEnabled = true,
+            userScrollEnabled = !zoomState.isZoomed,
             modifier = Modifier
                 .fillMaxSize()
-                .readerZoomable(zoomState, enableVerticalPan = false)
+                .readerTapGestures(
+                    zoomState = zoomState,
+                    onNormalTap = { position, viewportSize ->
+                        val useSideTap = localSetting.readTapMode == "side"
+                        val isPrevious = if (useSideTap) {
+                            position.x < viewportSize.width / 3f
+                        } else {
+                            position.y < viewportSize.height / 3f
+                        }
+                        val isNext = if (useSideTap) {
+                            position.x > viewportSize.width * 2f / 3f
+                        } else {
+                            position.y > viewportSize.height * 2f / 3f
+                        }
+
+                        when {
+                            isPrevious -> {
+                                comicReadViewModel.prev(context)
+                                scrollToCurrentPage()
+                            }
+
+                            isNext -> {
+                                comicReadViewModel.next(context)
+                                scrollToCurrentPage()
+                            }
+
+                            else -> comicReadViewModel.triggerToolBar()
+                        }
+                    },
+                    onZoomedCenterTap = comicReadViewModel::triggerToolBar
+                )
+                .readerZoomable(zoomState)
         ) {
             items(list, key = {
                 "${it.comicId}_${it.originSrc}"

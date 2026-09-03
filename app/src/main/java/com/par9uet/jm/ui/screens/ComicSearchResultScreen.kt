@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -27,6 +28,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -50,8 +56,22 @@ import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.utils.serializeExcludedTags
 import com.par9uet.jm.store.LocalSettingManager
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
+
+internal enum class SearchResultBackTarget {
+    PREVIOUS_SCREEN,
+    SEARCH_EDITOR,
+}
+
+internal fun searchResultBackTarget(previousRoute: String?): SearchResultBackTarget =
+    if (previousRoute.isNullOrBlank()) {
+        SearchResultBackTarget.SEARCH_EDITOR
+    } else {
+        SearchResultBackTarget.PREVIOUS_SCREEN
+    }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -84,8 +104,63 @@ fun ComicSearchResultScreen(
     val comicSearchLazyPagingItems = comicViewModel.searchComicPager.collectAsLazyPagingItems()
     val comicSearchFilterState by comicViewModel.searchComicFilterState.collectAsState()
     val searchComicIdState by comicViewModel.searchComicIdState.collectAsState()
+    val savedViewport by comicViewModel.searchViewportState.collectAsState()
     val sortMenuState = rememberGlassAnchoredMenuState()
+    val coroutineScope = rememberCoroutineScope()
     val sortMenuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
+    val gridState = rememberLazyGridState(
+        initialFirstVisibleItemIndex = savedViewport.firstVisibleItemIndex,
+        initialFirstVisibleItemScrollOffset = savedViewport.firstVisibleItemScrollOffset,
+    )
+    val searchItemCount = comicSearchLazyPagingItems.itemCount
+    val searchAppendComplete = comicSearchLazyPagingItems.loadState.append.let {
+        it is LoadState.NotLoading && it.endOfPaginationReached
+    }
+    val initialResetGeneration = remember { savedViewport.resetGeneration }
+    var initialViewportRestorePending by remember { mutableStateOf(true) }
+    var suppressViewportPersistence by remember { mutableStateOf(false) }
+
+    LaunchedEffect(savedViewport.resetGeneration, searchItemCount, searchAppendComplete) {
+        if (!initialViewportRestorePending || searchItemCount <= 0) return@LaunchedEffect
+        val savedIndex = savedViewport.firstVisibleItemIndex
+        if (!searchAppendComplete && searchItemCount <= savedIndex) return@LaunchedEffect
+
+        val targetIndex = savedIndex.coerceAtMost(searchItemCount - 1)
+        if (gridState.firstVisibleItemIndex != targetIndex ||
+            gridState.firstVisibleItemScrollOffset != savedViewport.firstVisibleItemScrollOffset
+        ) {
+            gridState.scrollToItem(targetIndex, savedViewport.firstVisibleItemScrollOffset)
+        }
+        androidx.compose.runtime.withFrameNanos { }
+        initialViewportRestorePending = false
+    }
+
+    LaunchedEffect(savedViewport.resetGeneration) {
+        if (savedViewport.resetGeneration == initialResetGeneration) return@LaunchedEffect
+        suppressViewportPersistence = true
+        try {
+            gridState.scrollToItem(0, 0)
+            androidx.compose.runtime.withFrameNanos { }
+            initialViewportRestorePending = false
+        } finally {
+            suppressViewportPersistence = false
+        }
+    }
+
+    LaunchedEffect(gridState, savedViewport.resetGeneration, initialViewportRestorePending) {
+        val resetGeneration = savedViewport.resetGeneration
+        snapshotFlow {
+            Triple(
+                comicSearchLazyPagingItems.itemCount,
+                gridState.firstVisibleItemIndex,
+                gridState.firstVisibleItemScrollOffset,
+            )
+        }.distinctUntilChanged().collect { (itemCount, index, offset) ->
+            if (itemCount > 0 && !initialViewportRestorePending && !suppressViewportPersistence) {
+                comicViewModel.saveSearchViewport(index, offset, resetGeneration)
+            }
+        }
+    }
 
     fun editRoute(): String {
         val encodedSearchContent = Uri.encode(comicSearchFilterState.searchContent)
@@ -104,8 +179,19 @@ fun ComicSearchResultScreen(
         }
     }
 
-    BackHandler {
+    fun navigateBackToOrigin() {
+        val previousRoute = mainNavController.previousBackStackEntry?.destination?.route
+        if (
+            searchResultBackTarget(previousRoute) == SearchResultBackTarget.PREVIOUS_SCREEN &&
+            mainNavController.popBackStack()
+        ) {
+            return
+        }
         navigateToSearchEditor()
+    }
+
+    BackHandler {
+        navigateBackToOrigin()
     }
 
     LaunchedEffect(searchComicIdState) {
@@ -122,7 +208,7 @@ fun ComicSearchResultScreen(
 
     CommonScaffold(
         title = comicSearchFilterState.searchContent.ifBlank { "搜索" },
-        onNavigateBack = { navigateToSearchEditor() },
+        onNavigateBack = { navigateBackToOrigin() },
         titleContent = {
             val title = comicSearchFilterState.searchContent.ifBlank { "搜索" }
             Text(
@@ -156,7 +242,11 @@ fun ComicSearchResultScreen(
                         selected = order.value == comicSearchFilterState.order.value,
                         onClick = {
                             sortMenuState.dismiss()
-                            comicViewModel.changeSearchComicOrderFilter(order)
+                            if (comicViewModel.changeSearchComicOrderFilter(order)) {
+                                coroutineScope.launch {
+                                    gridState.scrollToItem(0, 0)
+                                }
+                            }
                         },
                     )
                 }
@@ -208,6 +298,7 @@ fun ComicSearchResultScreen(
                     top = topContentPadding + 10.dp,
                     bottom = bottomContentPadding + 10.dp,
                 ),
+                gridState = gridState,
             ) {
                 Comic(it)
             }

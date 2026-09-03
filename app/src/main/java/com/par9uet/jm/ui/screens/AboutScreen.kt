@@ -174,7 +174,7 @@ private fun AppHeaderCard(
                 }
             }
             Text(
-                text = "JMcomic",
+                text = "JMcomic Plus",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
@@ -524,7 +524,7 @@ private fun CurrentVersionCard(
             }
             Column {
                 Text(
-                    text = "JMcomic",
+                    text = "JMcomic Plus",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface

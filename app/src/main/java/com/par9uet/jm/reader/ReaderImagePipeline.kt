@@ -314,7 +314,9 @@ class ReaderImagePipeline internal constructor(
     }
 
     suspend fun loadVisiblePage(page: ReaderPage): ReaderDecodedPage =
-        request(page, ReaderRequestPriority.VISIBLE, currentProfile())
+        withReaderVisibleLoadDeadline(VISIBLE_LOAD_TIMEOUT_MILLIS) {
+            request(page, ReaderRequestPriority.VISIBLE, currentProfile())
+        }
 
     /** Download work is background throughput, not a visible request. */
     suspend fun loadForDownload(page: ReaderPage): ReaderDecodedPage =
@@ -641,13 +643,19 @@ class ReaderImagePipeline internal constructor(
             if (urls.isEmpty()) throw ReaderImageException("图片地址为空")
             imageHostManager.warmImageConnections(page.originSrc)
             var lastError: Throwable? = null
-            var remainingUrls = urls
-            if (handle.isVisible && urls.size >= 2) {
+            val attemptedUrls = LinkedHashSet<String>()
+            val visiblePolicy = readerVisibleSourcePolicy(
+                orderedUrls = urls,
+                fastestKnownLatencyMillis = imageHostManager.preferredLatencyMillis(),
+            )
+            var remainingUrls = if (handle.isVisible) visiblePolicy.urls else urls
+            if (handle.isVisible && visiblePolicy.hedgeEnabled) {
+                attemptedUrls += visiblePolicy.urls
                 metrics.hedgeStarted()
                 try {
                     val winner = fetchRemoteHedged(
-                        primaryUrl = urls[0],
-                        secondaryUrl = urls[1],
+                        primaryUrl = visiblePolicy.urls[0],
+                        secondaryUrl = visiblePolicy.urls[1],
                         handle = handle,
                     )
                     return ReaderSourceFile(
@@ -663,10 +671,12 @@ class ReaderImagePipeline internal constructor(
                     throw error
                 } catch (error: Throwable) {
                     lastError = error
-                    remainingUrls = urls.drop(2)
+                    remainingUrls = urls.filterNot(attemptedUrls::contains)
                 }
             }
             for (url in remainingUrls) {
+                if (handle.isVisible && attemptedUrls.size >= MAX_VISIBLE_SOURCE_ATTEMPTS) break
+                if (!attemptedUrls.add(url)) continue
                 val attempt = fetchRemoteCandidate(url, handle)
                 attempt.getOrNull()?.let { winner ->
                     return ReaderSourceFile(
@@ -682,7 +692,7 @@ class ReaderImagePipeline internal constructor(
             throw lastError ?: ReaderImageException("网络错误")
         }
 
-        if (preferFallback) {
+        if (preferFallback && !handle.isVisible) {
             try {
                 fetchFallback()?.let { return it }
             } catch (error: CancellationException) {
@@ -707,7 +717,7 @@ class ReaderImagePipeline internal constructor(
             }
         }
 
-        if (!preferFallback) {
+        if (!preferFallback && !handle.isVisible) {
             try {
                 fetchFallback()?.let { return it }
             } catch (error: CancellationException) {
@@ -997,6 +1007,7 @@ class ReaderImagePipeline internal constructor(
         private const val TARGET_DISK_CACHE_BYTES = 224L * 1024L * 1024L
         private const val PRIORITY_RETRY_DELAY_MILLIS = 24L
         private const val VISIBLE_HEDGE_DELAY_MILLIS = 100L
+        private const val VISIBLE_LOAD_TIMEOUT_MILLIS = 20_000L
 
         private fun bitmapCacheBudgetBytes(memoryClassMb: Int): Long =
             (memoryClassMb.toLong() * 1024L * 1024L / 8L)

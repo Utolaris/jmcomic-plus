@@ -19,6 +19,36 @@ import org.junit.Test
 
 class ReaderAccelerationTest {
     @Test
+    fun visibleSourcePolicyLimitsCandidatesAndDisablesHedgeWhenEveryKnownHostIsSlow() {
+        val healthy = readerVisibleSourcePolicy(
+            orderedUrls = listOf("primary", "secondary", "third"),
+            fastestKnownLatencyMillis = 449L,
+        )
+        val degraded = readerVisibleSourcePolicy(
+            orderedUrls = listOf("primary", "secondary", "third"),
+            fastestKnownLatencyMillis = 450L,
+        )
+
+        assertEquals(listOf("primary", "secondary"), healthy.urls)
+        assertEquals(listOf("primary", "secondary"), degraded.urls)
+        assertTrue(healthy.hedgeEnabled)
+        assertFalse(degraded.hedgeEnabled)
+    }
+
+    @Test
+    fun visibleLoadDeadlineReturnsReaderFailureInsteadOfLoadingForever() = runBlocking {
+        val failure = runCatching {
+            withReaderVisibleLoadDeadline(timeoutMillis = 25L) {
+                delay(250L)
+                "late"
+            }
+        }.exceptionOrNull()
+
+        assertTrue(failure is ReaderImageException)
+        assertEquals("图片加载超时，请重试", failure?.message)
+    }
+
+    @Test
     fun hostReplacementPreservesPathAndQueryAndUnknownPathsStayUnchanged() {
         val original = "https://origin.example/media/photos/123/00001.webp?t=abc&v=2"
         val replaced = replaceReaderImageHost(original, "cdn.example")

@@ -1,8 +1,6 @@
 package com.par9uet.jm.ui.screens.readScreen
 
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.pager.HorizontalPager
@@ -18,11 +16,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.components.ComicPicImage
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
 import kotlinx.coroutines.flow.filter
@@ -104,90 +99,32 @@ fun ComicPageRead(
 
     val readerModifier = Modifier
         .fillMaxSize()
+        .readerTapGestures(
+            zoomState = zoomState,
+            requireUnconsumedDown = !tapOnly,
+            onNormalTap = { position, viewportSize ->
+                val screenWidth = viewportSize.width
+                when {
+                    list.isEmpty() -> comicReadViewModel.triggerToolBar()
+
+                    position.x < screenWidth / 3f -> {
+                        clickTargetIndex = (pagerState.currentPage - 1).coerceAtLeast(0)
+                    }
+
+                    position.x > screenWidth * 2f / 3f -> {
+                        clickTargetIndex = (pagerState.currentPage + 1)
+                            .coerceAtMost(maxOf(0, list.lastIndex))
+                    }
+
+                    else -> comicReadViewModel.triggerToolBar()
+                }
+            },
+            onZoomedCenterTap = comicReadViewModel::triggerToolBar
+        )
         .readerZoomable(zoomState)
 
-    val clickModifier = if (tapOnly) {
-        Modifier.pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val down = awaitFirstDown(
-                        requireUnconsumed = false,
-                        pass = PointerEventPass.Final
-                    )
-                    val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
-                    if (up != null && !up.isConsumed) {
-                        val distance = (up.position - down.position).getDistance()
-                        if (distance < 10.dp.toPx()) {
-                            val screenWidth = size.width
-                            val clickX = up.position.x
-
-                            when {
-                                list.isEmpty() -> {
-                                    comicReadViewModel.triggerToolBar()
-                                }
-
-                                clickX < screenWidth / 3 -> {
-                                    val target = (pagerState.currentPage - 1).coerceAtLeast(0)
-                                    clickTargetIndex = target
-                                }
-
-                                clickX > screenWidth * 2 / 3 -> {
-                                    val target = (pagerState.currentPage + 1).coerceAtMost(maxOf(0, list.lastIndex))
-                                    clickTargetIndex = target
-                                }
-
-                                else -> {
-                                    comicReadViewModel.triggerToolBar()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    } else {
-        Modifier.pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val down = awaitFirstDown(
-                        requireUnconsumed = true,
-                        pass = PointerEventPass.Final
-                    )
-                    val up = waitForUpOrCancellation(pass = PointerEventPass.Final)
-                    if (up != null && !up.isConsumed) {
-                        val distance = (up.position - down.position).getDistance()
-                        if (distance < 10.dp.toPx()) {
-                            val screenWidth = size.width
-                            val clickX = up.position.x
-
-                            when {
-                                list.isEmpty() -> {
-                                    comicReadViewModel.triggerToolBar()
-                                }
-
-                                clickX < screenWidth / 3 -> {
-                                    val target = (pagerState.currentPage - 1).coerceAtLeast(0)
-                                    clickTargetIndex = target
-                                }
-
-                                clickX > screenWidth * 2 / 3 -> {
-                                    val target = (pagerState.currentPage + 1).coerceAtMost(maxOf(0, list.lastIndex))
-                                    clickTargetIndex = target
-                                }
-
-                                else -> {
-                                    comicReadViewModel.triggerToolBar()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     HorizontalPager(
-        modifier = readerModifier.then(clickModifier),
+        modifier = readerModifier,
         state = pagerState,
         userScrollEnabled = !tapOnly && !zoomState.isZoomed
     ) { page ->

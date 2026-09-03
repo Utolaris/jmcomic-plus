@@ -38,6 +38,25 @@ internal fun reorderPromoteSections(
     }
 }
 
+internal fun <T> swapFirstTwoHomePages(input: List<T>): List<T> {
+    if (input.size < 2) return input
+    return buildList(input.size) {
+        add(input[1])
+        add(input[0])
+        addAll(input.drop(2))
+    }
+}
+
+data class SearchViewportState(
+    val firstVisibleItemIndex: Int = 0,
+    val firstVisibleItemScrollOffset: Int = 0,
+    val resetGeneration: Long = 0L,
+) {
+    fun reset(): SearchViewportState = SearchViewportState(
+        resetGeneration = resetGeneration + 1L,
+    )
+}
+
 class ComicViewModel(
     private val comicRepository: ComicRepository,
     private val contentPreferences: ContentPreferences,
@@ -83,20 +102,22 @@ class ComicViewModel(
         const val CATEGORY_LATEST = "builtin_latest"
         private const val NETWORK_CATEGORY_PREFIX = "net_"
         private const val PROMOTE_LOAD_KEY = "promote_sections"
-        val EMBEDDED_CATEGORIES = listOf(
-            HomeCategoryInfo(CATEGORY_LATEST, "最新上架"),
-            HomeCategoryInfo("builtin_week_hot", "本周热门"),
-            HomeCategoryInfo("builtin_month_hot", "本月热门"),
-            HomeCategoryInfo("builtin_most_liked", "最多喜欢"),
-            HomeCategoryInfo("builtin_random", "随机推荐"),
-            HomeCategoryInfo("builtin_doujin", "同人"),
-            HomeCategoryInfo("builtin_single", "单本"),
-            HomeCategoryInfo("builtin_short", "短篇"),
-            HomeCategoryInfo("builtin_korean", "韩漫"),
-            HomeCategoryInfo("builtin_american", "美漫"),
-            HomeCategoryInfo("builtin_cosplay", "Cosplay"),
-            HomeCategoryInfo("builtin_3d", "3D"),
-            HomeCategoryInfo("builtin_most_images", "图片最多"),
+        val EMBEDDED_CATEGORIES = swapFirstTwoHomePages(
+            listOf(
+                HomeCategoryInfo(CATEGORY_LATEST, "最新上架"),
+                HomeCategoryInfo("builtin_week_hot", "本周热门"),
+                HomeCategoryInfo("builtin_month_hot", "本月热门"),
+                HomeCategoryInfo("builtin_most_liked", "最多喜欢"),
+                HomeCategoryInfo("builtin_random", "随机推荐"),
+                HomeCategoryInfo("builtin_doujin", "同人"),
+                HomeCategoryInfo("builtin_single", "单本"),
+                HomeCategoryInfo("builtin_short", "短篇"),
+                HomeCategoryInfo("builtin_korean", "韩漫"),
+                HomeCategoryInfo("builtin_american", "美漫"),
+                HomeCategoryInfo("builtin_cosplay", "Cosplay"),
+                HomeCategoryInfo("builtin_3d", "3D"),
+                HomeCategoryInfo("builtin_most_images", "图片最多"),
+            )
         )
     }
 
@@ -258,7 +279,9 @@ class ComicViewModel(
     }
 
     private fun applyPromoteHome(categories: List<HomeSwiperComicListItemResponse>) {
-        val promoteSections = reorderPromoteSections(categories.filter { it.content.isNotEmpty() })
+        val promoteSections = swapFirstTwoHomePages(
+            reorderPromoteSections(categories.filter { it.content.isNotEmpty() }),
+        )
         if (promoteSections.isEmpty()) {
             applyEmbeddedHome()
             return
@@ -304,7 +327,7 @@ class ComicViewModel(
         }
         val selected = _homeState.value.selectedCategoryId
             ?.takeIf { it in validIds }
-            ?: CATEGORY_LATEST
+            ?: EMBEDDED_CATEGORIES.first().id
         _homeState.value = HomeUIState(
             categories = EMBEDDED_CATEGORIES,
             selectedCategoryId = selected,
@@ -351,6 +374,8 @@ class ComicViewModel(
     val searchComicFilterState = _searchComicFilterState.asStateFlow()
     private val _searchComicIdState = MutableStateFlow<Int?>(null)
     val searchComicIdState = _searchComicIdState.asStateFlow()
+    private val _searchViewportState = MutableStateFlow(SearchViewportState())
+    val searchViewportState = _searchViewportState.asStateFlow()
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val searchComicPager = combine(
@@ -377,32 +402,52 @@ class ComicViewModel(
         ).flow
     }.cachedIn(viewModelScope)
 
-    fun changeSearchComicOrderFilter(order: ComicSearchOrderFilter) {
+    fun changeSearchComicOrderFilter(order: ComicSearchOrderFilter): Boolean {
         _searchComicIdState.update { null }
-        _searchComicFilterState.update {
-            it.copy(
-                order = order
-            )
-        }
+        val current = _searchComicFilterState.value
+        val next = current.copy(order = order)
+        if (next == current) return false
+        _searchComicFilterState.value = next
+        _searchViewportState.update(SearchViewportState::reset)
+        return true
     }
 
     fun changeSearchComicContent(searchContent: String) {
         _searchComicIdState.update { null }
-        _searchComicFilterState.update {
-            it.copy(
-                searchContent = searchContent
-            )
-        }
+        updateSearchFilter(_searchComicFilterState.value.copy(searchContent = searchContent))
     }
 
     fun changeSearchComicContent(searchContent: String, excludedTags: List<String>) {
         _searchComicIdState.update { null }
-        _searchComicFilterState.update {
-            it.copy(
+        updateSearchFilter(
+            _searchComicFilterState.value.copy(
                 searchContent = searchContent,
-                excludedTags = excludedTags
+                excludedTags = excludedTags,
             )
+        )
+    }
+
+    fun saveSearchViewport(
+        firstVisibleItemIndex: Int,
+        firstVisibleItemScrollOffset: Int,
+        resetGeneration: Long,
+    ) {
+        _searchViewportState.update { current ->
+            if (current.resetGeneration != resetGeneration) {
+                current
+            } else {
+                current.copy(
+                    firstVisibleItemIndex = firstVisibleItemIndex.coerceAtLeast(0),
+                    firstVisibleItemScrollOffset = firstVisibleItemScrollOffset.coerceAtLeast(0),
+                )
+            }
         }
+    }
+
+    private fun updateSearchFilter(next: SearchComicFilter) {
+        if (next == _searchComicFilterState.value) return
+        _searchComicFilterState.value = next
+        _searchViewportState.update(SearchViewportState::reset)
     }
 
     fun consumeSearchComicId() {

@@ -5,7 +5,7 @@ enum class LauncherDisguise(
     val label: String,
     val aliasClassName: String,
 ) {
-    Default("default", "JMcomic", ".DefaultLauncherAlias"),
+    Default("default", "JMcomic Plus", ".DefaultLauncherAlias"),
     SystemTools("system_tools", "系统工具", ".SystemToolsLauncherAlias"),
     Gallery("gallery", "相册", ".GalleryLauncherAlias");
 

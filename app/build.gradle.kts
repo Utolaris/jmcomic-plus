@@ -16,6 +16,8 @@ val versionProps = Properties().apply {
 
 val versionCodeProp = versionProps.getProperty("VERSION_CODE", "1").toIntOrNull()
 val versionNameProp: String = versionProps.getProperty("VERSION_NAME", "1.1.0")
+val releaseStorePassword = providers.environmentVariable("JMCOMIC_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyPassword = providers.environmentVariable("JMCOMIC_RELEASE_KEY_PASSWORD").orNull
 
 fun getGitHash() = providers
     .exec {
@@ -52,8 +54,17 @@ android {
     namespace = "com.par9uet.jm"
     compileSdk = 36
 
+    signingConfigs {
+        create("release") {
+            storeFile = rootProject.file("release-key/jmcomic-plus-release.p12")
+            storePassword = releaseStorePassword
+            keyAlias = "jmcomic-plus-release"
+            keyPassword = releaseKeyPassword
+        }
+    }
+
     defaultConfig {
-        applicationId = "jmcomicoi.net"
+        applicationId = "jmcomic.plus"
         // Android 6.0 Marshmallow is API 23.
         minSdk = 23
         targetSdk = 35
@@ -74,7 +85,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
