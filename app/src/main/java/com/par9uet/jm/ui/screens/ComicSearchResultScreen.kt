@@ -30,7 +30,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -54,10 +53,9 @@ import com.par9uet.jm.ui.glass.glassMenuAnchor
 import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.ComicViewModel
-import com.par9uet.jm.utils.serializeExcludedTags
+import com.par9uet.jm.contentfilter.serializeExcludedTags
 import com.par9uet.jm.store.LocalSettingManager
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 
@@ -100,13 +98,12 @@ fun ComicSearchResultScreen(
     localSettingManager: LocalSettingManager = getKoin().get(),
 ) {
     val mainNavController = LocalMainNavController.current
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val miscSettings by localSettingManager.misc.collectAsState()
     val comicSearchLazyPagingItems = comicViewModel.searchComicPager.collectAsLazyPagingItems()
     val comicSearchFilterState by comicViewModel.searchComicFilterState.collectAsState()
     val searchComicIdState by comicViewModel.searchComicIdState.collectAsState()
     val savedViewport by comicViewModel.searchViewportState.collectAsState()
     val sortMenuState = rememberGlassAnchoredMenuState()
-    val coroutineScope = rememberCoroutineScope()
     val sortMenuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = savedViewport.firstVisibleItemIndex,
@@ -242,11 +239,7 @@ fun ComicSearchResultScreen(
                         selected = order.value == comicSearchFilterState.order.value,
                         onClick = {
                             sortMenuState.dismiss()
-                            if (comicViewModel.changeSearchComicOrderFilter(order)) {
-                                coroutineScope.launch {
-                                    gridState.scrollToItem(0, 0)
-                                }
-                            }
+                            comicViewModel.changeSearchComicOrderFilter(order)
                         },
                     )
                 }
@@ -291,7 +284,7 @@ fun ComicSearchResultScreen(
                 modifier = Modifier.weight(1f),
                 lazyPagingItems = comicSearchLazyPagingItems,
                 key = { it.id },
-                columns = adaptiveComicGridCells(localSetting.searchGridColumns),
+                columns = adaptiveComicGridCells(miscSettings.gridColumns.search),
                 contentPadding = PaddingValues(
                     start = 10.dp,
                     end = 10.dp,

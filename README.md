@@ -4,6 +4,13 @@
 
 本项目的核心 API 依赖 [JUKOMU/JMComic-Api-Java](https://github.com/JUKOMU/JMComic-Api-Java)（`io.github.jukomu:jmcomic-api`），提供漫画数据解析与接口能力。
 
+运行要求：Android 11（API 30）及以上；项目使用 Android API 37 编译并以 API 37 为目标版本。
+
+## 开发文档
+
+- [四层架构约束](ARCHITECTURE.md)
+- [ReaderImagePipeline 图片链路与组件说明](docs/reader-image-pipeline.md)
+
 ## v1.4.0 更新内容
 
 - 全面更新界面与导航：统一玻璃质感顶栏、菜单、弹窗和底部导航，优化详情页、评论、下载、设置及页面切换动效。

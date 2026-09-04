@@ -1,9 +1,10 @@
-package com.par9uet.jm.utils
+package com.par9uet.jm.launcher
 
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import com.par9uet.jm.data.models.LauncherDisguise
+import com.par9uet.jm.utils.log
 
 interface LauncherIdentityApplier {
     fun apply(disguise: LauncherDisguise)

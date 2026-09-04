@@ -1,10 +1,25 @@
 package com.par9uet.jm.reader
 
+import android.graphics.Bitmap
 import com.par9uet.jm.image.JM_IMAGE_HOSTS
 import java.io.File
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+
+class ReaderImageException(
+    message: String,
+    cause: Throwable? = null,
+    val httpCode: Int? = null,
+) : Exception(message, cause)
+
+/** Result returned to the currently composed reader item; the LRU remains the long-lived owner. */
+data class ReaderDecodedPage(
+    val bitmap: Bitmap,
+    val aspectRatio: Float,
+)
+
+internal const val READER_MAX_SOURCE_BYTES = 40L * 1024L * 1024L
 
 /** Stable identity for one page in one chapter response. */
 data class ReaderPageKey(

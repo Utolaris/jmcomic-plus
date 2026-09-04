@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
+import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.ui.viewModel.DownloadComicGroup
 import com.par9uet.jm.utils.shimmer
 import org.koin.compose.getKoin
@@ -228,7 +229,7 @@ private fun DownloadStateBlock(
         verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)
     ) {
         when (group.status) {
-            "downloading" -> {
+            DownloadStatus.DOWNLOADING -> {
                 val animatedProgress by animateFloatAsState(
                     targetValue = group.progress.coerceIn(0f, 1f),
                     animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
@@ -244,7 +245,7 @@ private fun DownloadStateBlock(
                 )
             }
 
-            "error" -> {
+            DownloadStatus.ERROR -> {
                 Icon(
                     imageVector = Icons.Rounded.ErrorOutline,
                     contentDescription = null,
@@ -257,7 +258,7 @@ private fun DownloadStateBlock(
                 )
             }
 
-            "paused" -> {
+            DownloadStatus.PAUSED -> {
                 Icon(
                     imageVector = Icons.Rounded.PauseCircleOutline,
                     contentDescription = null,
@@ -283,7 +284,7 @@ private fun DownloadStateBlock(
                 )
             }
         }
-        if (group.status == "downloading") {
+        if (group.status == DownloadStatus.DOWNLOADING) {
             LinearProgressIndicator(
                 progress = { group.progress.coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth()

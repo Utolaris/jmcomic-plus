@@ -1,4 +1,4 @@
-package com.par9uet.jm.ui.pagingSource
+package com.par9uet.jm.favorites.presentation
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState

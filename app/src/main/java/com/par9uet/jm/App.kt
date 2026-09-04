@@ -44,12 +44,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.compose.rememberNavController
 import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.startup.PostStartupCoordinator
 import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.PostStartupInitializer
 import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.JmCoverImage
@@ -67,20 +66,22 @@ import org.koin.compose.getKoin
 fun App(
     toastManager: ToastManager = getKoin().get(),
     localSettingManager: LocalSettingManager = getKoin().get(),
-    postStartupInitializer: PostStartupInitializer = getKoin().get(),
+    postStartupCoordinator: PostStartupCoordinator = getKoin().get(),
 ) {
-    val localSetting by localSettingManager.localSettingState.collectAsState()
     val appLock by localSettingManager.appLock.collectAsState()
-    val showOnboarding = !localSetting.onboardingCompleted
+    val onboardingCompleted by localSettingManager.onboardingCompleted.collectAsState()
+    val nsfwWarningDismissed by localSettingManager.nsfwWarningDismissed.collectAsState()
+    val miscSettings by localSettingManager.misc.collectAsState()
+    val showOnboarding = !onboardingCompleted
     var isLocked by remember { mutableStateOf(appLock.enabled) }
-    var sessionNsfwDismissed by remember { mutableStateOf(localSetting.nsfwWarningDismissed) }
+    var sessionNsfwDismissed by remember { mutableStateOf(nsfwWarningDismissed) }
 
     // Only the small local state needed to choose the first safe screen is loaded here. All
     // network, history, launcher, notification, and account work waits for the first frame to be
     // handed to the user, so background tasks never compete with first-frame CPU/disk work.
     LaunchedEffect(Unit) {
         withFrameNanos { }
-        postStartupInitializer.start()
+        postStartupCoordinator.start()
     }
 
     LaunchedEffect(appLock.enabled) {
@@ -100,7 +101,7 @@ fun App(
 
     val showAppLock = appLock.enabled && isLocked && !showOnboarding
     val showNsfwDialog = !showAppLock && !showOnboarding &&
-        !sessionNsfwDismissed && !localSetting.nsfwWarningDismissed
+        !sessionNsfwDismissed && !nsfwWarningDismissed
 
     // Mark the first real screen for startup traces. Permission prompts are scheduled after that
     // frame and never compete with the onboarding or app-lock screen.
@@ -131,7 +132,7 @@ fun App(
         )
 
         else -> MainAppContent(
-            localSetting = localSetting,
+            clipboardAutoDetectEnabled = miscSettings.clipboardAutoDetectEnabled,
             localSettingManager = localSettingManager,
             toastManager = toastManager,
             showNsfwDialog = showNsfwDialog,
@@ -142,7 +143,7 @@ fun App(
 
 @Composable
 private fun MainAppContent(
-    localSetting: LocalSetting,
+    clipboardAutoDetectEnabled: Boolean,
     localSettingManager: LocalSettingManager,
     toastManager: ToastManager,
     showNsfwDialog: Boolean,
@@ -157,8 +158,8 @@ private fun MainAppContent(
     var clipboardDetectedComic by remember { mutableStateOf<Comic?>(null) }
     var pendingNavComicId by remember { mutableStateOf(-1) }
 
-    DisposableEffect(lifecycleOwner, localSetting.clipboardAutoDetectEnabled) {
-        if (!localSetting.clipboardAutoDetectEnabled) {
+    DisposableEffect(lifecycleOwner, clipboardAutoDetectEnabled) {
+        if (!clipboardAutoDetectEnabled) {
             onDispose { }
         } else {
             val observer = LifecycleEventObserver { _, event ->

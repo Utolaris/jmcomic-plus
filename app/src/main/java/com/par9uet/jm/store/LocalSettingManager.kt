@@ -8,26 +8,28 @@ import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_CUSTOM
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.storage.LocalSettingPersistence
-import com.par9uet.jm.utils.LauncherIdentityApplier
-import com.par9uet.jm.utils.flattenBlockedTagTemplates
+import com.par9uet.jm.contentfilter.flattenBlockedTagTemplates
+import com.par9uet.jm.launcher.LauncherIdentityApplier
 import com.par9uet.jm.utils.log
-import com.par9uet.jm.utils.normalizeBlockedTagList
-import com.par9uet.jm.utils.normalizeBlockedTagTemplates
+import com.par9uet.jm.contentfilter.normalizeBlockedTagList
+import com.par9uet.jm.contentfilter.normalizeBlockedTagTemplates
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
  * Single writer for [LocalSetting]. The DTO stays the one persistence model (one encrypted
- * JSON document, existing migrations and backup compatibility); features instead observe the
- * narrow contracts projected below, so no feature can read unrelated settings.
+ * JSON document, existing migrations and backup compatibility); features consume the narrow
+ * projections below instead of observing the whole persistence object.
  */
 class LocalSettingManager(
     private val persistence: LocalSettingPersistence,
     private val launcherDisguiseApplier: LauncherIdentityApplier,
 ) : ContentPreferences,
+    BlockedTagTemplatePreferences,
     RecommendationPreferences,
     ReaderPreferences,
+    AppExperiencePreferences,
+    LocalSettingSnapshotProvider,
     CacheNotificationPreferences,
     MiscSettingsPreferences,
     AppSecurityPreferences,
@@ -40,11 +42,8 @@ class LocalSettingManager(
     private val _localSettingState = MutableStateFlow(LocalSetting())
     private val updateListeners = mutableListOf<(LocalSetting) -> Unit>()
 
-    /** Still exposed for first-frame Compose state reads; do not add new business readers. */
-    @Deprecated("Narrow contracts below replace full-model reads")
-    val localSettingState = _localSettingState.asStateFlow()
-
     override val blockedTags = _projectingState { it.blockedTagList }
+    override val blockedTagTemplates = _projectingState { it.blockedTagTemplateList }
     override val homeExcludedTags = _projectingState { it.homeExcludedTags }
     override val preferenceRecommendEnabled = _projectingState { it.preferenceRecommendEnabled }
     override val readMode = _projectingState { it.readMode }
@@ -52,6 +51,8 @@ class LocalSettingManager(
     override val prefetchCount = _projectingState { it.prefetchCount }
     override val memoryOptEnabled = _projectingState { it.readMemoryOptEnabled }
     override val decodeConcurrency = _projectingState { it.readDecodeConcurrency }
+    override val onboardingCompleted = _projectingState { it.onboardingCompleted }
+    override val nsfwWarningDismissed = _projectingState { it.nsfwWarningDismissed }
     override val cacheNotification = _projectingState(::toCacheNotificationSetting)
     override val misc = _projectingState(::toMiscSettingsState)
     override val appLock = _projectingState(::toAppLockState)
@@ -87,12 +88,6 @@ class LocalSettingManager(
     fun setPreferenceRecommendEnabled(enabled: Boolean) =
         updateSetting { it.copy(preferenceRecommendEnabled = enabled) }
     fun setApiEndpoint(url: String) = updateSetting { it.copy(api = url) }
-
-    fun closeShowComicScrollReadTip() =
-        updateSetting { it.copy(showComicScrollReadTip = false) }
-
-    fun closeShowComicPageReadTip() =
-        updateSetting { it.copy(showComicPageReadTip = false) }
 
     fun updateLauncherDisguise(launcherDisguise: String) {
         val disguise = LauncherDisguise.fromId(launcherDisguise)
@@ -243,6 +238,8 @@ class LocalSettingManager(
 
     fun currentAutoSignInEnabled(): Boolean = _localSettingState.value.autoSignInEnabled
 
+    override fun currentLocalSettingSnapshot(): LocalSetting = _localSettingState.value
+
     // ---- AppSecurityEditor: one transition per user action ----
 
     override fun setPassword(password: String, length: Int) = updateSetting {
@@ -297,6 +294,15 @@ class LocalSettingManager(
         it.copy(
             appLockEnabled = enabled &&
                 (it.appLockPassword.isNotEmpty() || it.appLockPattern.isNotEmpty()),
+        )
+    }
+
+    override fun disableAndClearAppLock() = updateSetting {
+        it.copy(
+            appLockEnabled = false,
+            appLockPassword = "",
+            appLockPattern = "",
+            appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PASSWORD,
         )
     }
 

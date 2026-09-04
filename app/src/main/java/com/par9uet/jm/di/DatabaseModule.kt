@@ -5,10 +5,12 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.store.DownloadWorkScheduler
 import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
 import com.par9uet.jm.worker.DownloadComicWorker
+import com.par9uet.jm.worker.WorkManagerDownloadWorkScheduler
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.dsl.worker
 import org.koin.core.module.dsl.viewModel
@@ -35,6 +37,7 @@ val databaseModule = module {
     single { get<AppDatabase>().favoriteMetadataTermDao() }
     single { get<AppDatabase>().favoriteSyncStateDao() }
     single { FavoriteStore(get(), get(), get(), get(), get(), get(), get()) }
+    single<DownloadWorkScheduler> { WorkManagerDownloadWorkScheduler(androidContext()) }
     single { DownloadManager(get(), get(), get(), get()) }
     viewModel { DownloadViewModel(get(), get()) }
     viewModel { DownloadComicDetailViewModel(get()) }

@@ -15,7 +15,7 @@ import com.par9uet.jm.ui.components.Comic
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
-import com.par9uet.jm.utils.filterBlockedTags
+import com.par9uet.jm.contentfilter.filterBlockedTags
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 
@@ -25,11 +25,11 @@ fun ComicRelateListScreen(
     localSettingManager: LocalSettingManager = getKoin().get(),
 ) {
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val blockedTags by localSettingManager.blockedTags.collectAsState()
     CommonScaffold(title = "相关本子") { topContentPadding, bottomContentPadding ->
         if (comicDetailState.data != null) {
-            val relateList = remember(comicDetailState.data, localSetting.blockedTagList) {
-                comicDetailState.data?.relateComicList?.filterBlockedTags(localSetting.blockedTagList) ?: emptyList()
+            val relateList = remember(comicDetailState.data, blockedTags) {
+                comicDetailState.data?.relateComicList?.filterBlockedTags(blockedTags) ?: emptyList()
             }
             LazyVerticalGrid(
                 columns = adaptiveComicGridCells(),

@@ -49,10 +49,10 @@ import com.par9uet.jm.ui.components.ComicSearchHistoryTag
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SearchExclusionEditor
 import com.par9uet.jm.ui.viewModel.ComicViewModel
-import com.par9uet.jm.utils.normalizeSearchExcludedTags
-import com.par9uet.jm.utils.parseSearchSyntax
-import com.par9uet.jm.utils.searchContentWithoutExcludedTags
-import com.par9uet.jm.utils.serializeExcludedTags
+import com.par9uet.jm.contentfilter.normalizeSearchExcludedTags
+import com.par9uet.jm.contentfilter.parseSearchSyntax
+import com.par9uet.jm.contentfilter.searchContentWithoutExcludedTags
+import com.par9uet.jm.contentfilter.serializeExcludedTags
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 
@@ -83,7 +83,7 @@ fun ComicSearchScreen(
         )
     }
     val historySearchState by historySearchManager.historySearchState.collectAsState()
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val blockedTagTemplates by localSettingManager.blockedTagTemplates.collectAsState()
 
     fun addExcludedTag(tag: String) {
         excludedTags = normalizeSearchExcludedTags(excludedTags + tag)
@@ -135,7 +135,7 @@ fun ComicSearchScreen(
             item {
                 SearchExclusionEditor(
                     excludedTags = excludedTags,
-                    templates = localSetting.blockedTagTemplateList,
+                    templates = blockedTagTemplates,
                     onAddTag = { addExcludedTag(it) },
                     onRemoveTag = { tag ->
                         excludedTags = excludedTags.filterNot { it.equals(tag, ignoreCase = true) }

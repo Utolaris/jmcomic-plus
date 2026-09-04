@@ -1,5 +1,8 @@
 package com.par9uet.jm.reader
 
+import com.par9uet.jm.image.jmImageHostLatencyEwma
+import com.par9uet.jm.image.orderJmImageHosts
+import com.par9uet.jm.image.selectJmPreferredHost
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -57,41 +60,10 @@ class ReaderAccelerationTest {
             "https://cdn.example/media/photos/123/00001.webp?t=abc&v=2",
             replaced,
         )
-        assertTrue(
-            isReaderImageMirrorAllowed(
-                host = "cdn.example",
-                path = "/media/photos/123/00001.webp",
-                allowlistedHosts = listOf("cdn.example"),
-            ),
-        )
-        assertFalse(
-            isReaderImageMirrorAllowed(
-                host = "unknown.example",
-                path = "/media/photos/123/00001.webp",
-                allowlistedHosts = listOf("cdn.example"),
-            ),
-        )
-        assertFalse(
-            isReaderImageMirrorAllowed(
-                host = "cdn.example",
-                path = "/api/private/image.webp",
-                allowlistedHosts = listOf("cdn.example"),
-            ),
-        )
-        assertFalse(
-            isReaderImageMirrorAllowed(
-                host = "cdn.example",
-                path = "/user-content/image.webp",
-                allowlistedHosts = listOf("cdn.example"),
-            ),
-        )
-        assertTrue(
-            isReaderImageMirrorAllowed(
-                host = "cdn.example",
-                path = "/media/albums/220980_3x4.jpg",
-                allowlistedHosts = listOf("cdn.example"),
-            ),
-        )
+        assertTrue(isReaderImageMirrorPathAllowed("/media/photos/123/00001.webp"))
+        assertFalse(isReaderImageMirrorPathAllowed("/api/private/image.webp"))
+        assertFalse(isReaderImageMirrorPathAllowed("/user-content/image.webp"))
+        assertTrue(isReaderImageMirrorPathAllowed("/media/albums/220980_3x4.jpg"))
     }
 
     @Test
@@ -126,59 +98,8 @@ class ReaderAccelerationTest {
     }
 
     @Test
-    fun fastPrimaryDoesNotStartSecondary() = runBlocking {
-        var secondaryCalls = 0
-        val winner = delayedHedge(
-            delayMillis = 100L,
-            primaryAttempt = { Result.success("primary") },
-            secondaryAttempt = {
-                secondaryCalls++
-                Result.success("secondary")
-            },
-        )
-
-        assertEquals("primary", winner)
-        assertEquals(0, secondaryCalls)
-    }
-
-    @Test
-    fun delayedHedgeReturnsSecondaryAndCancelsPrimary() = runBlocking {
-        val primaryCancelled = CompletableDeferred<Unit>()
-        val winner = delayedHedge(
-            delayMillis = 10L,
-            primaryAttempt = {
-                try {
-                    awaitCancellation()
-                } finally {
-                    primaryCancelled.complete(Unit)
-                }
-            },
-            secondaryAttempt = { Result.success("secondary") },
-        )
-
-        assertEquals("secondary", winner)
-        withTimeout(1_000L) { primaryCancelled.await() }
-    }
-
-    @Test
-    fun failedPrimaryFallsThroughToTheNextCandidateWithoutAThirdRace() = runBlocking {
-        var secondaryCalls = 0
-        val winner = delayedHedge(
-            delayMillis = 100L,
-            primaryAttempt = { Result.failure(IllegalStateException("bad CDN")) },
-            secondaryAttempt = {
-                secondaryCalls++
-                Result.success("alternate")
-            },
-        )
-
-        assertEquals("alternate", winner)
-        assertEquals(1, secondaryCalls)
-    }
-
-    @Test
     fun hostOrderingUsesCooldownThenPreferredThenHistoricalLatency() {
-        val ordered = orderReaderImageHosts(
+        val ordered = orderJmImageHosts(
             candidates = listOf("origin", "fast", "preferred", "cooldown"),
             originHost = "origin",
             preferredHost = "preferred",
@@ -200,8 +121,8 @@ class ReaderAccelerationTest {
     fun preferredHostTracksStableEwmaInsteadOfLastSuccess() {
         val latencies = mutableMapOf<String, Long?>()
         fun sample(host: String, elapsedMillis: Long): String? {
-            latencies[host] = readerHostLatencyEwma(latencies[host], elapsedMillis)
-            return selectReaderPreferredHost(
+            latencies[host] = jmImageHostLatencyEwma(latencies[host], elapsedMillis)
+            return selectJmPreferredHost(
                 candidates = listOf("A", "B"),
                 latencyMillis = latencies,
                 failedAtMillis = emptyMap(),

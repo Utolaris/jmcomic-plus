@@ -10,6 +10,8 @@ import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 open class BaseRepository {
 
@@ -32,28 +34,17 @@ open class BaseRepository {
         }
     }
 
-    suspend fun safeStringCall(apiCall: suspend () -> String): NetWorkResult<String> {
-        return try {
-            val response = apiCall()
-            NetWorkResult.Success(response)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            handleException(e)
-        }
-    }
-
-    protected suspend inline fun <T> runCatchingCancellable(
+    protected suspend inline fun <T> safeEmbeddedCall(
+        operation: String,
         crossinline block: suspend () -> T,
-    ): Result<T> {
-        return try {
-            Result.success(block())
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            // 只把普通异常转换为 Result.failure；OOM/LinkageError/StackOverflowError 等
-            // JVM 致命错误保持抛出，避免被当成普通网络失败吞掉。
-            Result.failure(e)
+    ): NetWorkResult<T> = withContext(Dispatchers.IO) {
+        try {
+            NetWorkResult.Success(block())
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            logError(this@BaseRepository::class.java.simpleName, "$operation: ${error.message}")
+            NetWorkResult.Error("$operation：${error.message ?: "未知错误"}")
         }
     }
 

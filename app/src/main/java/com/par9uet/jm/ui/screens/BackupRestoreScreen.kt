@@ -111,7 +111,6 @@ fun BackupRestoreScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val localSetting by localSettingManager.localSettingState.collectAsState()
     val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
     val backupManager = remember { BackupManager() }
 
@@ -157,7 +156,11 @@ fun BackupRestoreScreen(
             runCatching {
                 withContext(Dispatchers.IO) {
                     val json = backupManager.createBackup(
-                        localSetting = if (opts.includeLocalSetting) localSetting else null,
+                        localSetting = if (opts.includeLocalSetting) {
+                            localSettingManager.currentLocalSettingSnapshot()
+                        } else {
+                            null
+                        },
                         comicCache = if (opts.includeComicCache) cacheBackup else null,
                         options = opts,
                         protectionType = prot,
@@ -326,6 +329,7 @@ fun BackupRestoreScreen(
                 visible = backupStep == BackupStep.SelectProtection,
                 title = "选择保护方式",
                 value = null,
+                modifier = Modifier.widthIn(max = 420.dp),
                 selectOptionList = protectionOptionList,
                 onSelect = { type ->
                     pendingProtectionType = type

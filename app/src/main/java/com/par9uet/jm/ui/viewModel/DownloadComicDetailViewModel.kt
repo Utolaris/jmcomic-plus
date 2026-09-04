@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.database.model.DownloadComic
+import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,8 +42,10 @@ data class DownloadComicDetailState(
     val groupProgress: Float get() = allItems.takeIf { it.isNotEmpty() }
         ?.map { it.progress.coerceIn(0f, 1f) }
         ?.average()?.toFloat() ?: 0f
-    val hasError: Boolean get() = allItems.any { it.status == "error" }
-    val isDownloading: Boolean get() = allItems.any { it.status == "downloading" || it.status == "pending" }
+    val hasError: Boolean get() = allItems.any { it.status == DownloadStatus.ERROR }
+    val isDownloading: Boolean get() = allItems.any {
+        it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.PENDING
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -182,10 +185,10 @@ private fun buildStatusSummary(
     allItems: List<DownloadComic>,
     completeItems: List<DownloadComic>
 ): String {
-    val pendingCount = allItems.count { it.status == "pending" }
-    val downloadingCount = allItems.count { it.status == "downloading" }
-    val pausedCount = allItems.count { it.status == "paused" }
-    val errorCount = allItems.count { it.status == "error" }
+    val pendingCount = allItems.count { it.status == DownloadStatus.PENDING }
+    val downloadingCount = allItems.count { it.status == DownloadStatus.DOWNLOADING }
+    val pausedCount = allItems.count { it.status == DownloadStatus.PAUSED }
+    val errorCount = allItems.count { it.status == DownloadStatus.ERROR }
     return when {
         allItems.isEmpty() -> "暂无缓存"
         allItems.size == completeItems.size -> "全部完成"

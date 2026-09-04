@@ -1,9 +1,8 @@
 package com.par9uet.jm.repository.impl
 
-import com.par9uet.jm.repository.LoginSession
+import com.par9uet.jm.repository.BaseRepository
+import com.par9uet.jm.repository.CandidateSession
 import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.repository.VerifiedCredentials
-import com.par9uet.jm.utils.logError
 import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
@@ -29,51 +28,27 @@ import java.net.UnknownHostException
 class UserRepositoryImpl(
     private val embeddedClientManager: EmbeddedClientManager,
     private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
-) : UserRepository {
-    override suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
+) : BaseRepository(), UserRepository {
+    override suspend fun login(username: String, password: String): NetWorkResult<CandidateSession> =
+        authenticateCandidate(username, password)
+
+    override suspend fun verifyLogin(
+        username: String,
+        password: String,
+    ): NetWorkResult<CandidateSession> = authenticateCandidate(username, password)
+
+    private suspend fun authenticateCandidate(
+        username: String,
+        password: String,
+    ): NetWorkResult<CandidateSession> {
         return withContext(Dispatchers.IO) {
             try {
-                // Manual login is a candidate operation too: it must never mutate the active
-                // shared client while UserManager is between begin/commit transition phases.
-                // Only activateVerifiedSession(), inside the generation-checked commit, promotes
-                // these isolated cookies to the shared session.
+                // Authentication always runs in an isolated client. Only the generation-checked
+                // commit in UserManager promotes these cookies to the shared session.
                 when (val result = embeddedClientManager.verifyCandidate(username, password)) {
                     is EmbeddedClientManager.EmbeddedLoginResult.Success -> {
                         NetWorkResult.Success(
-                            LoginSession(
-                                loginResponse = result.userInfo.toLoginResponse(),
-                                embeddedCookies = result.sessionCookies,
-                            )
-                        )
-                    }
-
-                    is EmbeddedClientManager.EmbeddedLoginResult.Failure -> {
-                        val exception = result.exception
-                        NetWorkResult.Error(
-                            message = "内置API登录失败：" + (exception.message ?: "未知错误"),
-                            code = result.businessCode ?: exception.errorCode,
-                            authFailure = result.classifyAuthFailure()
-                        )
-                    }
-                }
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error(
-                    message = "内置API登录失败：" + (e.message ?: "未知错误"),
-                    authFailure = e.classifyAuthFailure()
-                )
-            }
-        }
-    }
-
-    override suspend fun verifyLogin(username: String, password: String): NetWorkResult<VerifiedCredentials> {
-        return withContext(Dispatchers.IO) {
-            try {
-                when (val result = embeddedClientManager.verifyCandidate(username, password)) {
-                    is EmbeddedClientManager.EmbeddedLoginResult.Success -> {
-                        NetWorkResult.Success(
-                            VerifiedCredentials(
+                            CandidateSession(
                                 loginResponse = result.userInfo.toLoginResponse(),
                                 embeddedCookies = result.sessionCookies,
                             )
@@ -103,7 +78,7 @@ class UserRepositoryImpl(
     /**
      * 把已验证的候选会话提升为活动会话。调用方（UserManager）已确认 generation 有效。
      */
-    override fun activateVerifiedSession(verified: VerifiedCredentials) {
+    override fun activateVerifiedSession(verified: CandidateSession) {
         embeddedClientManager.activateCandidateSession(verified.embeddedCookies)
     }
 
@@ -115,7 +90,7 @@ class UserRepositoryImpl(
         return when {
             // This is the API JSON code captured before JmApiResponse consumed the body.
             businessCode == 401 -> AuthFailure.InvalidCredentials
-            // ResponseException.errorCode is the HTTP status in JMComic-Api-Java 1.1.6.
+            // ResponseException.errorCode is the HTTP status in JMComic-Api-Java 1.1.8.
             exception.errorCode == 401 -> AuthFailure.InvalidCredentials
             exception.errorCode in 500..599 -> AuthFailure.TemporaryFailure
             exception.cause is NetworkException || exception.cause is IOException -> AuthFailure.TemporaryFailure
@@ -134,40 +109,25 @@ class UserRepositoryImpl(
     }
 
     override suspend fun getHistoryComicList(page: Int): NetWorkResult<UserHistoryComicListResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                NetWorkResult.Success(
-                    requireNotNull(
-                        authenticatedEmbeddedClient.withClient { client ->
-                            val albumMetas = client.getWatchHistory(page)
-                            UserHistoryComicListResponse(
-                                list = albumMetas.map { it.toHistoryListItem() },
-                                total = albumMetas.size
-                            )
-                        }
+        return safeEmbeddedCall("内置 API 获取历史漫画失败") {
+            requireNotNull(
+                authenticatedEmbeddedClient.withClient { client ->
+                    val albumMetas = client.getWatchHistory(page)
+                    UserHistoryComicListResponse(
+                        list = albumMetas.map { it.toHistoryListItem() },
+                        total = albumMetas.size
                     )
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置API获取历史漫画失败：${e.message ?: "未知错误"}")
-            }
+                }
+            )
         }
     }
 
     override suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit> {
-        return withContext(Dispatchers.IO) {
-            try {
-                authenticatedEmbeddedClient.withClient { client ->
-                    client.deleteWatchHistory(id.toString())
-                }
-                NetWorkResult.Success(Unit)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logError("UserRepositoryImpl", "删除历史记录 id=$id 失败: ${e.message}")
-                NetWorkResult.Error("删除历史记录失败：${e.message ?: "未知错误"}")
+        return safeEmbeddedCall("删除历史记录失败") {
+            authenticatedEmbeddedClient.withClient { client ->
+                client.deleteWatchHistory(id.toString())
             }
+            Unit
         }
     }
 
@@ -175,61 +135,39 @@ class UserRepositoryImpl(
         page: Int,
         userId: Int
     ): NetWorkResult<UserHistoryCommentListResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                NetWorkResult.Success(
-                    requireNotNull(
-                        authenticatedEmbeddedClient.withClient { client ->
-                            val query = ForumQuery.user(userId.toString())
+        return safeEmbeddedCall("内置 API 获取评论历史失败") {
+            requireNotNull(
+                authenticatedEmbeddedClient.withClient { client ->
+                    val query = ForumQuery.user(userId.toString())
                         .page(page)
                         .build()
-                            val commentList = client.getComments(query)
-                            UserHistoryCommentListResponse(
-                                list = commentList.list.map { it.toHistoryCommentListItem() },
-                                total = commentList.total
-                            )
-                        }
+                    val commentList = client.getComments(query)
+                    UserHistoryCommentListResponse(
+                        list = commentList.list.map { it.toHistoryCommentListItem() },
+                        total = commentList.total
                     )
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置API获取评论历史失败：${e.message ?: "未知错误"}")
-            }
+                }
+            )
         }
     }
 
     override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                NetWorkResult.Success(
-                    requireNotNull(
-                        authenticatedEmbeddedClient.withClient { client ->
-                            val status = client.getDailyCheckInStatus(userId.toString())
-                            status.toSignInDataResponse()
-                        }
-                    )
-                )
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置API获取签到数据失败：${e.message ?: "未知错误"}")
-            }
+        return safeEmbeddedCall("内置 API 获取签到数据失败") {
+            requireNotNull(
+                authenticatedEmbeddedClient.withClient { client ->
+                    val status = client.getDailyCheckInStatus(userId.toString())
+                    status.toSignInDataResponse()
+                }
+            )
         }
     }
 
     override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<SignInResponse> {
-        return withContext(Dispatchers.IO) {
-            try {
-                authenticatedEmbeddedClient.withClient { client ->
-                    client.doDailyCheckin(userId.toString(), dailyId.toString())
-                }
-                NetWorkResult.Success(SignInResponse(msg = "签到成功"))
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                NetWorkResult.Error("内置API签到失败：${e.message ?: "未知错误"}")
+        return safeEmbeddedCall("内置 API 签到失败") {
+            authenticatedEmbeddedClient.withClient { client ->
+                client.doDailyCheckin(userId.toString(), dailyId.toString())
             }
+            SignInResponse(msg = "签到成功")
         }
     }
 

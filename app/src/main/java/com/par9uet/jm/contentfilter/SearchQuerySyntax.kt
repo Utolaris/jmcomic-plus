@@ -1,4 +1,4 @@
-package com.par9uet.jm.utils
+package com.par9uet.jm.contentfilter
 
 data class SearchQuerySyntax(
     val includes: List<String>,

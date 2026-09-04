@@ -13,7 +13,7 @@ data class DownloadComic(
     val coverPath: String,
     val zipPath: String,
     val progress: Float,
-    val status: String, // pending || downloading || complete
+    val status: DownloadStatus,
     val createTime: Long,
     val groupId: Int = 0,
     val groupName: String = "",

@@ -26,8 +26,8 @@ fun createAsyncImageLoader(context: Context, dohManager: DohManager): ImageLoade
         }
         .diskCache {
             DiskCache.Builder()
-                .directory(getCommonCacheDir(context)) // 自定义目录
-                .maxSizeBytes(1024L * 1024 * 1024) // 200MB
+                .directory(getCommonCacheDir(context))
+                .maxSizeBytes(1024L * 1024 * 1024) // 1 GB
                 .build()
         }
         .build()

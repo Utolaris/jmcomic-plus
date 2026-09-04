@@ -99,7 +99,7 @@ fun ComicPageRead(
 
     val readerModifier = Modifier
         .fillMaxSize()
-        .readerTapGestures(
+        .readerGestures(
             zoomState = zoomState,
             requireUnconsumedDown = !tapOnly,
             onNormalTap = { position, viewportSize ->
@@ -121,7 +121,6 @@ fun ComicPageRead(
             },
             onZoomedCenterTap = comicReadViewModel::triggerToolBar
         )
-        .readerZoomable(zoomState)
 
     HorizontalPager(
         modifier = readerModifier,

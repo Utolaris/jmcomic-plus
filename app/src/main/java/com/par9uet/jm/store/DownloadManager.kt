@@ -1,30 +1,20 @@
 package com.par9uet.jm.store
 
-import android.content.Context
-import androidx.work.BackoffPolicy
-import androidx.work.Constraints
-import androidx.work.NetworkType
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.WorkManager
-import androidx.work.workDataOf
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.database.model.DownloadComic
-import com.par9uet.jm.worker.DownloadComicWorker
+import com.par9uet.jm.database.model.DownloadStatus
+import com.par9uet.jm.database.model.UpdateComicStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-
-private const val DOWNLOAD_RETRY_BACKOFF_SECONDS = 30L
 
 class DownloadManager(
-    private val context: Context,
     private val downloadComicDao: DownloadComicDao,
     private val scope: CoroutineScope,
     private val toastManager: ToastManager,
+    private val downloadWorkScheduler: DownloadWorkScheduler,
 ) {
     fun downloadComic(comic: Comic) {
         scope.launch(Dispatchers.IO) {
@@ -34,7 +24,7 @@ class DownloadManager(
             }
             insertComicTask(comic)
             toastManager.showAsync("创建缓存任务成功")
-            enqueueDownload(comic.id)
+            downloadWorkScheduler.enqueue(listOf(comic.id))
         }
     }
 
@@ -49,7 +39,7 @@ class DownloadManager(
             }
 
             newComics.forEach { insertComicTask(it) }
-            enqueueDownloads(newComics.map { it.id })
+            downloadWorkScheduler.enqueue(newComics.map { it.id })
 
             val skippedCount = comics.size - newComics.size
             toastManager.showAsync(
@@ -83,7 +73,7 @@ class DownloadManager(
                         coverPath = "",
                         zipPath = "",
                         progress = 0f,
-                        status = "pending",
+                        status = DownloadStatus.PENDING,
                         createTime = now + index,
                         groupId = parentComic.id,
                         groupName = parentComic.name,
@@ -91,7 +81,7 @@ class DownloadManager(
                     )
                 )
             }
-            enqueueDownloads(newChapters.map { it.id })
+            downloadWorkScheduler.enqueue(newChapters.map { it.id })
 
             val skippedCount = chapters.size - newChapters.size
             toastManager.showAsync(
@@ -114,44 +104,12 @@ class DownloadManager(
                 coverPath = "",
                 zipPath = "",
                 progress = 0f,
-                status = "pending",
+                status = DownloadStatus.PENDING,
                 createTime = System.currentTimeMillis(),
                 groupId = comic.id,
                 groupName = comic.name
             )
         )
-    }
-
-    private fun enqueueDownload(comicId: Int) {
-        enqueueDownloads(listOf(comicId))
-    }
-
-    private fun enqueueDownloads(comicIds: List<Int>) {
-        if (comicIds.isEmpty()) return
-        val distinctComicIds = comicIds.distinct()
-        val batchId = if (distinctComicIds.size > 1) UUID.randomUUID().toString() else ""
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
-        val workManager = WorkManager.getInstance(context)
-        distinctComicIds.forEach { comicId ->
-            val downloadRequest = OneTimeWorkRequestBuilder<DownloadComicWorker>()
-                .setConstraints(constraints)
-                .setInputData(
-                    workDataOf(
-                        "comicId" to comicId,
-                        "batchId" to batchId,
-                        "batchTotal" to distinctComicIds.size
-                    )
-                )
-                .setBackoffCriteria(
-                    BackoffPolicy.LINEAR,
-                    DOWNLOAD_RETRY_BACKOFF_SECONDS,
-                    TimeUnit.SECONDS
-                )
-                .build()
-            workManager.enqueue(downloadRequest)
-        }
     }
 
     fun retryDownload(comicId: Int) {
@@ -161,9 +119,9 @@ class DownloadManager(
                 com.par9uet.jm.database.model.UpdateComicProgress(comicId, 0f)
             )
             downloadComicDao.updateStatus(
-                com.par9uet.jm.database.model.UpdateComicStatus(comicId, "pending")
+                UpdateComicStatus(comicId, DownloadStatus.PENDING)
             )
-            enqueueDownload(comicId)
+            downloadWorkScheduler.enqueue(listOf(comicId))
             toastManager.showAsync("已重新加入下载队列")
         }
     }
@@ -177,14 +135,14 @@ class DownloadManager(
         scope.launch(Dispatchers.IO) {
             val validIds = comicIds.filter { id ->
                 val task = downloadComicDao.getById(id)
-                task != null && task.status != "complete"
+                task != null && task.status != DownloadStatus.COMPLETE
             }.distinct()
             if (validIds.isEmpty()) {
                 toastManager.showAsync("没有可恢复的下载任务")
                 return@launch
             }
-            downloadComicDao.updateStatusByIds(validIds, "pending")
-            enqueueDownloads(validIds)
+            downloadComicDao.updateStatusByIds(validIds, DownloadStatus.PENDING)
+            downloadWorkScheduler.enqueue(validIds)
             toastManager.showAsync("已恢复 ${validIds.size} 个下载任务")
         }
     }
@@ -192,15 +150,15 @@ class DownloadManager(
     fun retryGroup(groupId: Int) {
         scope.launch(Dispatchers.IO) {
             val chapters = downloadComicDao.getByGroupId(groupId)
-            val errorIds = chapters.filter { it.status == "error" }.map { it.id }
+            val errorIds = chapters.filter { it.status == DownloadStatus.ERROR }.map { it.id }
             if (errorIds.isEmpty()) return@launch
-            downloadComicDao.updateStatusByIds(errorIds, "pending")
+            downloadComicDao.updateStatusByIds(errorIds, DownloadStatus.PENDING)
             errorIds.forEach { id ->
                 downloadComicDao.updateProgress(
                     com.par9uet.jm.database.model.UpdateComicProgress(id, 0f)
                 )
             }
-            enqueueDownloads(errorIds)
+            downloadWorkScheduler.enqueue(errorIds)
             toastManager.showAsync("已重新加入 ${errorIds.size} 个下载任务")
         }
     }
@@ -223,13 +181,13 @@ class DownloadManager(
                 val coverFile = java.io.File(item.coverPath)
                 if (coverFile.exists()) coverFile.delete()
                 downloadComicDao.updateStatus(
-                    com.par9uet.jm.database.model.UpdateComicStatus(item.id, "pending")
+                    UpdateComicStatus(item.id, DownloadStatus.PENDING)
                 )
                 downloadComicDao.updateProgress(
                     com.par9uet.jm.database.model.UpdateComicProgress(item.id, 0f)
                 )
             }
-            enqueueDownloads(items.map { it.id })
+            downloadWorkScheduler.enqueue(items.map { it.id })
             toastManager.showAsync("已重新下载 ${items.size} 个任务")
         }
     }

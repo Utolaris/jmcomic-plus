@@ -1,4 +1,4 @@
-package com.par9uet.jm.ui.pagingSource
+package com.par9uet.jm.favorites.presentation
 
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
@@ -6,10 +6,7 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.database.model.FavoriteComicEntity
 import com.par9uet.jm.utils.log
 
-/**
- * Adapts the Room-backed Favorites PagingSource to the existing Comic UI model.
- * No network call belongs in this class; synchronization writes to Room separately.
- */
+/** Adapts the local favorites database rows to the comic model consumed by the UI. */
 class CollectComicPagingSource(
     private val localSource: PagingSource<Int, FavoriteComicEntity>,
 ) : PagingSource<Int, Comic>() {

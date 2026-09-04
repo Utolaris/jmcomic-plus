@@ -11,9 +11,9 @@ import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
-import com.par9uet.jm.utils.flattenBlockedTagTemplates
-import com.par9uet.jm.utils.normalizeBlockedTagList
-import com.par9uet.jm.utils.normalizeBlockedTagTemplates
+import com.par9uet.jm.contentfilter.flattenBlockedTagTemplates
+import com.par9uet.jm.contentfilter.normalizeBlockedTagList
+import com.par9uet.jm.contentfilter.normalizeBlockedTagTemplates
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.update
 

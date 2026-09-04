@@ -15,13 +15,16 @@ import com.par9uet.jm.storage.SecureCookieStorage
 import com.par9uet.jm.storage.SecureStorage
 import com.par9uet.jm.storage.SecureUserStorage
 import com.par9uet.jm.storage.UserStorage
+import com.par9uet.jm.startup.PostStartupCoordinator
 import com.par9uet.jm.store.ApiEndpointPreference
+import com.par9uet.jm.store.AppExperiencePreferences
 import com.par9uet.jm.store.AppSecurityEditor
 import com.par9uet.jm.store.AppSecurityPreferences
 import com.par9uet.jm.store.AppUpdateDownloadManager
 import com.par9uet.jm.store.AppearanceEditor
 import com.par9uet.jm.store.AppearancePreferences
 import com.par9uet.jm.store.CacheNotificationPreferences
+import com.par9uet.jm.store.BlockedTagTemplatePreferences
 import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.DohPreferences
 import com.par9uet.jm.store.DohPreferencesEditor
@@ -32,15 +35,15 @@ import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.DownloadToastAggregator
 import com.par9uet.jm.store.HistorySearchManager
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.LocalSettingSnapshotProvider
 import com.par9uet.jm.store.MiscSettingsPreferences
-import com.par9uet.jm.store.PostStartupInitializer
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.SessionReadinessHolder
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.network.DohManager
-import com.par9uet.jm.utils.LauncherDisguiseApplier
-import com.par9uet.jm.utils.LauncherIdentityApplier
+import com.par9uet.jm.launcher.LauncherDisguiseApplier
+import com.par9uet.jm.launcher.LauncherIdentityApplier
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
@@ -59,6 +62,7 @@ import org.koin.dsl.module
  */
 val LOCAL_SETTING_MANAGER_ALIASES = arrayOf(
     ContentPreferences::class,
+    BlockedTagTemplatePreferences::class,
     RecommendationPreferences::class,
     ReaderPreferences::class,
     CacheNotificationPreferences::class,
@@ -70,6 +74,8 @@ val LOCAL_SETTING_MANAGER_ALIASES = arrayOf(
     AppearanceEditor::class,
     ApiEndpointPreference::class,
     MiscSettingsPreferences::class,
+    AppExperiencePreferences::class,
+    LocalSettingSnapshotProvider::class,
 )
 
 val appModule = module {
@@ -109,7 +115,7 @@ val appModule = module {
     single { ReadHistoryManager(get()) }
     single { ToastManager() }
     single { DownloadToastAggregator(get()) }
-    single { PostStartupInitializer(get(), GlobalContext.get()) }
+    single { PostStartupCoordinator(get(), GlobalContext.get()) }
     single { AppUpdateDownloadManager(get(), get(), get(), get()) }
     viewModel { com.par9uet.jm.ui.viewModel.SettingsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
 

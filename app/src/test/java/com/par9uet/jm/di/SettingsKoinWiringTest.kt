@@ -6,21 +6,24 @@ import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.retrofit.interceptor.BaseUrlInterceptor
 import com.par9uet.jm.storage.LocalSettingPersistence
 import com.par9uet.jm.store.ApiEndpointPreference
+import com.par9uet.jm.store.AppExperiencePreferences
 import com.par9uet.jm.store.AppSecurityEditor
 import com.par9uet.jm.store.AppSecurityPreferences
 import com.par9uet.jm.store.AppearanceEditor
 import com.par9uet.jm.store.AppearancePreferences
 import com.par9uet.jm.store.CacheNotificationPreferences
+import com.par9uet.jm.store.BlockedTagTemplatePreferences
 import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.DohPreferences
 import com.par9uet.jm.store.DohPreferencesEditor
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.LocalSettingSnapshotProvider
 import com.par9uet.jm.store.MiscSettingsPreferences
 import com.par9uet.jm.store.ReaderPreferences
 import com.par9uet.jm.store.RecommendationPreferences
 import com.par9uet.jm.store.RemoteConfigManager
 import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.utils.LauncherIdentityApplier
+import com.par9uet.jm.launcher.LauncherIdentityApplier
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertSame
 import org.junit.Test
@@ -59,6 +62,7 @@ class SettingsKoinWiringTest {
         try {
             val manager = koin.get<LocalSettingManager>()
             assertSame(manager, koin.get<ContentPreferences>())
+            assertSame(manager, koin.get<BlockedTagTemplatePreferences>())
             assertSame(manager, koin.get<RecommendationPreferences>())
             assertSame(manager, koin.get<ReaderPreferences>())
             assertSame(manager, koin.get<CacheNotificationPreferences>())
@@ -70,6 +74,8 @@ class SettingsKoinWiringTest {
             assertSame(manager, koin.get<AppearanceEditor>())
             assertSame(manager, koin.get<ApiEndpointPreference>())
             assertSame(manager, koin.get<MiscSettingsPreferences>())
+            assertSame(manager, koin.get<AppExperiencePreferences>())
+            assertSame(manager, koin.get<LocalSettingSnapshotProvider>())
 
             // Interface-consumers receive the same instances as concrete registrations.
             // The concrete LauncherDisguiseApplier is the sole provider of this alias.

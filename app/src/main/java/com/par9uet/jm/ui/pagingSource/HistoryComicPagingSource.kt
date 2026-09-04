@@ -6,7 +6,7 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
-import com.par9uet.jm.utils.filterBlockedTags
+import com.par9uet.jm.contentfilter.filterBlockedTags
 
 class HistoryComicPagingSource(
     private val userRepository: UserRepository,

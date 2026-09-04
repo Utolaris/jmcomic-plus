@@ -5,8 +5,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
@@ -28,7 +26,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.filled.Bookmark
@@ -40,7 +37,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -96,7 +92,7 @@ fun ComicReadScreen(
     val isShowToolbar by comicReadViewModel.isShowToolBar
     val size = comicReadViewModel.size
     var currentIndexState by comicReadViewModel.currentIndexState
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val readMode by localSettingManager.readMode.collectAsState()
     val authState by userManager.authState.collectAsState()
     val comicPicState by comicReadViewModel.comicPicState.collectAsState()
     val comicDetailState by comicReadViewModel.comicDetailState.collectAsState()
@@ -211,7 +207,7 @@ fun ComicReadScreen(
     // 数据加载完成后，滚动到恢复的页码
     LaunchedEffect(size, loadedComicId) {
         if (size > 0 && loadedComicId == comicId && targetIndex in 0 until size) {
-            if (localSetting.readMode == "scroll") {
+            if (readMode == "scroll") {
                 lazyListState.scrollToItem(targetIndex)
             } else {
                 pagerState.scrollToPage(targetIndex)
@@ -280,7 +276,7 @@ fun ComicReadScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.align(Alignment.Center)
                         )
-                    } else if (localSetting.readMode == "scroll") {
+                    } else if (readMode == "scroll") {
                         ComicScrollRead(
                             lazyListState = lazyListState,
                             pagerState = pagerState,
@@ -294,7 +290,7 @@ fun ComicReadScreen(
                             pagerState = pagerState,
                             targetIndex = targetIndex,
                             zoomState = zoomState,
-                            tapOnly = localSetting.readMode == "tap",
+                            tapOnly = readMode == "tap",
                             onUpdateSliderValue = { updateIndexFromReader(it) }
                         )
                     }
@@ -396,45 +392,6 @@ fun ComicReadScreen(
                             onNextChapter = { navigateToChapter(nextChapter) },
                             onPageSelected = { jumpToIndex(it) },
                             onResetZoom = { zoomState.reset() }
-                        )
-                    }
-                    AnimatedVisibility(
-                        modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .padding(start = 12.dp, top = 12.dp),
-                        visible = isShowToolbar,
-                        enter = slideInHorizontally(
-                            initialOffsetX = { fullWidth -> -fullWidth },
-                            animationSpec = tween(durationMillis = 250)
-                        ) + fadeIn(),
-                        exit = slideOutHorizontally(
-                            targetOffsetX = { fullWidth -> -fullWidth },
-                            animationSpec = tween(durationMillis = 250)
-                        ) + fadeOut()
-                    ) {
-                        ReaderExitButton(
-                            onClick = { mainNavController.popBackStack() }
-                        )
-                    }
-                    if (localSetting.showComicPageReadTip && localSetting.readMode == "page" || localSetting.showComicScrollReadTip && localSetting.readMode == "scroll") {
-                        Tip(readMode = localSetting.readMode)
-                        TipCloseButton(
-                            modifier = Modifier.align(
-                                if (localSetting.readMode == "scroll") Alignment.CenterEnd else Alignment.BottomCenter
-                            ).let {
-                                if (localSetting.readMode == "scroll") {
-                                    it.padding(end = 40.dp)
-                                } else {
-                                    it.padding(bottom = 40.dp)
-                                }
-                            },
-                            onClick = {
-                                if (localSetting.readMode == "scroll") {
-                                    localSettingManager.closeShowComicScrollReadTip()
-                                } else {
-                                    localSettingManager.closeShowComicPageReadTip()
-                                }
-                            }
                         )
                     }
                 }
@@ -629,28 +586,6 @@ private fun ReadSideBar(
                 label = "章节",
                 enabled = chapterEnabled,
                 onClick = onChapterJump
-            )
-        }
-    }
-}
-
-@Composable
-private fun ReaderExitButton(
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.9f),
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 6.dp,
-        shadowElevation = 6.dp
-    ) {
-        IconButton(onClick = onClick) {
-            Icon(
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                contentDescription = "退出阅读"
             )
         }
     }

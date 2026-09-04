@@ -2,27 +2,19 @@ package com.par9uet.jm.ui.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
-import androidx.paging.cachedIn
 import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.database.model.DownloadComic
+import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.store.DownloadManager
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
-
-data class DownloadFilter(
-    val status: String,
-)
 
 data class DownloadEditState(
     val editing: Boolean = false,
@@ -37,7 +29,7 @@ data class DownloadComicGroup(
     val itemIds: Set<Int>,
     val chapterCount: Int,
     val latestTime: Long,
-    val status: String,
+    val status: DownloadStatus,
     val progress: Float,
 )
 
@@ -45,22 +37,19 @@ class DownloadViewModel(
     private val downloadComicDao: DownloadComicDao,
     private val downloadManager: DownloadManager
 ) : ViewModel() {
-    private val _downloadFilterState = MutableStateFlow(DownloadFilter("downloading"))
-    val downloadFilterState = _downloadFilterState.asStateFlow()
-
     private val _editState = MutableStateFlow(DownloadEditState())
     val editState = _editState.asStateFlow()
 
-    val completeList = downloadComicDao.observeCompleteList()
+    private val completeList = downloadComicDao.observeCompleteList()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val activeList = downloadComicDao.observeActiveList()
+    private val activeList = downloadComicDao.observeActiveList()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val errorList = downloadComicDao.observeErrorList()
+    private val errorList = downloadComicDao.observeErrorList()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val completeGroups = downloadComicDao.observeCompleteList()
+    val completeGroups = completeList
         .map(::groupDownloads)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -69,14 +58,9 @@ class DownloadViewModel(
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    val errorGroups = downloadComicDao.observeErrorList()
+    val errorGroups = errorList
         .map(::groupDownloads)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
-
-    fun updateDownloadStatusFilter(status: String) {
-        _downloadFilterState.update { it.copy(status = status) }
-        clearSelection()
-    }
 
     fun enterEdit(id: Int) {
         enterEdit(setOf(id))
@@ -142,7 +126,7 @@ class DownloadViewModel(
     }
 
     fun pauseSelected() {
-        updateSelectedStatus("paused")
+        updateSelectedStatus(DownloadStatus.PAUSED)
     }
 
     fun startSelected() {
@@ -152,7 +136,7 @@ class DownloadViewModel(
         downloadManager.resumeDownloads(ids)
     }
 
-    private fun updateSelectedStatus(status: String) {
+    private fun updateSelectedStatus(status: DownloadStatus) {
         val ids = _editState.value.selectedIds.toList()
         if (ids.isEmpty()) return
         viewModelScope.launch {
@@ -183,22 +167,6 @@ class DownloadViewModel(
         downloadManager.redownloadGroup(groupId)
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val downloadPager = _downloadFilterState.flatMapLatest { filter ->
-        Pager(
-            config = PagingConfig(
-                pageSize = 20,
-                prefetchDistance = 6,
-                initialLoadSize = 20
-            ),
-        ) {
-            when (filter.status) {
-                "complete" -> downloadComicDao.getCompleteList()
-                "error" -> downloadComicDao.getErrorList()
-                else -> downloadComicDao.getActiveList()
-            }
-        }.flow
-    }.cachedIn(viewModelScope)
 }
 
 private fun groupDownloads(items: List<DownloadComic>): List<DownloadComicGroup> {
@@ -257,12 +225,12 @@ private fun resolveGroupCoverPath(items: List<DownloadComic>, displayItem: Downl
     } ?: displayItem.coverPath
 }
 
-private fun resolveGroupStatus(items: List<DownloadComic>): String {
+private fun resolveGroupStatus(items: List<DownloadComic>): DownloadStatus {
     return when {
-        items.any { it.status == "downloading" } -> "downloading"
-        items.any { it.status == "pending" } -> "pending"
-        items.any { it.status == "paused" } -> "paused"
-        items.any { it.status == "error" } -> "error"
-        else -> items.firstOrNull()?.status ?: "pending"
+        items.any { it.status == DownloadStatus.DOWNLOADING } -> DownloadStatus.DOWNLOADING
+        items.any { it.status == DownloadStatus.PENDING } -> DownloadStatus.PENDING
+        items.any { it.status == DownloadStatus.PAUSED } -> DownloadStatus.PAUSED
+        items.any { it.status == DownloadStatus.ERROR } -> DownloadStatus.ERROR
+        else -> items.firstOrNull()?.status ?: DownloadStatus.PENDING
     }
 }

@@ -1,16 +1,15 @@
 package com.par9uet.jm.store
 
 import com.par9uet.jm.data.models.User
-import com.par9uet.jm.repository.LoginSession
+import com.par9uet.jm.repository.CandidateSession
 import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.repository.VerifiedCredentials
 import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.UserStorage
-import com.par9uet.jm.ui.models.CommonUIState
+import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.coroutineScope
@@ -20,7 +19,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.coroutines.cancellation.CancellationException
@@ -85,7 +83,7 @@ class UserManager(
     /**
      * Every session transition takes locks in exactly this order. Bound Favorites work already
      * owns [boundRemoteGate] when it performs its guarded local commit through [loginMutex], so
-     * using the same `bound -> login` order here removes the former ABBA cycle.
+     * every path follows the same `bound -> login` order.
      */
     private suspend fun <T> withSessionTransition(block: suspend () -> T): T =
         boundRemoteGate.withLock {
@@ -122,18 +120,6 @@ class UserManager(
         sessionReadinessHolder.set(readinessForCachedUser(_userState.value.data))
     }
 
-    /** Compatibility entry point for callers that replace the active identity directly. */
-    fun updateUser(user: User) {
-        runBlocking {
-            withSessionTransition {
-                sessionGeneration.incrementAndGet()
-                _userState.update { it.copy(data = user) }
-                userStorage.set(user)
-                sessionReadinessHolder.set(readinessForCachedUser(user))
-            }
-        }
-    }
-
     suspend fun clearUser() {
         cancelBackgroundJob()
         withSessionTransition {
@@ -144,7 +130,7 @@ class UserManager(
     }
 
     /** Performs a user-requested login without discarding the previous local identity on error. */
-    suspend fun login(username: String, password: String): NetWorkResult<LoginSession> {
+    suspend fun login(username: String, password: String): NetWorkResult<CandidateSession> {
         cancelBackgroundJob()
         val generation = beginManualLogin()
         val result = userRepository.login(username, password)
@@ -206,7 +192,7 @@ class UserManager(
                         }
                     }
 
-                    is NetWorkResult.Success<VerifiedCredentials> -> {
+                    is NetWorkResult.Success<CandidateSession> -> {
                         persistUserWhileLocked(
                             result.data.loginResponse.toUser(
                                 password = snapshot.user.password
@@ -251,8 +237,8 @@ class UserManager(
         }
     }
 
-    /** Compatibility entry point for callers that used the old auto-login name. */
-    suspend fun autoLogin(username: String, password: String) {
+    /** Refreshes the active account and clears it only when the server rejects its credentials. */
+    suspend fun refreshAuthenticatedUser(username: String, password: String) {
         cancelBackgroundJob()
         val generation = beginManualLogin()
         val result = userRepository.login(username, password)
@@ -300,9 +286,9 @@ class UserManager(
     private suspend fun commitLoginResult(
         generation: Long,
         password: String,
-        result: NetWorkResult<LoginSession>,
+        result: NetWorkResult<CandidateSession>,
         clearUserOnError: Boolean,
-    ): NetWorkResult<LoginSession> {
+    ): NetWorkResult<CandidateSession> {
         coroutineContext.ensureActive()
         return withSessionTransition {
             if (sessionGeneration.get() != generation) return@withSessionTransition result
@@ -321,7 +307,7 @@ class UserManager(
                     }
                 }
 
-                is NetWorkResult.Success<LoginSession> -> {
+                is NetWorkResult.Success<CandidateSession> -> {
                     persistUserWhileLocked(
                         result.data.loginResponse.toUser(
                             password = password
@@ -330,12 +316,7 @@ class UserManager(
                     // 提交完整会话（内置 API 含 AVS；网络 API 登录响应已由活动 CookieJar
                     // 自行持久化，此处为空操作）。generation 校验保证陈旧的登录/验证结果
                     // 无法覆盖更新的会话。
-                    userRepository.activateVerifiedSession(
-                        VerifiedCredentials(
-                            loginResponse = result.data.loginResponse,
-                            embeddedCookies = result.data.embeddedCookies,
-                        )
-                    )
+                    userRepository.activateVerifiedSession(result.data)
                     sessionReadinessHolder.set(SessionReadiness.Authenticated)
                 }
             }

@@ -3,7 +3,7 @@ package com.par9uet.jm.network
 import android.util.Base64
 import com.par9uet.jm.store.DohPreferences
 import com.par9uet.jm.store.DohPreferencesEditor
-import com.par9uet.jm.utils.applyTlsCompat
+import com.par9uet.jm.utils.applyCertificateTrust
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -228,7 +228,7 @@ private class DohResolver(
         .connectTimeout(7, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
         .writeTimeout(8, TimeUnit.SECONDS)
-        .applyTlsCompat(includeDeviceCertificates = useDeviceCertificates)
+        .applyCertificateTrust(includeDeviceCertificates = useDeviceCertificates)
         .build()
 
     override fun lookup(hostname: String): List<InetAddress> {

@@ -15,7 +15,6 @@ internal data class DecodedReaderImage(
     val aspectRatio: Float,
 )
 
-private const val MAX_SOURCE_BYTES = 40L * 1024L * 1024L
 private const val MAX_SOURCE_PIXELS = 80_000_000L
 
 /** Full-resolution decode options; scramble reorder requires original pixel geometry. */
@@ -28,7 +27,7 @@ private fun fullSizeOptions(profile: ReaderDecodeProfile): BitmapFactory.Options
 
 /** Performs a cheap format/bounds check before a temporary source becomes durable cache. */
 internal fun validateReaderSourceFile(file: File): Pair<Int, Int> {
-    require(file.isFile && file.length() in 1..MAX_SOURCE_BYTES) { "图片源文件无效" }
+    require(file.isFile && file.length() in 1..READER_MAX_SOURCE_BYTES) { "图片源文件无效" }
     return readBounds(file)
 }
 
@@ -37,7 +36,7 @@ internal fun decodeReaderRawFile(
     page: ReaderPage,
     profile: ReaderDecodeProfile,
 ): DecodedReaderImage {
-    require(file.isFile && file.length() in 1..MAX_SOURCE_BYTES) { "图片源文件无效" }
+    require(file.isFile && file.length() in 1..READER_MAX_SOURCE_BYTES) { "图片源文件无效" }
     val bounds = readBounds(file)
     // Full-size decode first: scramble reorder must happen in ORIGINAL pixel space, and the
     // old strip pipeline's per-strip FILTER_BITMAP rescaling produced horizontal seam lines.
@@ -55,7 +54,7 @@ internal fun decodeReaderRawBytes(
     page: ReaderPage,
     profile: ReaderDecodeProfile,
 ): DecodedReaderImage {
-    require(bytes.isNotEmpty() && bytes.size.toLong() <= MAX_SOURCE_BYTES) { "图片源数据无效" }
+    require(bytes.isNotEmpty() && bytes.size.toLong() <= READER_MAX_SOURCE_BYTES) { "图片源数据无效" }
     val bounds = readBounds(bytes)
     val bitmap = try {
         BitmapFactory.decodeByteArray(bytes, 0, bytes.size, fullSizeOptions(profile)) ?: error("图片解码为空")
@@ -97,7 +96,7 @@ internal fun decodeReaderDecodedFile(
     file: File,
     profile: ReaderDecodeProfile,
 ): DecodedReaderImage? {
-    if (!file.isFile || file.length() !in 1..MAX_SOURCE_BYTES) return null
+    if (!file.isFile || file.length() !in 1..READER_MAX_SOURCE_BYTES) return null
     val bounds = readBounds(file)
     return runCatching {
         // A decoded-cache file is already at the profile's target size. Never sample it again.

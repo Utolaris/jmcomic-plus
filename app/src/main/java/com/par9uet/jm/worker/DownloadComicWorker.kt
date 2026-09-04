@@ -21,6 +21,7 @@ import com.par9uet.jm.database.model.DownloadComic
 import com.par9uet.jm.database.model.UpdateComicCover
 import com.par9uet.jm.database.model.UpdateComicProgress
 import com.par9uet.jm.database.model.UpdateComicStatus
+import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.database.model.UpdateComicZipPath
 import com.par9uet.jm.image.ImageHostFailureKind
 import com.par9uet.jm.image.classifyImageHostFailure
@@ -75,7 +76,7 @@ class DownloadComicWorker(
 
         return try {
             val downloadTask = downloadComicDao.getById(comicId) ?: return Result.failure()
-            downloadComicDao.updateStatus(UpdateComicStatus(comicId, "downloading"))
+            downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.DOWNLOADING))
             DownloadSpeedTracker.startTracking(coverOwnerId)
             showComicCacheNotification(
                 downloadTask,
@@ -90,7 +91,7 @@ class DownloadComicWorker(
 
             val chapterDirPath = getComicChapterDownloadDir(appContext, downloadTask).absolutePath
             downloadComicDao.updateZipPath(UpdateComicZipPath(comicId, chapterDirPath))
-            downloadComicDao.updateStatus(UpdateComicStatus(comicId, "complete"))
+            downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.COMPLETE))
             writeCacheConfig(comicId)
             DownloadSpeedTracker.stopTracking(coverOwnerId)
             cancelComicCacheNotificationIfIdle(downloadTask)
@@ -101,7 +102,7 @@ class DownloadComicWorker(
             if (runAttemptCount < DOWNLOAD_MAX_ATTEMPTS - 1) {
                 Result.retry()
             } else {
-                downloadComicDao.updateStatus(UpdateComicStatus(comicId, "error"))
+                downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.ERROR))
                 DownloadSpeedTracker.stopTracking(coverOwnerId)
                 downloadComicDao.getById(comicId)?.let {
                     cancelComicCacheNotificationIfIdle(it)
@@ -259,7 +260,7 @@ class DownloadComicWorker(
         return chapters.map { chapter ->
             when {
                 chapter.id == downloadTask.id -> currentProgress
-                chapter.status == "complete" -> 1f
+                chapter.status == DownloadStatus.COMPLETE -> 1f
                 else -> chapter.progress.coerceIn(0f, 1f)
             }
         }.average().toFloat().coerceIn(0f, 1f)
@@ -268,7 +269,9 @@ class DownloadComicWorker(
     private suspend fun cancelComicCacheNotificationIfIdle(downloadTask: DownloadComic) {
         val groupId = downloadTask.groupId.takeIf { it != 0 } ?: downloadTask.id
         val chapters = downloadComicDao.getByGroupId(groupId)
-        val hasActiveTask = chapters.any { it.status == "pending" || it.status == "downloading" }
+        val hasActiveTask = chapters.any {
+            it.status == DownloadStatus.PENDING || it.status == DownloadStatus.DOWNLOADING
+        }
         if (!hasActiveTask) {
             cancelProgressNotification(appContext, COMIC_CACHE_NOTIFICATION_ID_BASE + groupId)
         }

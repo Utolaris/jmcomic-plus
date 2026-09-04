@@ -51,7 +51,7 @@ internal fun UserCollectComicScreen(
     val collectComicLazyPagingItems = favoritesViewModel.collectComicPager.collectAsLazyPagingItems()
     val selectedFolderId = favoritesState.selectedFolderId
     val collectEditState = favoritesState.selection
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val miscSettings by localSettingManager.misc.collectAsState()
     var hasLoggedFirstLocalContent by remember { mutableStateOf(false) }
     val favoritesOpenedAt = remember { SystemClock.elapsedRealtime() }
 
@@ -152,7 +152,7 @@ internal fun UserCollectComicScreen(
             modifier = gridModifier,
             lazyPagingItems = collectComicLazyPagingItems,
             key = { it.id },
-            columns = adaptiveComicGridCells(localSetting.collectGridColumns),
+            columns = adaptiveComicGridCells(miscSettings.gridColumns.collect),
             gridState = gridState,
             verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.Top),
             horizontalArrangement = Arrangement.spacedBy(14.dp),

@@ -62,7 +62,7 @@ import com.par9uet.jm.ui.interaction.pullDownToAction
 import com.par9uet.jm.ui.interaction.PullDownActionState
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.ui.viewModel.ComicViewModel
-import com.par9uet.jm.utils.filterBlockedTags
+import com.par9uet.jm.contentfilter.filterBlockedTags
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 
@@ -172,7 +172,10 @@ internal fun HomeScreen(
     onPullDownSearch: () -> Unit = {},
 ) {
     val homeState by comicViewModel.homeState.collectAsState()
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val preferenceRecommendEnabled by localSettingManager.preferenceRecommendEnabled.collectAsState()
+    val blockedTags by localSettingManager.blockedTags.collectAsState()
+    val homeExcludedTags by localSettingManager.homeExcludedTags.collectAsState()
+    val miscSettings by localSettingManager.misc.collectAsState()
     val pullRevealPadding = 36.dp * pullDownState.progress
     val gridState = rememberLazyGridState()
     val pullDownModifier = Modifier.pullDownToAction(
@@ -181,7 +184,7 @@ internal fun HomeScreen(
         onTrigger = onPullDownSearch,
     )
 
-    LaunchedEffect(localSetting.preferenceRecommendEnabled) {
+    LaunchedEffect(preferenceRecommendEnabled) {
         comicViewModel.refreshHome()
     }
 
@@ -191,7 +194,7 @@ internal fun HomeScreen(
     val showSkeleton = homeState.categories.isEmpty() || selectedCategoryId == null
     if (showSkeleton) {
         HomeSkeleton(
-            gridColumns = localSetting.homeGridColumns,
+            gridColumns = miscSettings.gridColumns.home,
             topContentPadding = topContentPadding + pullRevealPadding,
             bottomContentPadding = bottomContentPadding,
             gridState = gridState,
@@ -201,8 +204,8 @@ internal fun HomeScreen(
     }
 
     val currentContent = selectedState?.content.orEmpty()
-    val allExcludedTags = remember(localSetting.blockedTagList, localSetting.homeExcludedTags) {
-        (localSetting.blockedTagList + localSetting.homeExcludedTags).distinct()
+    val allExcludedTags = remember(blockedTags, homeExcludedTags) {
+        (blockedTags + homeExcludedTags).distinct()
     }
     val comicList = remember(currentContent, allExcludedTags) {
         currentContent.map { it.toComic() }.filterBlockedTags(allExcludedTags)
@@ -210,7 +213,7 @@ internal fun HomeScreen(
     LazyVerticalGrid(
         modifier = pullDownModifier.fillMaxSize(),
         state = gridState,
-        columns = adaptiveComicGridCells(localSetting.homeGridColumns),
+        columns = adaptiveComicGridCells(miscSettings.gridColumns.home),
         verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Top),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(

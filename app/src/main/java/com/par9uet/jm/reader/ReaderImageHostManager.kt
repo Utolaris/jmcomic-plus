@@ -4,9 +4,6 @@ import android.os.SystemClock
 import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.image.JmImageHostSnapshot
 import com.par9uet.jm.image.isJmImagePathAllowed
-import com.par9uet.jm.image.jmImageHostLatencyEwma
-import com.par9uet.jm.image.orderJmImageHosts
-import com.par9uet.jm.image.selectJmPreferredHost
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -118,52 +115,11 @@ internal class ReaderImageHostManager(
     }
 }
 
-internal fun orderReaderImageHosts(
-    candidates: List<String>,
-    originHost: String,
-    preferredHost: String?,
-    latencyMillis: Map<String, Long?>,
-    failedAtMillis: Map<String, Long>,
-    nowMillis: Long,
-    cooldownMillis: Long,
-): List<String> = orderJmImageHosts(
-    candidates = candidates,
-    originHost = originHost,
-    preferredHost = preferredHost,
-    latencyMillis = latencyMillis,
-    failedAtMillis = failedAtMillis,
-    nowMillis = nowMillis,
-    cooldownMillis = cooldownMillis,
-)
-
 internal fun replaceReaderImageHost(originalUrl: String, host: String): String? {
     val url = originalUrl.toHttpUrlOrNull() ?: return null
     if (url.scheme != "https" || host.isBlank()) return null
     return runCatching { url.newBuilder().host(host).build().toString() }.getOrNull()
 }
 
-internal fun isReaderImageMirrorAllowed(
-    host: String,
-    path: String,
-    allowlistedHosts: Collection<String>,
-): Boolean = host in allowlistedHosts && isReaderImageMirrorPathAllowed(path)
-
 internal fun isReaderImageMirrorPathAllowed(path: String): Boolean =
     isJmImagePathAllowed(path)
-
-internal fun readerHostLatencyEwma(previous: Long?, current: Long): Long =
-    jmImageHostLatencyEwma(previous, current)
-
-internal fun selectReaderPreferredHost(
-    candidates: Collection<String>,
-    latencyMillis: Map<String, Long?>,
-    failedAtMillis: Map<String, Long>,
-    nowMillis: Long,
-    cooldownMillis: Long,
-): String? = selectJmPreferredHost(
-    candidates = candidates,
-    latencyMillis = latencyMillis,
-    failedAtMillis = failedAtMillis,
-    nowMillis = nowMillis,
-    cooldownMillis = cooldownMillis,
-)

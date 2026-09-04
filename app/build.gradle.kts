@@ -35,7 +35,11 @@ fun getGitHash() = providers
 androidComponents {
     onVariants { variant ->
         val hash = getGitHash()
-        val fileName = "jm-mobile_v${versionNameProp}_${hash}.apk"
+        val fileName = if (variant.buildType == "debug") {
+            "jm-mobile_v${versionNameProp}_debug.apk"
+        } else {
+            "jm-mobile_v${versionNameProp}_${hash}.apk"
+        }
         variant.outputs.forEach { output ->
             if (output is com.android.build.api.variant.impl.VariantOutputImpl) {
                 output.outputFileName.set(fileName)
@@ -52,7 +56,7 @@ kotlin {
 
 android {
     namespace = "com.par9uet.jm"
-    compileSdk = 36
+    compileSdk = 37
 
     signingConfigs {
         create("release") {
@@ -64,10 +68,9 @@ android {
     }
 
     defaultConfig {
-        applicationId = "jmcomic.plus"
-        // Android 6.0 Marshmallow is API 23.
-        minSdk = 23
-        targetSdk = 35
+        applicationId = "jmcomic"
+        minSdk = 30
+        targetSdk = 37
         versionCode = versionCodeProp
         versionName = versionNameProp
 
@@ -79,10 +82,11 @@ android {
 
     buildTypes {
         debug {
-            applicationIdSuffix = ".nagram"
+            applicationIdSuffix = ".debug"
             versionNameSuffix = "-nagram"
         }
         release {
+            applicationIdSuffix = ".plus"
             isMinifyEnabled = true
             isShrinkResources = true
             signingConfig = signingConfigs.getByName("release")

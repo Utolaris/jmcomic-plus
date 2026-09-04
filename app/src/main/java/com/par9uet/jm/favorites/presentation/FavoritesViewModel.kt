@@ -25,7 +25,6 @@ import com.par9uet.jm.favorites.usecase.RenameFavoriteFolder
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.ui.pagingSource.CollectComicPagingSource
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow

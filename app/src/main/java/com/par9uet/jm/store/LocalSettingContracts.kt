@@ -1,18 +1,23 @@
 package com.par9uet.jm.store
 
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
+import com.par9uet.jm.data.models.BlockedTagTemplate
+import com.par9uet.jm.data.models.LocalSetting
 import kotlinx.coroutines.flow.StateFlow
 
 /**
- * Narrow read contracts over [com.par9uet.jm.data.models.LocalSetting]. A feature depends on
- * one of these instead of the persistence DTO, so it cannot observe unrelated configuration
- * such as the app-lock credentials.
+ * Narrow read views over [com.par9uet.jm.data.models.LocalSetting]. Consumers collect the relevant
+ * projection instead of the whole persistence object, avoiding unrelated state updates.
  */
 interface ContentPreferences {
     val blockedTags: StateFlow<List<String>>
 
     /** Additional Home-feed exclusions configured in Settings; combined with [blockedTags]. */
     val homeExcludedTags: StateFlow<List<String>>
+}
+
+interface BlockedTagTemplatePreferences {
+    val blockedTagTemplates: StateFlow<List<BlockedTagTemplate>>
 }
 
 /** Whether the logged-in account's personalized network recommendations feed the Home page. */
@@ -29,6 +34,16 @@ interface ReaderPreferences {
     val prefetchCount: StateFlow<Int>
     val memoryOptEnabled: StateFlow<Boolean>
     val decodeConcurrency: StateFlow<Int>
+}
+
+interface AppExperiencePreferences {
+    val onboardingCompleted: StateFlow<Boolean>
+    val nsfwWarningDismissed: StateFlow<Boolean>
+}
+
+/** Explicit persistence boundary used by backup export; UI features should use narrow flows. */
+interface LocalSettingSnapshotProvider {
+    fun currentLocalSettingSnapshot(): LocalSetting
 }
 
 data class CacheNotificationSetting(
@@ -51,7 +66,7 @@ data class GridColumnsSetting(
 /** Small single-purpose toggles shown on the Settings home screen. */
 data class MiscSettingsState(
     val clipboardAutoDetectEnabled: Boolean = false,
-    val autoSignInEnabled: Boolean = false,
+    val autoSignInEnabled: Boolean = true,
     val gridColumns: GridColumnsSetting = GridColumnsSetting(),
 )
 
@@ -76,9 +91,8 @@ interface AppSecurityPreferences {
 }
 
 /**
- * Every mutator is one complete state transition: it rewrites password, pattern, length,
- * unlock mode and enabled together in a single LocalSetting update so no invalid
- * credential/mode combination can ever be observed.
+ * Each mutator expresses one complete valid state transition, so callers do not need to compose
+ * multiple writes or expose an invalid intermediate credential/mode combination.
  */
 interface AppSecurityEditor {
     fun setPassword(password: String, length: Int)
@@ -86,6 +100,7 @@ interface AppSecurityEditor {
     fun setPattern(pattern: String)
     fun removePattern()
     fun setAppLockEnabled(enabled: Boolean)
+    fun disableAndClearAppLock()
     fun selectUnlockMode(mode: String)
 }
 

@@ -2,6 +2,7 @@ package com.par9uet.jm.repository
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
+import com.par9uet.jm.retrofit.model.NetWorkResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -9,19 +10,19 @@ import org.junit.Test
 
 /**
  * BaseRepository 异常边界测试：CancellationException 必须原样抛出（不能被转换成普通
- * 网络失败），JVM 致命错误（LinkageError 等）不得被 runCatchingCancellable 吞掉。
+ * 网络失败），JVM 致命错误（LinkageError 等）不得被请求包装吞掉。
  */
 class CancellationPropagationTest {
 
     private class Subject : BaseRepository() {
-        suspend fun capture(block: suspend () -> String): Result<String> =
-            runCatchingCancellable(block)
+        suspend fun capture(block: suspend () -> String): NetWorkResult<String> =
+            safeEmbeddedCall("测试失败", block)
     }
 
     private val subject = Subject()
 
     @Test
-    fun cancellationExceptionPropagatesFromRunCatchingCancellable() = runBlocking {
+    fun cancellationExceptionPropagatesFromEmbeddedCall() = runBlocking {
         try {
             subject.capture { throw CancellationException("cancelled") }
             fail("CancellationException must propagate")
@@ -31,10 +32,10 @@ class CancellationPropagationTest {
     }
 
     @Test
-    fun ordinaryExceptionBecomesResultFailure() = runBlocking {
+    fun ordinaryExceptionBecomesNetworkFailure() = runBlocking {
         val result = subject.capture { throw IllegalStateException("boom") }
-        assertTrue(result.isFailure)
-        assertEquals("boom", result.exceptionOrNull()?.message)
+        assertTrue(result is NetWorkResult.Error)
+        assertEquals("测试失败：boom", (result as NetWorkResult.Error).message)
     }
 
     @Test

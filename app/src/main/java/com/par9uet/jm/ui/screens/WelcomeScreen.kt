@@ -21,13 +21,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Notifications
-import androidx.compose.material.icons.rounded.Recommend
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material.icons.rounded.WavingHand
@@ -84,8 +82,6 @@ import org.koin.compose.viewmodel.koinActivityViewModel
  * 4. 应用锁设置（可跳过）
  * 5. 提取编码 + 剪切板自动检测
  * 6. 登录账号（可跳过）
- * 7. 若已登录：自动签到开关
- * 8. 若已登录：偏好推荐开关（可能不稳定）
  *
  * 右上角随时可跳过整个引导。
  */
@@ -100,7 +96,8 @@ fun WelcomeScreen(
     userManager: UserManager = getKoin().get(),
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val appLock by localSettingManager.appLock.collectAsState()
+    val miscSettings by localSettingManager.misc.collectAsState()
     val authState by userManager.authState.collectAsState()
     val isLogin = authState != SessionReadiness.Unauthenticated
     val loginState by userViewModel.loginState.collectAsState()
@@ -108,10 +105,10 @@ fun WelcomeScreen(
     var step by remember { mutableStateOf(0) }
 
     // 提升到顶层的状态，供内容区和按钮区共享
-    var appLockEnabled by remember { mutableStateOf(localSetting.appLockEnabled) }
-    var appLockPasswordSet by remember { mutableStateOf(localSetting.appLockPassword.isNotEmpty()) }
-    var appLockPatternSet by remember { mutableStateOf(localSetting.appLockPattern.isNotEmpty()) }
-    var appLockUnlockMode by remember { mutableStateOf(localSetting.appLockUnlockMode) }
+    var appLockEnabled by remember { mutableStateOf(appLock.enabled) }
+    var appLockPasswordSet by remember { mutableStateOf(appLock.password.isNotEmpty()) }
+    var appLockPatternSet by remember { mutableStateOf(appLock.pattern.isNotEmpty()) }
+    var appLockUnlockMode by remember { mutableStateOf(appLock.unlockMode) }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var showPatternDialog by remember { mutableStateOf(false) }
     var loginUsername by remember { mutableStateOf("") }
@@ -191,8 +188,8 @@ fun WelcomeScreen(
                         6 -> {
                             if (isLogin) {
                                 StepButtons(
-                                    primaryText = "下一步",
-                                    onPrimary = { step = 7 }
+                                    primaryText = "完成",
+                                    onPrimary = { skipOnboarding() }
                                 )
                             } else {
                                 StepButtons(
@@ -209,14 +206,6 @@ fun WelcomeScreen(
                                 )
                             }
                         }
-                        7 -> StepButtons(
-                            primaryText = "下一步",
-                            onPrimary = { step = 8 }
-                        )
-                        8 -> StepButtons(
-                            primaryText = "完成",
-                            onPrimary = { skipOnboarding() }
-                        )
                     }
                 }
             }
@@ -259,11 +248,10 @@ fun WelcomeScreen(
                         patternSet = appLockPatternSet,
                         unlockMode = appLockUnlockMode,
                         onToggle = { enabled ->
-                            // 一次状态迁移：关闭时清空两种凭据并保持 unlock mode 合法
-                            appSecurityEditor.setAppLockEnabled(enabled)
-                            if (!enabled) {
-                                appSecurityEditor.removePassword()
-                                appSecurityEditor.removePattern()
+                            if (enabled) {
+                                appSecurityEditor.setAppLockEnabled(true)
+                            } else {
+                                appSecurityEditor.disableAndClearAppLock()
                                 appLockPasswordSet = false
                                 appLockPatternSet = false
                             }
@@ -288,7 +276,7 @@ fun WelcomeScreen(
                         onShowPatternDialog = { showPatternDialog = true }
                     )
                     5 -> ExtractCodeStepContent(
-                        clipboardAutoDetectEnabled = localSetting.clipboardAutoDetectEnabled,
+                        clipboardAutoDetectEnabled = miscSettings.clipboardAutoDetectEnabled,
                         onToggleClipboard = { localSettingManager.updateClipboardAutoDetectEnabled(it) }
                     )
                     6 -> LoginStepContent(
@@ -298,14 +286,6 @@ fun WelcomeScreen(
                         password = loginPassword,
                         onUsernameChange = { loginUsername = it.filter { ch -> ch.code in 0..127 } },
                         onPasswordChange = { loginPassword = it.filter { ch -> ch.code in 0..127 } }
-                    )
-                    7 -> AutoSignInStepContent(
-                        enabled = localSetting.autoSignInEnabled,
-                        onToggle = { localSettingManager.updateAutoSignInEnabled(it) }
-                    )
-                    8 -> PreferenceRecommendStepContent(
-                        enabled = localSetting.preferenceRecommendEnabled,
-                        onToggle = { localSettingManager.setPreferenceRecommendEnabled(it) }
                     )
                 }
             }
@@ -623,7 +603,7 @@ private fun ExtractCodeStepContent(
 @Composable
 private fun LoginStepContent(
     isLogin: Boolean,
-    loginState: com.par9uet.jm.ui.models.CommonUIState<*>,
+    loginState: com.par9uet.jm.core.model.CommonUIState<*>,
     username: String,
     password: String,
     onUsernameChange: (String) -> Unit,
@@ -633,7 +613,7 @@ private fun LoginStepContent(
         icon = Icons.Rounded.Login,
         title = "登录账号（可选）",
         description = if (isLogin) {
-            "已成功登录，可继续下一步。"
+            "已成功登录，可以完成首次设置。"
         } else {
             "登录后可同步收藏、阅读历史、签到等。也可稍后在应用内登录。"
         }
@@ -665,49 +645,6 @@ private fun LoginStepContent(
                     .fillMaxWidth()
                     .padding(top = 8.dp)
             )
-        }
-    }
-}
-
-@Composable
-private fun AutoSignInStepContent(
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-) {
-    StepWithControlLayout(
-        icon = Icons.Rounded.AutoAwesome,
-        title = "自动签到（可选）",
-        description = "已检测到登录。开启后将在每次启动应用时自动为你完成签到，省去手动操作。"
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("启用自动签到", style = MaterialTheme.typography.bodyLarge)
-            Switch(checked = enabled, onCheckedChange = onToggle)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun PreferenceRecommendStepContent(
-    enabled: Boolean,
-    onToggle: (Boolean) -> Unit,
-) {
-    StepWithControlLayout(
-        icon = Icons.Rounded.Recommend,
-        title = "偏好推荐（可选）",
-        description = "已检测到登录。开启后首页将优先展示基于你账号的个性化推荐。"
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("启用偏好推荐", style = MaterialTheme.typography.bodyLarge)
-            Switch(checked = enabled, onCheckedChange = onToggle)
         }
     }
 }

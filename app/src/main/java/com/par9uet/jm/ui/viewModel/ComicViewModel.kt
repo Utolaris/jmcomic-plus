@@ -13,7 +13,7 @@ import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekResponse
 import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.RecommendationPreferences
-import com.par9uet.jm.ui.models.CommonUIState
+import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.ui.pagingSource.SearchComicFilter
 import com.par9uet.jm.ui.pagingSource.SearchComicPagingSource
 import com.par9uet.jm.ui.pagingSource.WeekComicPagingSource
@@ -27,17 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 
-internal fun reorderPromoteSections(
-    input: List<HomeSwiperComicListItemResponse>,
-): List<HomeSwiperComicListItemResponse> {
-    if (input.size < 2 || !input[1].title.contains("推荐本本")) return input
-    return buildList(input.size) {
-        add(input[1])
-        add(input[0])
-        addAll(input.drop(2))
-    }
-}
-
+/** The Home landing page is always the server/catalog's current second page. */
 internal fun <T> swapFirstTwoHomePages(input: List<T>): List<T> {
     if (input.size < 2) return input
     return buildList(input.size) {
@@ -279,9 +269,7 @@ class ComicViewModel(
     }
 
     private fun applyPromoteHome(categories: List<HomeSwiperComicListItemResponse>) {
-        val promoteSections = swapFirstTwoHomePages(
-            reorderPromoteSections(categories.filter { it.content.isNotEmpty() }),
-        )
+        val promoteSections = swapFirstTwoHomePages(categories.filter { it.content.isNotEmpty() })
         if (promoteSections.isEmpty()) {
             applyEmbeddedHome()
             return
@@ -402,14 +390,13 @@ class ComicViewModel(
         ).flow
     }.cachedIn(viewModelScope)
 
-    fun changeSearchComicOrderFilter(order: ComicSearchOrderFilter): Boolean {
+    fun changeSearchComicOrderFilter(order: ComicSearchOrderFilter) {
         _searchComicIdState.update { null }
         val current = _searchComicFilterState.value
         val next = current.copy(order = order)
-        if (next == current) return false
+        if (next == current) return
         _searchComicFilterState.value = next
         _searchViewportState.update(SearchViewportState::reset)
-        return true
     }
 
     fun changeSearchComicContent(searchContent: String) {

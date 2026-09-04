@@ -346,7 +346,7 @@ fun UserScreen(
             val user = userState.data
             if (authState == SessionReadiness.Authenticated && user != null) {
                 coroutineScope.launch {
-                    userManager.autoLogin(user.username, user.password)
+                    userManager.refreshAuthenticatedUser(user.username, user.password)
                 }
             }
         },

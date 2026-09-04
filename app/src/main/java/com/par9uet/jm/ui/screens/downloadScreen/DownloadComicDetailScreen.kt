@@ -64,12 +64,12 @@ import com.par9uet.jm.ui.components.ComicContentTag
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
-import com.par9uet.jm.utils.CachedComicInfo
-import com.par9uet.jm.utils.exportComicToPdf
-import com.par9uet.jm.utils.exportComicsToMergedPdf
-import com.par9uet.jm.utils.exportComicsToSeparatePdf
+import com.par9uet.jm.download.export.CachedComicInfo
+import com.par9uet.jm.download.export.exportComicToPdf
+import com.par9uet.jm.download.export.exportComicsToMergedPdf
+import com.par9uet.jm.download.export.exportComicsToSeparatePdf
 import com.par9uet.jm.utils.formatBytes
-import com.par9uet.jm.utils.getCachedComicInfo
+import com.par9uet.jm.download.export.getCachedComicInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

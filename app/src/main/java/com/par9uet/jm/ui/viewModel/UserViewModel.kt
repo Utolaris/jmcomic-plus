@@ -7,7 +7,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.SignInData
-import com.par9uet.jm.repository.LoginSession
+import com.par9uet.jm.repository.CandidateSession
 import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
@@ -16,7 +16,7 @@ import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.ui.models.CommonUIState
+import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.ui.pagingSource.HistoryComicPagingSource
 import com.par9uet.jm.ui.pagingSource.HistoryCommentPagingSource
 import com.par9uet.jm.utils.log
@@ -63,7 +63,7 @@ class UserViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<LoginSession> -> {
+                is NetWorkResult.Success<CandidateSession> -> {
                     // UserManager persists the identity through a generation-checked commit, so
                     // a manual login cannot be overwritten by the startup verifier.
                 }

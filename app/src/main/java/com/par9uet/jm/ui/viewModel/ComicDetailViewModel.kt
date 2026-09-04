@@ -19,7 +19,7 @@ import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.ui.models.CommonUIState
+import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
 import com.par9uet.jm.ui.state.CommentSubmissionGate
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -85,7 +85,7 @@
 -dontwarn okhttp3.**
 
 # Core library desugaring: keep desugared java.time classes (j$.* package)
-# Prevents R8 from stripping desugared java.time APIs in release builds on Android 6/7
+# Prevents R8 from stripping desugared java.time APIs in release builds.
 -keep class j$.** { *; }
 -dontwarn j$.**
 -keep class java.time.** { *; }

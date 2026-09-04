@@ -24,7 +24,6 @@ const val EXTRA_NAVIGATE_ROUTE = "navigate_route"
 const val NAVIGATE_ROUTE_CHECK_UPDATE = "checkUpdate"
 
 fun ensureAppNotificationChannels(context: Context) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
     val manager = context.getSystemService(NotificationManager::class.java)
     val progressChannel = NotificationChannel(
         DOWNLOAD_NOTIFICATION_CHANNEL_ID,

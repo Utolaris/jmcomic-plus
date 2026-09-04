@@ -85,7 +85,7 @@ fun UserHistoryComicScreen(
 ) {
     val historyComicLazyPagingItems = userViewModel.historyComicPager.collectAsLazyPagingItems()
     val historyEditState by userViewModel.historyEditState.collectAsState()
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val miscSettings by localSettingManager.misc.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
 
     val selectedComics: List<com.par9uet.jm.data.models.Comic> = remember(historyComicLazyPagingItems.itemSnapshotList, historyEditState.selectedComicIds) {
@@ -135,7 +135,7 @@ fun UserHistoryComicScreen(
                 modifier = Modifier.fillMaxSize(),
                 lazyPagingItems = historyComicLazyPagingItems,
                 key = { it.id },
-                columns = adaptiveComicGridCells(localSetting.historyGridColumns),
+                columns = adaptiveComicGridCells(miscSettings.gridColumns.history),
                 contentPadding = PaddingValues(
                     top = topContentPadding,
                     bottom = bottomContentPadding,

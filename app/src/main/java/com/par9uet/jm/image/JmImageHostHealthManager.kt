@@ -3,8 +3,6 @@ package com.par9uet.jm.image
 import android.content.Context
 import android.net.ConnectivityManager
 import android.net.Network
-import android.net.NetworkRequest
-import android.os.Build
 import android.os.SystemClock
 import androidx.core.content.edit
 import kotlinx.coroutines.CancellationException
@@ -285,14 +283,7 @@ internal class JmImageHostHealthManager(
         }
     }
     private val callbackRegistered = runCatching {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            connectivityManager?.registerDefaultNetworkCallback(networkCallback)
-        } else {
-            connectivityManager?.registerNetworkCallback(
-                NetworkRequest.Builder().build(),
-                networkCallback,
-            )
-        }
+        connectivityManager?.registerDefaultNetworkCallback(networkCallback)
         connectivityManager != null
     }.getOrDefault(false)
 

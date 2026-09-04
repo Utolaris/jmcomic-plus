@@ -47,7 +47,7 @@ fun ComicScrollRead(
     val coroutineScope = rememberCoroutineScope()
     var currentIndexState by comicReadViewModel.currentIndexState
     val comicPicState by comicReadViewModel.comicPicState.collectAsState()
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val readTapMode by localSettingManager.readTapMode.collectAsState()
     val list = comicPicState.data ?: listOf()
     val context = LocalContext.current
     var programmaticScroll by remember { mutableStateOf(false) }
@@ -120,10 +120,10 @@ fun ComicScrollRead(
             userScrollEnabled = !zoomState.isZoomed,
             modifier = Modifier
                 .fillMaxSize()
-                .readerTapGestures(
+                .readerGestures(
                     zoomState = zoomState,
                     onNormalTap = { position, viewportSize ->
-                        val useSideTap = localSetting.readTapMode == "side"
+                        val useSideTap = readTapMode == "side"
                         val isPrevious = if (useSideTap) {
                             position.x < viewportSize.width / 3f
                         } else {
@@ -151,7 +151,6 @@ fun ComicScrollRead(
                     },
                     onZoomedCenterTap = comicReadViewModel::triggerToolBar
                 )
-                .readerZoomable(zoomState)
         ) {
             items(list, key = {
                 "${it.comicId}_${it.originSrc}"

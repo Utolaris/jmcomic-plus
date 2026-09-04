@@ -112,4 +112,20 @@ class AppLockAtomicMutationTest {
 
         assertFalse(manager.appLock.value.enabled)
     }
+
+    @Test
+    fun `disable and clear app lock is one persisted transition`() {
+        manager.setPassword("1234", 4)
+        manager.setPattern("01246")
+        manager.setAppLockEnabled(true)
+        val writesBefore = persisted.size
+
+        manager.disableAndClearAppLock()
+
+        val appLock = manager.appLock.value
+        assertFalse(appLock.enabled)
+        assertFalse(appLock.hasCredential)
+        assertEquals(APP_LOCK_UNLOCK_MODE_PASSWORD, appLock.unlockMode)
+        assertEquals(writesBefore + 1, persisted.size)
+    }
 }

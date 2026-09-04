@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import com.par9uet.jm.ui.glass.GlassModal
@@ -36,15 +35,16 @@ fun SelectDialog(
     visible: Boolean,
     title: String,
     value: String?,
+    modifier: Modifier = Modifier,
     selectOptionList: List<SelectOption> = listOf(),
     onSelect: (String) -> Unit = {},
-    onDismissRequest: () -> Unit = {}
+    onDismissRequest: () -> Unit = {},
 ) {
     GlassModal(
         visible = visible,
         onDismissRequest = onDismissRequest,
         surfaceId = "select-dialog-glass",
-        modifier = Modifier.widthIn(max = 420.dp),
+        modifier = modifier,
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Text(

@@ -43,16 +43,29 @@ class LocalSettingStorageCompatibilityTest {
     }
 
     @Test
-    fun `round trip without deleted fields keeps Defaults`() {
+    fun `fresh settings enable recommendation and automatic sign in`() {
         val decoded = gson.fromJson("{}", LocalSetting::class.java)
         assertEquals(LocalSetting().api, decoded.api)
         assertNull(decoded.customColorPrimary)
+        assertTrue(decoded.preferenceRecommendEnabled)
+        assertTrue(decoded.autoSignInEnabled)
+    }
+
+    @Test
+    fun `existing explicit opt outs remain disabled`() {
+        val decoded = gson.fromJson(
+            """{"preferenceRecommendEnabled":false,"autoSignInEnabled":false}""",
+            LocalSetting::class.java,
+        )
+
+        assertFalse(decoded.preferenceRecommendEnabled)
+        assertFalse(decoded.autoSignInEnabled)
     }
 
     @Test
     fun `retired values are still ignored`() {
         val decoded = gson.fromJson(
-            """{"comicApiSource":"builtin","shunt":"4","theme":"dark"}""",
+            """{"comicApiSource":"builtin","shunt":"4","theme":"dark","showComicScrollReadTip":true,"showComicPageReadTip":true}""",
             LocalSetting::class.java,
         )
         assertEquals("dark", decoded.theme)
@@ -61,5 +74,7 @@ class LocalSettingStorageCompatibilityTest {
         assertFalse(migratedJson.contains("shunt"))
         assertFalse(migratedJson.contains("apiList"))
         assertFalse(migratedJson.contains("themeList"))
+        assertFalse(migratedJson.contains("showComicScrollReadTip"))
+        assertFalse(migratedJson.contains("showComicPageReadTip"))
     }
 }

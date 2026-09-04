@@ -74,7 +74,7 @@ class SettingsViewModelTest {
     private fun buildViewModel(recommendEnabled: Boolean): Pair<SettingsViewModel, InMemoryPersistence> {
         val persistence = InMemoryPersistence()
         val manager = LocalSettingManager(persistence, RecordingLauncherApplier())
-        if (recommendEnabled) manager.setPreferenceRecommendEnabled(true)
+        manager.setPreferenceRecommendEnabled(recommendEnabled)
 
         // All contract params are backed by the same real manager instance, mirroring DI.
         val vm = SettingsViewModel(
@@ -168,7 +168,7 @@ class SettingsViewModelTest {
         org.junit.Assert.assertEquals(listOf(FavoriteSyncRequestKind.FORCE), requester.requests)
     }
 
-    private class RecordingLauncherApplier : com.par9uet.jm.utils.LauncherIdentityApplier {
+    private class RecordingLauncherApplier : com.par9uet.jm.launcher.LauncherIdentityApplier {
         override fun apply(disguise: com.par9uet.jm.data.models.LauncherDisguise) = Unit
     }
 }

@@ -1,4 +1,4 @@
-package com.par9uet.jm.utils
+package com.par9uet.jm.contentfilter
 
 import com.par9uet.jm.data.models.BlockedTagTemplate
 import com.par9uet.jm.data.models.Comic

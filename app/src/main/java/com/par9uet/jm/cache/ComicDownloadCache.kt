@@ -72,7 +72,7 @@ fun writeComicCacheConfig(
             id = chapter.id,
             name = chapter.chapterName.ifBlank { if (chapters.size > 1) chapter.name else "单篇" },
             path = chapterDir.absolutePath,
-            status = chapter.status,
+            status = chapter.status.persistedValue,
             imageCount = listComicImageFiles(chapterDir).size,
         )
     }

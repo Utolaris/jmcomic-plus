@@ -6,7 +6,7 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
-import com.par9uet.jm.utils.filterBlockedTags
+import com.par9uet.jm.contentfilter.filterBlockedTags
 
 data class WeekFilter(
     val categoryId: String? = null,

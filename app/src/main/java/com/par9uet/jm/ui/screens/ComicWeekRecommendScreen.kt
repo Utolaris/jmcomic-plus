@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
@@ -71,6 +72,7 @@ fun ComicWeekRecommendScreen(
                 visible = showSelectDialog,
                 title = "选择日期",
                 value = weekFilterState.categoryId,
+                modifier = Modifier.widthIn(max = 420.dp),
                 selectOptionList = weekDataState.data?.categoryList.orEmpty().map {
                     SelectOption(label = it.second, value = it.first)
                 },

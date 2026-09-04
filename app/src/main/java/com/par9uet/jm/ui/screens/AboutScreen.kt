@@ -77,7 +77,7 @@ import com.google.gson.JsonParser
 import com.par9uet.jm.store.AppUpdateDownloadManager
 import com.par9uet.jm.store.AppUpdateDownloadRequest
 import com.par9uet.jm.store.AppUpdateDownloadStatus
-import com.par9uet.jm.store.formatBytes
+import com.par9uet.jm.utils.formatBytes
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.utils.MarkdownText

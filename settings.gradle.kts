@@ -1,32 +1,17 @@
 pluginManagement {
     repositories {
-        maven("https://maven.aliyun.com/repository/public")
+        google()
         mavenCentral()
-        maven("https://maven.aliyun.com/repository/google") {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
-        maven("https://maven.aliyun.com/repository/gradle-plugin")
-        maven("https://maven.aliyun.com/repository/central")
+        gradlePluginPortal()
     }
 }
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        maven("https://maven.aliyun.com/repository/public")
+        google()
         mavenCentral()
-        maven("https://maven.aliyun.com/repository/google") {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
-        maven("https://maven.aliyun.com/repository/gradle-plugin")
-        maven("https://maven.aliyun.com/repository/central")
     }
 }
 
-rootProject.name = "jm-mobile-android6"
+rootProject.name = "jmcomic-plus"
 include(":app")

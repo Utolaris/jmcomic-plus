@@ -75,7 +75,7 @@ fun DownloadScreen(
     val activeGroups by downloadViewModel.activeGroups.collectAsState()
     val errorGroups by downloadViewModel.errorGroups.collectAsState()
     val editState by downloadViewModel.editState.collectAsState()
-    val localSetting by localSettingManager.localSettingState.collectAsState()
+    val miscSettings by localSettingManager.misc.collectAsState()
     var completeExpanded by rememberSaveable { mutableStateOf(true) }
     var activeExpanded by rememberSaveable { mutableStateOf(true) }
     var errorExpanded by rememberSaveable { mutableStateOf(true) }
@@ -207,7 +207,7 @@ fun DownloadScreen(
                                     groups = completeGroups,
                                     editing = editState.editing,
                                     selectedIds = editState.selectedIds,
-                                    gridColumns = localSetting.downloadGridColumns,
+                                    gridColumns = miscSettings.gridColumns.download,
                                     onClick = { group ->
                                         if (editState.editing) {
                                             downloadViewModel.toggleSelected(group.itemIds)

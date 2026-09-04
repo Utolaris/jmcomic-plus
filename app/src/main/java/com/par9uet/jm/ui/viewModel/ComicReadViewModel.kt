@@ -25,7 +25,7 @@ import com.par9uet.jm.reader.runReaderPrefetchSchedule
 import com.par9uet.jm.store.ReaderPreferences
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.ui.models.CommonUIState
+import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow

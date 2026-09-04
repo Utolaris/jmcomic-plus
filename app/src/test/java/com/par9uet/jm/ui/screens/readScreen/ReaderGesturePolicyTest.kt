@@ -39,7 +39,7 @@ class ReaderGesturePolicyTest {
     fun `single pointer at original size stays available to reader navigation`() {
         val session = ReaderGestureSession(startedZoomed = false)
 
-        session.observePointerCount(1)
+        session.observe(1)
 
         assertFalse(session.ownsTransform)
         assertFalse(session.sawMultiplePointers)
@@ -49,9 +49,9 @@ class ReaderGesturePolicyTest {
     fun `second pointer owns the complete gesture until every pointer is released`() {
         val session = ReaderGestureSession(startedZoomed = false)
 
-        session.observePointerCount(2)
-        session.observePointerCount(1)
-        session.observePointerCount(0)
+        session.observe(2)
+        session.observe(1)
+        session.observe(0)
 
         assertTrue(session.ownsTransform)
         assertTrue(session.sawMultiplePointers)
@@ -61,7 +61,7 @@ class ReaderGesturePolicyTest {
     fun `zoomed single pointer only owns gesture after pan is claimed`() {
         val session = ReaderGestureSession(startedZoomed = true)
 
-        session.observePointerCount(1)
+        session.observe(1)
         assertFalse(session.ownsTransform)
 
         session.claimSinglePointerPan()
@@ -70,7 +70,7 @@ class ReaderGesturePolicyTest {
 
     @Test
     fun `tap is canceled after a second pointer appears`() {
-        val session = ReaderTapSession()
+        val session = ReaderGestureSession()
 
         session.observe(pointerCount = 1, consumed = false)
         session.observe(pointerCount = 2, consumed = false)
@@ -81,7 +81,7 @@ class ReaderGesturePolicyTest {
 
     @Test
     fun `short unconsumed single pointer gesture remains a tap`() {
-        val session = ReaderTapSession()
+        val session = ReaderGestureSession()
 
         session.observe(pointerCount = 1, consumed = false)
 
@@ -91,7 +91,7 @@ class ReaderGesturePolicyTest {
 
     @Test
     fun `consumed reader gesture is not dispatched as tap`() {
-        val session = ReaderTapSession()
+        val session = ReaderGestureSession()
 
         session.observe(pointerCount = 1, consumed = true)
 

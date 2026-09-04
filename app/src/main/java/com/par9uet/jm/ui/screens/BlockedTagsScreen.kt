@@ -47,7 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.BlockedTagTemplate
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.CommonScaffold
-import com.par9uet.jm.utils.normalizeBlockedTagList
+import com.par9uet.jm.contentfilter.normalizeBlockedTagList
 import org.koin.compose.getKoin
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -55,8 +55,7 @@ import org.koin.compose.getKoin
 fun BlockedTagsScreen(
     localSettingManager: LocalSettingManager = getKoin().get(),
 ) {
-    val localSetting by localSettingManager.localSettingState.collectAsState()
-    val templates = localSetting.blockedTagTemplateList
+    val templates by localSettingManager.blockedTagTemplates.collectAsState()
     var editingIndex by remember { mutableStateOf<Int?>(null) }
     var templateName by remember { mutableStateOf("") }
     var tagInput by remember { mutableStateOf("") }

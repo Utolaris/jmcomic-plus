@@ -8,8 +8,8 @@ import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.ComicListResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.utils.filterBlockedTags
-import com.par9uet.jm.utils.normalizeSearchExcludedTags
+import com.par9uet.jm.contentfilter.filterBlockedTags
+import com.par9uet.jm.contentfilter.normalizeSearchExcludedTags
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope

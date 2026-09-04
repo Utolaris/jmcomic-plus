@@ -21,7 +21,7 @@ import com.par9uet.jm.ui.screens.tabScreen.TabScreen
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.utils.EXTRA_NAVIGATE_ROUTE
-import com.par9uet.jm.utils.deserializeExcludedTags
+import com.par9uet.jm.contentfilter.deserializeExcludedTags
 import org.koin.compose.viewmodel.koinActivityViewModel
 
 @Composable

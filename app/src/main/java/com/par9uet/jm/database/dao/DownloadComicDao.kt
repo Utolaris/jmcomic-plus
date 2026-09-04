@@ -1,6 +1,5 @@
 package com.par9uet.jm.database.dao
 
-import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
@@ -8,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.par9uet.jm.database.model.DownloadComic
+import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.database.model.UpdateComicCover
 import com.par9uet.jm.database.model.UpdateComicProgress
 import com.par9uet.jm.database.model.UpdateComicStatus
@@ -16,18 +16,6 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface DownloadComicDao {
-    @Query("SELECT * FROM download_comics WHERE status = 'pending' OR status = 'downloading' ORDER BY createTime DESC")
-    fun getDownloadingList(): PagingSource<Int, DownloadComic>
-
-    @Query("SELECT * FROM download_comics WHERE status = 'complete' ORDER BY createTime DESC")
-    fun getCompleteList(): PagingSource<Int, DownloadComic>
-
-    @Query("SELECT * FROM download_comics WHERE status = 'error' ORDER BY createTime DESC")
-    fun getErrorList(): PagingSource<Int, DownloadComic>
-
-    @Query("SELECT * FROM download_comics WHERE status IN ('pending', 'downloading', 'paused') ORDER BY createTime DESC")
-    fun getActiveList(): PagingSource<Int, DownloadComic>
-
     @Query("SELECT * FROM download_comics WHERE status = 'complete' ORDER BY createTime DESC")
     fun observeCompleteList(): Flow<List<DownloadComic>>
 
@@ -102,5 +90,5 @@ interface DownloadComicDao {
     suspend fun deleteByIds(ids: List<Int>)
 
     @Query("UPDATE download_comics SET status = :status WHERE id IN (:ids)")
-    suspend fun updateStatusByIds(ids: List<Int>, status: String)
+    suspend fun updateStatusByIds(ids: List<Int>, status: DownloadStatus)
 }

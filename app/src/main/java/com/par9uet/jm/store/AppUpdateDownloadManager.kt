@@ -4,6 +4,7 @@ import android.content.Context
 import com.par9uet.jm.cache.getCommonCacheDir
 import com.par9uet.jm.utils.APP_UPDATE_NOTIFICATION_ID
 import com.par9uet.jm.utils.cancelProgressNotification
+import com.par9uet.jm.utils.formatBytes
 import com.par9uet.jm.utils.showProgressNotification
 import com.par9uet.jm.utils.showUpdateDownloadedNotification
 import kotlinx.coroutines.CoroutineScope
@@ -222,12 +223,3 @@ data class AppUpdateDownloadRequest(
     val fileName: String,
     val downloadUrl: String
 )
-
-fun formatBytes(bytes: Long): String {
-    if (bytes < 1024L) return "$bytes B"
-    val kb = bytes / 1024f
-    if (kb < 1024f) return "%.1f KB".format(kb)
-    val mb = kb / 1024f
-    if (mb < 1024f) return "%.1f MB".format(mb)
-    return "%.1f GB".format(mb / 1024f)
-}

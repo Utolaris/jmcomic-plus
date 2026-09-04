@@ -78,17 +78,21 @@ class ReaderZoomState {
 }
 
 internal class ReaderGestureSession(
-    private val startedZoomed: Boolean
+    private val startedZoomed: Boolean = false
 ) {
     var sawMultiplePointers: Boolean = false
         private set
     var ownsTransform: Boolean = false
         private set
+    private var wasConsumed: Boolean = false
 
-    fun observePointerCount(pointerCount: Int) {
+    fun observe(pointerCount: Int, consumed: Boolean = false) {
         if (pointerCount >= 2) {
             sawMultiplePointers = true
             ownsTransform = true
+        }
+        if (consumed) {
+            wasConsumed = true
         }
     }
 
@@ -97,6 +101,9 @@ internal class ReaderGestureSession(
             ownsTransform = true
         }
     }
+
+    fun canDispatchTap(distance: Float, maximumDistance: Float): Boolean =
+        !sawMultiplePointers && !wasConsumed && distance < maximumDistance
 }
 
 internal class ReaderFreePanTracker(
@@ -116,23 +123,6 @@ internal class ReaderFreePanTracker(
         val overSlopRatio = (distance - touchSlop) / distance
         return accumulatedPan * overSlopRatio
     }
-}
-
-internal class ReaderTapSession {
-    private var sawMultiplePointers: Boolean = false
-    private var wasConsumed: Boolean = false
-
-    fun observe(pointerCount: Int, consumed: Boolean) {
-        if (pointerCount > 1) {
-            sawMultiplePointers = true
-        }
-        if (consumed) {
-            wasConsumed = true
-        }
-    }
-
-    fun canDispatchTap(distance: Float, maximumDistance: Float): Boolean =
-        !sawMultiplePointers && !wasConsumed && distance < maximumDistance
 }
 
 internal fun isReaderCenter(position: Offset, size: IntSize): Boolean {
@@ -157,7 +147,7 @@ internal fun resetZoomFromCenterDoubleTap(
 fun rememberReaderZoomState(): ReaderZoomState = remember { ReaderZoomState() }
 
 @Composable
-fun Modifier.readerZoomable(zoomState: ReaderZoomState): Modifier {
+private fun Modifier.readerTransformHandling(zoomState: ReaderZoomState): Modifier {
     val touchSlop = LocalViewConfiguration.current.touchSlop
 
     return this
@@ -169,13 +159,13 @@ fun Modifier.readerZoomable(zoomState: ReaderZoomState): Modifier {
                     pass = PointerEventPass.Initial
                 )
                 val session = ReaderGestureSession(startedZoomed = zoomState.isZoomed)
-                session.observePointerCount(1)
+                session.observe(1)
                 val freePanTracker = ReaderFreePanTracker(touchSlop)
 
                 do {
                     val event = awaitPointerEvent(pass = PointerEventPass.Initial)
                     val pressedChanges = event.changes.filter { it.pressed }
-                    session.observePointerCount(pressedChanges.size)
+                    session.observe(pressedChanges.size)
 
                     when {
                         pressedChanges.size >= 2 -> {
@@ -225,7 +215,7 @@ fun Modifier.readerZoomable(zoomState: ReaderZoomState): Modifier {
 }
 
 @Composable
-fun Modifier.readerTapGestures(
+private fun Modifier.readerTapHandling(
     zoomState: ReaderZoomState,
     requireUnconsumedDown: Boolean = true,
     onNormalTap: (position: Offset, size: IntSize) -> Unit,
@@ -255,11 +245,11 @@ fun Modifier.readerTapGestures(
                     pass = PointerEventPass.Final
                 )
                 var lastPosition = down.position
-                val tapSession = ReaderTapSession()
+                val gestureSession = ReaderGestureSession()
 
                 do {
                     val event = awaitPointerEvent(pass = PointerEventPass.Final)
-                    tapSession.observe(
+                    gestureSession.observe(
                         pointerCount = event.changes.count { it.pressed || it.previousPressed },
                         consumed = event.changes.any { it.isConsumed }
                     )
@@ -269,7 +259,7 @@ fun Modifier.readerTapGestures(
                 } while (event.changes.any { it.pressed })
 
                 if (
-                    tapSession.canDispatchTap(
+                    gestureSession.canDispatchTap(
                         distance = (lastPosition - down.position).getDistance(),
                         maximumDistance = 10.dp.toPx()
                     )
@@ -280,3 +270,17 @@ fun Modifier.readerTapGestures(
         }
     }
 }
+
+/** Canonical reader gesture entry used by every reading mode. */
+@Composable
+fun Modifier.readerGestures(
+    zoomState: ReaderZoomState,
+    requireUnconsumedDown: Boolean = true,
+    onNormalTap: (position: Offset, size: IntSize) -> Unit,
+    onZoomedCenterTap: () -> Unit,
+): Modifier = readerTapHandling(
+    zoomState = zoomState,
+    requireUnconsumedDown = requireUnconsumedDown,
+    onNormalTap = onNormalTap,
+    onZoomedCenterTap = onZoomedCenterTap,
+).readerTransformHandling(zoomState)

@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -85,6 +86,7 @@ fun AppLockSettingScreen(
                 visible = showPasswordLengthDialog,
                 title = "密码长度",
                 value = pendingPasswordLength.toString(),
+                modifier = Modifier.widthIn(max = 420.dp),
                 selectOptionList = lengthOptions,
                 onSelect = { value ->
                     pendingPasswordLength = value.toIntOrNull() ?: 4

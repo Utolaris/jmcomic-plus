@@ -29,7 +29,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.utils.filterBlockedTags
+import com.par9uet.jm.contentfilter.filterBlockedTags
 import org.koin.compose.getKoin
 
 @Composable
@@ -50,27 +50,21 @@ fun ComicLazyGrid(
     stickyHeaderContent: @Composable (() -> Unit)? = null,
     localSettingManager: LocalSettingManager = getKoin().get(),
 ) {
-    val localSetting by localSettingManager.localSettingState.collectAsState()
-    val visibleList = remember(list, localSetting.blockedTagList) {
-        list.filterBlockedTags(localSetting.blockedTagList)
+    val blockedTags by localSettingManager.blockedTags.collectAsState()
+    val visibleList = remember(list, blockedTags) {
+        list.filterBlockedTags(blockedTags)
     }
-    val shouldLoadMore =
-        remember(
-            gridState.layoutInfo.visibleItemsInfo,
-            gridState.layoutInfo.totalItemsCount,
-            isRefreshing,
-            hasMore
-        ) {
-            derivedStateOf {
-                val layoutInfo = gridState.layoutInfo
-                val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
-                lastVisibleItem?.index == layoutInfo.totalItemsCount - 1 &&
-                        !isRefreshing &&
-                        hasMore
-            }
+    val shouldLoadMore by remember(gridState, isRefreshing, hasMore) {
+        derivedStateOf {
+            val layoutInfo = gridState.layoutInfo
+            val lastVisibleItem = layoutInfo.visibleItemsInfo.lastOrNull()
+            lastVisibleItem?.index == layoutInfo.totalItemsCount - 1 &&
+                !isRefreshing &&
+                hasMore
         }
+    }
     LaunchedEffect(shouldLoadMore) {
-        if (shouldLoadMore.value) {
+        if (shouldLoadMore) {
             onLoadMore()
         }
     }

@@ -16,7 +16,6 @@ data class LogEntry(
 object LogBuffer {
     private const val MAX_ENTRIES = 500
     private val entries = mutableListOf<LogEntry>()
-    // 使用 SimpleDateFormat 替代 java.time，确保 Android 6 兼容性
     private val dateFormatter = SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault())
 
     @Synchronized

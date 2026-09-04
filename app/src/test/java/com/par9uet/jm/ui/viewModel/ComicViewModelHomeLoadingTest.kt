@@ -207,9 +207,9 @@ class ComicViewModelHomeLoadingTest {
 
         assertEquals(1, repo.networkPageCalls)
         assertTrue(repo.embeddedCalls.isEmpty())
-        assertEquals("net_serial", vm.homeState.value.selectedCategoryId)
+        assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
         assertEquals(
-            listOf("连载漫画", "C108推荐本本", "其它栏目", "本周热门"),
+            listOf("C108推荐本本", "连载漫画", "其它栏目", "本周热门"),
             vm.homeState.value.categories.take(4).map { it.title },
         )
         assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
@@ -217,10 +217,10 @@ class ComicViewModelHomeLoadingTest {
         assertEquals(listOf("3"), vm.homeState.value.states["net_other"]?.content?.map { it.id })
         assertNull(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST])
 
-        vm.selectHomeCategory("net_serial")
+        vm.selectHomeCategory("net_rec")
         advanceUntilIdle()
         assertEquals(1, repo.networkPageCalls)
-        assertEquals(listOf("1"), vm.homeState.value.states["net_serial"]?.content?.map { it.id })
+        assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
     }
 
     @Test
@@ -246,7 +246,7 @@ class ComicViewModelHomeLoadingTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf("连载漫画", "C109推荐本本", "其它栏目"),
+            listOf("C109推荐本本", "连载漫画", "其它栏目"),
             vm.homeState.value.categories.take(3).map { it.title },
         )
         assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
@@ -426,11 +426,11 @@ class ComicViewModelHomeLoadingTest {
         advanceUntilIdle()
         assertEquals(1, repo.networkPageCalls)
         assertEquals(
-            listOf("连载漫画", "C108推荐本本"),
+            listOf("C108推荐本本", "连载漫画"),
             vm.homeState.value.categories.take(2).map { it.title },
         )
         assertTrue(vm.homeState.value.categories.any { it.id == ComicViewModel.CATEGORY_LATEST })
-        assertEquals("net_serial", vm.homeState.value.selectedCategoryId)
+        assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
 
         // 关闭网络推荐：回到 Embedded，并复用已加载的首屏缓存。
         settings.setRecommendEnabled(false)
@@ -474,7 +474,7 @@ class ComicViewModelHomeLoadingTest {
         settings.setRecommendEnabled(true)
         vm.refreshHome()
         advanceUntilIdle()
-        assertEquals("net_serial", vm.homeState.value.selectedCategoryId)
+        assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
 
         // 迟到的旧默认页结果被丢弃。
         gate.complete(NetWorkResult.Success(listOf(item(9))))
@@ -626,14 +626,14 @@ class ComicViewModelHomeLoadingTest {
         val generation = vm.searchViewportState.value.resetGeneration
         vm.saveSearchViewport(18, 72, generation)
 
-        assertTrue(vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT))
+        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT)
 
         assertEquals(0, vm.searchViewportState.value.firstVisibleItemIndex)
         assertEquals(0, vm.searchViewportState.value.firstVisibleItemScrollOffset)
         assertTrue(vm.searchViewportState.value.resetGeneration > generation)
 
         val resetGeneration = vm.searchViewportState.value.resetGeneration
-        assertFalse(vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT))
+        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT)
         assertEquals(resetGeneration, vm.searchViewportState.value.resetGeneration)
     }
 }

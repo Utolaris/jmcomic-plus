@@ -1,9 +1,8 @@
 package com.par9uet.jm.store
 
 import com.par9uet.jm.data.models.User
-import com.par9uet.jm.repository.LoginSession
+import com.par9uet.jm.repository.CandidateSession
 import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.repository.VerifiedCredentials
 import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
@@ -161,18 +160,18 @@ class UserManagerSessionTest {
         private val cookieStorage: CookieStorage,
     ) : UserRepository {
         val verifyStarted = CompletableDeferred<Unit>()
-        private val verifyGate = CompletableDeferred<NetWorkResult<VerifiedCredentials>>()
-        val activated = mutableListOf<VerifiedCredentials>()
-        var loginHandler: (suspend (String, String) -> NetWorkResult<LoginSession>)? = null
+        private val verifyGate = CompletableDeferred<NetWorkResult<CandidateSession>>()
+        val activated = mutableListOf<CandidateSession>()
+        var loginHandler: (suspend (String, String) -> NetWorkResult<CandidateSession>)? = null
 
-        fun completeVerify(result: NetWorkResult<VerifiedCredentials>) {
+        fun completeVerify(result: NetWorkResult<CandidateSession>) {
             verifyGate.complete(result)
         }
 
         override suspend fun verifyLogin(
             username: String,
             password: String
-        ): NetWorkResult<VerifiedCredentials> {
+        ): NetWorkResult<CandidateSession> {
             verifyStarted.complete(Unit)
             return withContext(Dispatchers.Default + NonCancellable) {
                 verifyGate.await()
@@ -182,11 +181,11 @@ class UserManagerSessionTest {
         override suspend fun login(
             username: String,
             password: String
-        ): NetWorkResult<LoginSession> {
+        ): NetWorkResult<CandidateSession> {
             return checkNotNull(loginHandler).invoke(username, password)
         }
 
-        override fun activateVerifiedSession(verified: VerifiedCredentials) {
+        override fun activateVerifiedSession(verified: CandidateSession) {
             activated += verified
             if (verified.embeddedCookies.isNotEmpty()) {
                 cookieStorage.set(verified.embeddedCookies)
@@ -265,7 +264,7 @@ class UserManagerSessionTest {
         val repository = GateUserRepository(cookieStorage)
         repository.loginHandler = { _, _ ->
             NetWorkResult.Success(
-                LoginSession(
+                CandidateSession(
                     loginResponse = loginResponse(2, "accountB"),
                     embeddedCookies = listOf(avsCookie("session-B")),
                 )
@@ -283,7 +282,7 @@ class UserManagerSessionTest {
         // A 的候选验证随后返回。
         repository.completeVerify(
             NetWorkResult.Success(
-                VerifiedCredentials(
+                CandidateSession(
                     loginResponse = loginResponse(1, "accountA"),
                     embeddedCookies = listOf(avsCookie("session-A")),
                 )
@@ -318,7 +317,7 @@ class UserManagerSessionTest {
 
         repository.completeVerify(
             NetWorkResult.Success(
-                VerifiedCredentials(
+                CandidateSession(
                     loginResponse = loginResponse(1, "accountA"),
                     embeddedCookies = listOf(avsCookie("session-A")),
                 )
@@ -394,7 +393,7 @@ class UserManagerSessionTest {
         repository.verifyStarted.await()
         repository.completeVerify(
             NetWorkResult.Success(
-                VerifiedCredentials(
+                CandidateSession(
                     loginResponse = loginResponse(1, "accountA"),
                     embeddedCookies = listOf(avsCookie("session-A")),
                 )
@@ -423,7 +422,7 @@ class UserManagerSessionTest {
         repository.verifyStarted.await()
         repository.completeVerify(
             NetWorkResult.Success(
-                VerifiedCredentials(
+                CandidateSession(
                     loginResponse = loginResponse(1, "accountA"),
                     embeddedCookies = listOf(avsCookie("session-A")),
                 )
@@ -486,7 +485,6 @@ class UserManagerSessionTest {
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
         val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
-        manager.updateUser(user(1, "accountA"))
         val snapshot = manager.currentSessionSnapshot()
         var remoteCalls = 0
 
@@ -508,7 +506,6 @@ class UserManagerSessionTest {
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
         val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
-        manager.updateUser(user(1, "accountA"))
         val staleGeneration = manager.currentSessionSnapshot().generation - 1L
         var remoteCalls = 0
 
@@ -531,7 +528,6 @@ class UserManagerSessionTest {
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
         val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
-        manager.updateUser(user(1, "accountA"))
         val snapshotA = manager.currentSessionSnapshot()
         val blockStarted = CompletableDeferred<Unit>()
         val allowLocalCommit = CompletableDeferred<Unit>()
@@ -569,7 +565,7 @@ class UserManagerSessionTest {
         val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
         val repository = GateUserRepository(cookieStorage)
         val candidateStarted = CompletableDeferred<Unit>()
-        val candidateResult = CompletableDeferred<NetWorkResult<LoginSession>>()
+        val candidateResult = CompletableDeferred<NetWorkResult<CandidateSession>>()
         repository.loginHandler = { _, _ ->
             candidateStarted.complete(Unit)
             candidateResult.await()
@@ -587,7 +583,7 @@ class UserManagerSessionTest {
 
         candidateResult.complete(
             NetWorkResult.Success(
-                LoginSession(
+                CandidateSession(
                     loginResponse = loginResponse(2, "accountB"),
                     embeddedCookies = listOf(avsCookie("session-B")),
                 )
@@ -609,14 +605,13 @@ class UserManagerSessionTest {
         repository.loginHandler = { _, _ ->
             candidateStarted.complete(Unit)
             NetWorkResult.Success(
-                LoginSession(
+                CandidateSession(
                     loginResponse = loginResponse(2, "accountB"),
                     embeddedCookies = listOf(avsCookie("session-B")),
                 )
             )
         }
         val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
-        manager.updateUser(user(1, "accountA"))
         val snapshotA = manager.currentSessionSnapshot()
         val remoteStarted = CountDownLatch(1)
         val releaseRemote = CountDownLatch(1)

@@ -30,7 +30,7 @@ data class BlockedTagTemplate(
  */
 data class LocalSetting(
     // 开启后请求网络 API 获取基于登录账号的个性化推荐，可能不稳定
-    val preferenceRecommendEnabled: Boolean = false,
+    val preferenceRecommendEnabled: Boolean = true,
     // 选中的 API 节点（候选集合见 [AVAILABLE_APIS]）
     val api: String = AVAILABLE_APIS.first(),
     // auto | light | dark（候选集合见 [AVAILABLE_THEMES]）
@@ -42,8 +42,6 @@ data class LocalSetting(
     // default | side
     val readTapMode: String = "default",
     val launcherDisguise: String = "default",
-    val showComicScrollReadTip: Boolean = true,
-    val showComicPageReadTip: Boolean = true,
     val showComicCacheNotification: Boolean = true,
     // 仅在 showComicCacheNotification 为 true 时有意义
     val showComicCacheNotificationName: Boolean = true,
@@ -63,7 +61,7 @@ data class LocalSetting(
     // 检测到剪贴板包含漫画编码时自动弹出跳转提示
     val clipboardAutoDetectEnabled: Boolean = false,
     // 已登录且今日未签到时在启动后自动签到
-    val autoSignInEnabled: Boolean = false,
+    val autoSignInEnabled: Boolean = true,
     // "default" 表示主题默认配色，其余为内置预设 ID 或 custom
     val colorPalettePreset: String = COLOR_PALETTE_PRESET_DEFAULT,
     // 自定义四色（ARGB hex，如 "#FF4F5F7F"）；null 表示跟随预设

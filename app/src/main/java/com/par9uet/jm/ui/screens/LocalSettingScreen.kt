@@ -15,7 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -75,8 +75,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.AVAILABLE_APIS
 import com.par9uet.jm.data.models.AVAILABLE_THEMES
@@ -110,6 +112,19 @@ private val themeTextMap = mapOf(
 
 private fun gridColumnsText(columns: Int): String =
     if (columns == 0) "\u81ea\u9002\u5e94" else "$columns \u5217"
+
+internal const val SETTINGS_PAGE_HORIZONTAL_PADDING_DP = 16
+private val settingsPageHorizontalPadding = SETTINGS_PAGE_HORIZONTAL_PADDING_DP.dp
+
+internal fun settingsDialogWidth(screenWidth: Dp): Dp =
+    (screenWidth - settingsPageHorizontalPadding * 2).coerceAtLeast(1.dp)
+
+@Composable
+private fun Modifier.settingsDialogWidth(): Modifier {
+    val density = LocalDensity.current
+    val pageWidth = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
+    return width(settingsDialogWidth(pageWidth))
+}
 
 @Composable
 fun LocalSettingScreen(
@@ -154,8 +169,8 @@ fun LocalSettingScreen(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
+                start = settingsPageHorizontalPadding,
+                end = settingsPageHorizontalPadding,
                 top = topContentPadding + 16.dp,
                 bottom = bottomContentPadding + 16.dp,
             ),
@@ -419,6 +434,7 @@ private fun SettingSelectDialogContent(
         visible = visible,
         title = settingTitle(settingType),
         value = settingValue(settingType, ui),
+        modifier = Modifier.settingsDialogWidth(),
         selectOptionList = when (settingType) {
             is SettingType.Api -> apiSelectOptionList
             is SettingType.Theme -> themeSelectOptionList
@@ -518,7 +534,7 @@ private fun AllGridColumnSliderDialog(
         visible = visible,
         onDismissRequest = onDismiss,
         surfaceId = "settings-grid-columns-glass-modal",
-        modifier = Modifier.widthIn(max = 460.dp),
+        modifier = Modifier.settingsDialogWidth(),
     ) {
         Column(
             modifier = Modifier
@@ -577,7 +593,7 @@ private fun HomeExcludedTagsDialog(
         visible = visible,
         onDismissRequest = onDismiss,
         surfaceId = "settings-home-excluded-tags-glass-modal",
-        modifier = Modifier.widthIn(max = 460.dp),
+        modifier = Modifier.settingsDialogWidth(),
     ) {
         Column(
             modifier = Modifier

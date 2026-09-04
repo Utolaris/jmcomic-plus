@@ -37,7 +37,7 @@ import androidx.compose.ui.unit.dp
  *
  * The backdrop blurs live page content through the shared registry: the full-screen layer is
  * transparent but still handles outside taps, and [surface] becomes a normal GlassSurface, so
- * API 31+ gets true Gaussian backdrop blur and older devices get the existing translucent
+ * API 31+ gets true Gaussian backdrop blur and Android 11 gets the existing translucent
  * fallback. No extra capture host is created; callers must place this in CommonScaffold
  * overlayContent (or equivalent).
  *

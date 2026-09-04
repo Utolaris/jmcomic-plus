@@ -1,4 +1,4 @@
-package com.par9uet.jm.utils
+package com.par9uet.jm.download.export
 
 import android.content.Context
 import android.graphics.Bitmap
@@ -13,7 +13,6 @@ import com.par9uet.jm.database.model.DownloadComic
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
-import kotlin.math.roundToInt
 
 data class CachedComicInfo(
     val imageCount: Int,
@@ -199,20 +198,4 @@ private fun getComicImageDir(context: Context, comic: DownloadComic): File? {
 
 private fun safeFileName(name: String): String {
     return name.replace(Regex("""[\\/:*?"<>|]"""), "_")
-}
-
-fun formatBytes(bytes: Long): String {
-    if (bytes <= 0L) return "0 B"
-    val units = listOf("B", "KB", "MB", "GB")
-    var value = bytes.toDouble()
-    var unitIndex = 0
-    while (value >= 1024.0 && unitIndex < units.lastIndex) {
-        value /= 1024.0
-        unitIndex++
-    }
-    return if (unitIndex == 0) {
-        "${value.roundToInt()} ${units[unitIndex]}"
-    } else {
-        String.format("%.1f %s", value, units[unitIndex])
-    }
 }

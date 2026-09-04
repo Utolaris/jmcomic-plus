@@ -1,4 +1,4 @@
-package com.par9uet.jm.utils
+package com.par9uet.jm.contentfilter
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

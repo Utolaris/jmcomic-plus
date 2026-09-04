@@ -139,7 +139,7 @@ internal class GlassBackdropView(
             drawNativeBackdrop(canvas)
         }
 
-        // On API 23-30 this translucent tint is the complete fallback. On API 31+ it is drawn over
+        // On API 30 this translucent tint is the complete fallback. On API 31+ it is drawn over
         // the blurred source RenderNode, keeping the same material geometry on every device.
         canvas.drawRoundRect(surfaceRect, cornerRadiusPx(), cornerRadiusPx(), tintPaint)
         drawDirectionalStroke(canvas, topStrokePaint, clipTop = true)

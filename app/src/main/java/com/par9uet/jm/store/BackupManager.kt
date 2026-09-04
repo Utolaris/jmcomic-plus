@@ -142,7 +142,7 @@ class BackupManager {
     }
 
     /**
-     * 解析备份 JSON 字符串，兼容 v1/v2。
+     * 解析备份 JSON 字符串；当前写入 v3，并兼容 v1/v2。
      */
     fun parseBackup(json: String): Result<BackupFile> = runCatching {
         val obj = JsonParser.parseString(json).asJsonObject

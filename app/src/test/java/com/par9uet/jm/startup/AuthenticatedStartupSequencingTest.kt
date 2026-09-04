@@ -1,4 +1,4 @@
-package com.par9uet.jm.store
+package com.par9uet.jm.startup
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async

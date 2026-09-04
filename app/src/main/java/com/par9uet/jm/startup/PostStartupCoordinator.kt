@@ -1,21 +1,23 @@
-package com.par9uet.jm.store
+package com.par9uet.jm.startup
 
+import com.par9uet.jm.network.DohManager
+import com.par9uet.jm.store.HistorySearchManager
+import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.ReadHistoryManager
+import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.utils.ensureAppNotificationChannels
 import com.par9uet.jm.utils.log
-import com.par9uet.jm.network.DohManager
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.supervisorScope
 import org.koin.core.Koin
-import java.util.concurrent.atomic.AtomicBoolean
 
-/**
- * Starts work that improves the next interaction but does not determine the first safe screen.
- * Dependencies are resolved inside the launched jobs, rather than while the root composable is
- * being constructed.
- */
-class PostStartupInitializer(
+/** Coordinates work that improves later interactions without delaying the first safe screen. */
+class PostStartupCoordinator(
     private val scope: CoroutineScope,
     private val koin: Koin,
 ) {
@@ -33,7 +35,7 @@ class PostStartupInitializer(
                     userManager.verifyStoredLogin()
                     userManager.autoSignInIfNeeded(
                         enabled = koin.get<LocalSettingManager>().currentAutoSignInEnabled(),
-                        toastManager = koin.get(),
+                        toastManager = koin.get<ToastManager>(),
                     )
                 },
             )
@@ -65,12 +67,7 @@ class PostStartupInitializer(
     }
 }
 
-/**
- * DoH must be active before the first authenticated/network request resolves DNS: init runs
- * first; only then do remote-config and user verification start, in parallel branches inside a
- * supervisorScope so one slow/failing branch never blocks or cancels the other. Cancellation
- * still propagates to both branches.
- */
+/** Activates DoH before remote configuration and account verification start in parallel. */
 internal suspend fun runAuthenticatedStartupTasks(
     initDoh: suspend () -> Unit,
     refreshRemoteConfig: suspend () -> Unit,
