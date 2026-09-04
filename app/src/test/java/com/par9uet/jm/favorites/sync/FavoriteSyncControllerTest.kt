@@ -1,6 +1,12 @@
 package com.par9uet.jm.favorites.sync
 
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.favorites.TestFavoriteSession
+import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import org.junit.Assert.assertTrue
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
 import com.par9uet.jm.store.FavoriteSyncProgress
 import com.par9uet.jm.store.FavoriteSyncReport
@@ -26,11 +32,10 @@ class FavoriteSyncControllerTest {
 
     @Test
     fun `manual request bypasses the auto window but never overlaps`() = runTest {
-        val accountFlow = MutableStateFlow(7)
-        var accountId = 7
+        val session = TestFavoriteSession()
         val requests = mutableListOf<Request>()
         val gate = CompletableDeferred<Unit>()
-        val controller = controller(backgroundScope, accountFlow, { accountId }, requests, operation = { _, _, _, _ ->
+        val controller = controller(backgroundScope, session, requests, operation = { _, _, _, _ ->
             gate.await()
             success()
         })
@@ -48,9 +53,9 @@ class FavoriteSyncControllerTest {
 
     @Test
     fun `force refresh bypasses the auto window and always uses all favorites`() = runTest {
-        val accountFlow = MutableStateFlow(7)
+        val session = TestFavoriteSession()
         val requests = mutableListOf<Request>()
-        val controller = controller(backgroundScope, accountFlow, { 7 }, requests, operation = { _, _, _, _ -> success() })
+        val controller = controller(backgroundScope, session, requests, operation = { _, _, _, _ -> success() })
 
         controller.request(FavoriteSyncRequestKind.AUTO, folderId = 4)
         runCurrent()
@@ -68,13 +73,12 @@ class FavoriteSyncControllerTest {
 
     @Test
     fun `automatic requests keep the latest folder for one trailing sync`() = runTest {
-        val accountFlow = MutableStateFlow(7)
+        val session = TestFavoriteSession()
         val clock = longArrayOf(0L)
         val requests = mutableListOf<Request>()
         val controller = controller(
             applicationScope = backgroundScope,
-            accountFlow = accountFlow,
-            currentAccountId = { 7 },
+            session = session,
             requests = requests,
             operation = { _, _, _, _ -> success() },
             intervalMillis = 100L,
@@ -102,14 +106,12 @@ class FavoriteSyncControllerTest {
 
     @Test
     fun `account change cancels pending trailing work and resets visible state`() = runTest {
-        val accountFlow = MutableStateFlow(7)
-        var accountId = 7
+        val session = TestFavoriteSession()
         val clock = longArrayOf(0L)
         val requests = mutableListOf<Request>()
         val controller = controller(
             applicationScope = backgroundScope,
-            accountFlow = accountFlow,
-            currentAccountId = { accountId },
+            session = session,
             requests = requests,
             operation = { _, _, _, _ -> success() },
             intervalMillis = 100L,
@@ -120,8 +122,7 @@ class FavoriteSyncControllerTest {
         runCurrent()
         clock[0] = 10L
         controller.request(FavoriteSyncRequestKind.AUTO, folderId = 2)
-        accountId = 8
-        accountFlow.value = 8
+        session.switchAccount(8)
         runCurrent()
         clock[0] = 100L
         advanceTimeBy(100L)
@@ -131,10 +132,86 @@ class FavoriteSyncControllerTest {
         assertFalse(controller.state.value.isSyncing)
     }
 
+    @Test
+    fun `old uncancellable result cannot clear new sync after A B A switch`() = runTest {
+        val session = TestFavoriteSession()
+        val oldResult = CompletableDeferred<Unit>()
+        val newResult = CompletableDeferred<Unit>()
+        var calls = 0
+        val controller = controller(backgroundScope, session, mutableListOf(), operation = { _, _, _, progress ->
+            calls++
+            if (calls == 1) {
+                withContext(NonCancellable) {
+                    oldResult.await()
+                    progress(FavoriteSyncProgress(99, 100, "old"))
+                }
+            } else {
+                newResult.await()
+            }
+            success()
+        })
+        controller.request(FavoriteSyncRequestKind.MANUAL, 1)
+        runCurrent()
+        session.switchAccount(8)
+        runCurrent()
+        session.switchAccount(7)
+        // Request must observe the session even before the account collector runs.
+        controller.request(FavoriteSyncRequestKind.FORCE)
+        runCurrent()
+        oldResult.complete(Unit)
+        runCurrent()
+        assertEquals(2, calls)
+        assertTrue(controller.state.value.isSyncing)
+        assertTrue(controller.state.value.isForceRefresh)
+        assertEquals(0, controller.state.value.completed)
+        newResult.complete(Unit)
+        runCurrent()
+        assertFalse(controller.state.value.isSyncing)
+    }
+
+    @Test
+    fun `same account reauthentication invalidates in flight work`() = runTest {
+        val session = TestFavoriteSession()
+        val requests = mutableListOf<Request>()
+        val controller = controller(backgroundScope, session, requests, operation = { _, _, _, _ ->
+            kotlinx.coroutines.awaitCancellation()
+        })
+        controller.request(FavoriteSyncRequestKind.AUTO)
+        runCurrent()
+        session.switchAccount(7)
+        controller.request(FavoriteSyncRequestKind.AUTO)
+        runCurrent()
+        assertEquals(2, requests.size)
+        assertTrue(controller.state.value.isSyncing)
+    }
+
+    @Test
+    fun `failed and cancelled operations release the sync slot`() = runTest {
+        val session = TestFavoriteSession()
+        var calls = 0
+        val controller = controller(backgroundScope, session, mutableListOf(), operation = { _, _, _, _ ->
+            calls++
+            when (calls) {
+                1 -> throw IllegalStateException("offline")
+                2 -> throw CancellationException("cancelled")
+                else -> success()
+            }
+        })
+        controller.request(FavoriteSyncRequestKind.MANUAL)
+        runCurrent()
+        assertEquals("offline", controller.state.value.errorMessage)
+        assertFalse(controller.state.value.isSyncing)
+        repeat(2) {
+            controller.request(FavoriteSyncRequestKind.MANUAL)
+            runCurrent()
+            assertFalse(controller.state.value.isSyncing)
+        }
+        assertEquals(3, calls)
+    }
+
     private fun controller(
         applicationScope: CoroutineScope,
-        accountFlow: MutableStateFlow<Int>,
-        currentAccountId: () -> Int,
+        session: TestFavoriteSession,
         requests: MutableList<Request>,
         operation: suspend (
             accountId: Int,
@@ -145,12 +222,11 @@ class FavoriteSyncControllerTest {
         intervalMillis: Long = 100L,
         timeSource: () -> Long = { 0L },
     ): FavoriteSyncController = FavoriteSyncController(
-        accountFlow,
-        currentAccountId,
-        { account: Int, folder: Int, force: Boolean,
+        session,
+        { snapshot: FavoriteSessionSnapshot, folder: Int, force: Boolean,
           progress: (FavoriteSyncProgress) -> Unit ->
-            requests += Request(account, folder, force)
-            operation(account, folder, force, progress)
+            requests += Request(snapshot.accountId, folder, force)
+            operation(snapshot.accountId, folder, force, progress)
         },
         applicationScope,
         FavoriteAutoSyncCoordinator(intervalMillis, timeSource),

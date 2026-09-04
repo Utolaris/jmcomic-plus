@@ -303,6 +303,7 @@ fun ComicDetailScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val scrollState = rememberScrollState()
     val comicDetailState by comicDetailViewModel.comicDetailState.collectAsState()
+    val collectState by comicDetailViewModel.collectComicState.collectAsState()
     // The activity-scoped ViewModel can still hold another comic for one composition frame while
     // a direct route change is starting. Never render a seed or toolbar title for that old id.
     val requestedComic = comicDetailState.data?.takeIf { it.id == id }
@@ -576,6 +577,8 @@ fun ComicDetailScreen(
                                         .widthIn(max = 600.dp)
                                         .height(detailBarHeight),
                                     comic = comic,
+                                    collectEnabled = !collectState.isLoading &&
+                                        authState != SessionReadiness.Restoring && authState != SessionReadiness.Unknown,
                                     readHistoryManager = readHistoryManager,
                                     readHistory = readHistory,
                                     onCollect = {
@@ -728,6 +731,7 @@ private fun ComicDetailBottomBar(
     comic: Comic,
     readHistoryManager: ReadHistoryManager,
     readHistory: Map<Int, ComicReadHistory>,
+    collectEnabled: Boolean,
     onCollect: () -> Unit,
     onRelated: () -> Unit,
     onDownload: () -> Unit,
@@ -773,6 +777,7 @@ private fun ComicDetailBottomBar(
                     contentDescription = if (comic.isCollect) "\u5df2\u6536\u85cf" else "\u6536\u85cf",
                     tint = if (comic.isCollect) MaterialTheme.colorScheme.tertiary else null,
                     size = iconCellSize,
+                    enabled = collectEnabled,
                     onClick = onCollect,
                 )
                 DetailIconAction(

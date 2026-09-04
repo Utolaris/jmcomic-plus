@@ -1,6 +1,5 @@
 package com.par9uet.jm.ui.screens
 
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -43,55 +42,37 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
-import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.ComicChapter
-import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.store.BACKUP_PROTECTION_BOTH
 import com.par9uet.jm.store.BACKUP_PROTECTION_NONE
 import com.par9uet.jm.store.BACKUP_PROTECTION_PASSWORD
 import com.par9uet.jm.store.BACKUP_PROTECTION_PATTERN
 import com.par9uet.jm.store.BackupContentOptions
 import com.par9uet.jm.store.BackupFile
-import com.par9uet.jm.store.BackupManager
-import com.par9uet.jm.store.ComicCacheBackup
 import com.par9uet.jm.store.ComicGroupBackup
-import com.par9uet.jm.store.DownloadManager
-import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
 import com.par9uet.jm.ui.glass.GlassModal
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koin.compose.getKoin
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
-private enum class BackupStep {
-    None, SelectContent, SelectProtection, SetPassword, SetPattern
-}
-
-private enum class RestoreStep {
-    None, VerifyPassword, VerifyPattern, SelectContent, SelectComicCache
-}
+import com.par9uet.jm.ui.viewModel.BackupRestoreViewModel
+import com.par9uet.jm.ui.viewModel.BackupStep
+import com.par9uet.jm.ui.viewModel.RestoreStep
+import org.koin.androidx.compose.koinViewModel
 
 private val protectionOptionList = listOf(
     SelectOption("无保护", BACKUP_PROTECTION_NONE),
@@ -102,335 +83,83 @@ private val protectionOptionList = listOf(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun BackupRestoreScreen(
-    localSettingManager: LocalSettingManager = getKoin().get(),
-    downloadComicDao: DownloadComicDao = getKoin().get(),
-    downloadManager: DownloadManager = getKoin().get(),
+internal fun BackupRestoreScreen(
+    viewModel: BackupRestoreViewModel = koinViewModel(),
     remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
-    toastManager: ToastManager = getKoin().get(),
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+    val state by viewModel.state.collectAsState()
     val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
-    val backupManager = remember { BackupManager() }
-
-    // 备份流程状态
-    var backupStep by remember { mutableStateOf(BackupStep.None) }
-    var contentOptions by remember { mutableStateOf(BackupContentOptions()) }
-    var pendingProtectionType by remember { mutableStateOf(BACKUP_PROTECTION_NONE) }
-    var pendingPassword by remember { mutableStateOf<String?>(null) }
-    var pendingPattern by remember { mutableStateOf<String?>(null) }
-    var pendingCreateDocument by remember { mutableStateOf(false) }
-    // 缓存备份在内存中暂存，等待写入文件时一起打包
-    var pendingComicCacheBackup by remember { mutableStateOf<ComicCacheBackup?>(null) }
-
-    // 恢复流程状态
-    var restoreBackup by remember { mutableStateOf<BackupFile?>(null) }
-    var restoreStep by remember { mutableStateOf(RestoreStep.None) }
-    // 恢复时用户选择的内容选项
-    var restoreContentOptions by remember { mutableStateOf(BackupContentOptions()) }
-
-    fun resetBackupState() {
-        backupStep = BackupStep.None
-        contentOptions = BackupContentOptions()
-        pendingProtectionType = BACKUP_PROTECTION_NONE
-        pendingPassword = null
-        pendingPattern = null
-        pendingComicCacheBackup = null
-    }
-
     val createDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri: Uri? ->
-        if (uri == null) {
-            toastManager.showAsync("未选择保存位置")
-            resetBackupState()
-            return@rememberLauncherForActivityResult
-        }
-        val pwd = pendingPassword
-        val pat = pendingPattern
-        val prot = pendingProtectionType
-        val opts = contentOptions
-        val cacheBackup = pendingComicCacheBackup
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    val json = backupManager.createBackup(
-                        localSetting = if (opts.includeLocalSetting) {
-                            localSettingManager.currentLocalSettingSnapshot()
-                        } else {
-                            null
-                        },
-                        comicCache = if (opts.includeComicCache) cacheBackup else null,
-                        options = opts,
-                        protectionType = prot,
-                        password = pwd,
-                        pattern = pat
-                    )
-                    if (!backupManager.writeToUri(context, uri, json)) {
-                        error("写入备份文件失败")
-                    }
-                }
-            }.onSuccess {
-                toastManager.showAsync("备份成功")
-            }.onFailure {
-                toastManager.showAsync("备份失败：${it.message ?: "未知错误"}")
-            }
-            resetBackupState()
-        }
-    }
-
+        contract = ActivityResultContracts.CreateDocument("application/json"),
+        onResult = { viewModel.writeDocument(it?.toString()) },
+    )
     val openDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument()
-    ) { uri: Uri? ->
-        if (uri == null) {
-            toastManager.showAsync("未选择备份文件")
-            return@rememberLauncherForActivityResult
-        }
-        scope.launch {
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    val json = backupManager.readFromUri(context, uri)
-                        ?: error("无法读取备份文件")
-                    backupManager.parseBackup(json).getOrThrow()
-                }
-            }.onSuccess { backup ->
-                restoreBackup = backup
-                restoreStep = when {
-                    backupManager.needsPassword(backup) -> RestoreStep.VerifyPassword
-                    backupManager.needsPattern(backup) -> RestoreStep.VerifyPattern
-                    else -> RestoreStep.SelectContent
-                }
-            }.onFailure {
-                toastManager.showAsync("恢复失败：${it.message ?: "未知错误"}")
-            }
+        contract = ActivityResultContracts.OpenDocument(),
+        onResult = { viewModel.readDocument(it?.toString()) },
+    )
+    LaunchedEffect(state.createDocumentName) {
+        state.createDocumentName?.let { name ->
+            viewModel.documentPickerLaunched()
+            createDocumentLauncher.launch(name)
         }
     }
-
-    fun onPasswordVerified() {
-        val backup = restoreBackup ?: return
-        restoreStep = if (backupManager.needsPattern(backup)) {
-            RestoreStep.VerifyPattern
-        } else {
-            RestoreStep.SelectContent
-        }
-    }
-
-    fun onPatternVerified() {
-        restoreStep = RestoreStep.SelectContent
-    }
-
-    fun applyRestore(backup: BackupFile, options: BackupContentOptions) {
-        runCatching {
-            val applied = mutableListOf<String>()
-            if (options.includeLocalSetting) {
-                val setting = backupManager.extractLocalSetting(backup)
-                if (setting != null) {
-                    localSettingManager.applyLocalSetting(setting)
-                    applied += "本地设置"
-                }
-            }
-            // 缓存目录在 applyComicCacheRestore 中单独处理，这里不处理
-            if (applied.isEmpty()) "未找到可恢复的内容" else "已恢复：${applied.joinToString("、")}"
-        }.onSuccess { msg ->
-            toastManager.showAsync(msg)
-        }.onFailure {
-            toastManager.showAsync("恢复失败：${it.message ?: "未知错误"}")
-        }
-        restoreBackup = null
-        restoreStep = RestoreStep.None
-    }
-
-    /**
-     * 恢复缓存目录：将用户选中的漫画组重新加入下载队列。
-     */
-    fun applyComicCacheRestore(selectedGroups: List<ComicGroupBackup>) {
-        if (selectedGroups.isEmpty()) {
-            toastManager.showAsync("未选择需要恢复缓存的漫画")
-            restoreBackup = null
-            restoreStep = RestoreStep.None
-            return
-        }
-        scope.launch {
-            var totalChapters = 0
-            selectedGroups.forEach { group ->
-                val parentComic = Comic.create(
-                    id = group.id,
-                    name = group.name,
-                    authorList = group.authors,
-                )
-                val chapters = group.chapters.sortedBy { it.sortOrder }
-                    .map { ChapterBackup_to_ComicChapter(it) }
-                if (chapters.size == 1 && chapters.first().name.isBlank()) {
-                    // 单篇漫画：走 downloadComic
-                    downloadManager.downloadComic(parentComic)
-                } else {
-                    downloadManager.downloadChapters(parentComic, chapters)
-                }
-                totalChapters += chapters.size
-            }
-            toastManager.showAsync("已创建 ${selectedGroups.size} 部漫画的缓存任务（共 $totalChapters 章）")
-            restoreBackup = null
-            restoreStep = RestoreStep.None
-        }
-    }
-
-    fun cancelRestore() {
-        restoreBackup = null
-        restoreStep = RestoreStep.None
-        toastManager.showAsync("已取消恢复")
-    }
-
-    LaunchedEffect(pendingCreateDocument) {
-        if (pendingCreateDocument) {
-            pendingCreateDocument = false
-            createDocumentLauncher.launch(generateBackupFileName())
-        }
-    }
-
     CommonScaffold(
         title = "数据备份与恢复",
         overlayContent = {
             BackupContentPickerDialog(
-                visible = backupStep == BackupStep.SelectContent,
-                options = contentOptions,
-                onChange = { contentOptions = it },
-                onConfirm = {
-                    if (contentOptions.isEmpty) {
-                        toastManager.showAsync("请至少选择一项备份内容")
-                    } else if (contentOptions.includeComicCache) {
-                        scope.launch {
-                            runCatching {
-                                withContext(Dispatchers.IO) {
-                                    val all = downloadComicDao.getAll()
-                                    backupManager.buildComicCacheBackup(all)
-                                }
-                            }.onSuccess { cache ->
-                                if (cache.groups.isEmpty()) {
-                                    toastManager.showAsync("当前没有缓存记录，已自动取消勾选缓存目录")
-                                    contentOptions = contentOptions.copy(includeComicCache = false)
-                                } else {
-                                    pendingComicCacheBackup = cache
-                                }
-                            }.onFailure {
-                                toastManager.showAsync("读取缓存列表失败：${it.message ?: "未知错误"}")
-                                contentOptions = contentOptions.copy(includeComicCache = false)
-                            }
-                            backupStep = BackupStep.SelectProtection
-                        }
-                    } else {
-                        backupStep = BackupStep.SelectProtection
-                    }
-                },
-                onDismiss = { resetBackupState() },
+                visible = state.backupStep == BackupStep.SelectContent,
+                options = state.contentOptions,
+                onChange = viewModel::changeContent,
+                onConfirm = viewModel::confirmContent,
+                onDismiss = viewModel::cancelBackup,
             )
-
             SelectDialog(
-                visible = backupStep == BackupStep.SelectProtection,
+                visible = state.backupStep == BackupStep.SelectProtection,
                 title = "选择保护方式",
                 value = null,
                 modifier = Modifier.widthIn(max = 420.dp),
                 selectOptionList = protectionOptionList,
-                onSelect = { type ->
-                    pendingProtectionType = type
-                    when (type) {
-                        BACKUP_PROTECTION_NONE -> {
-                            pendingCreateDocument = true
-                            backupStep = BackupStep.None
-                        }
-                        BACKUP_PROTECTION_PASSWORD -> backupStep = BackupStep.SetPassword
-                        BACKUP_PROTECTION_PATTERN -> backupStep = BackupStep.SetPattern
-                        BACKUP_PROTECTION_BOTH -> backupStep = BackupStep.SetPassword
-                    }
-                },
-                onDismissRequest = { resetBackupState() },
+                onSelect = viewModel::selectProtection,
+                onDismissRequest = viewModel::cancelBackup,
             )
-
             SetAppLockPasswordDialog(
-                visible = backupStep == BackupStep.SetPassword,
+                visible = state.backupStep == BackupStep.SetPassword,
                 lockType = APP_LOCK_TYPE_PASSWORD,
                 passwordLength = 4,
-                onConfirm = { pwd ->
-                    pendingPassword = pwd
-                    backupStep = if (pendingProtectionType == BACKUP_PROTECTION_BOTH) {
-                        BackupStep.SetPattern
-                    } else {
-                        pendingCreateDocument = true
-                        BackupStep.None
-                    }
-                },
-                onDismiss = { resetBackupState() },
+                onConfirm = viewModel::setPassword,
+                onDismiss = viewModel::cancelBackup,
             )
-
             SetAppLockPasswordDialog(
-                visible = backupStep == BackupStep.SetPattern,
+                visible = state.backupStep == BackupStep.SetPattern,
                 lockType = APP_LOCK_TYPE_PATTERN,
-                onConfirm = { pattern ->
-                    pendingPattern = pattern
-                    pendingCreateDocument = true
-                    backupStep = BackupStep.None
-                },
-                onDismiss = { resetBackupState() },
+                onConfirm = viewModel::setPattern,
+                onDismiss = viewModel::cancelBackup,
             )
-
-            restoreBackup?.let { backup ->
+            state.restoreBackup?.let { backup ->
                 VerifyPasswordDialog(
-                    visible = restoreStep == RestoreStep.VerifyPassword,
+                    visible = state.restoreStep == RestoreStep.VerifyPassword,
                     passwordLength = 4,
-                    onVerify = { pwd ->
-                        if (backupManager.verifyPassword(backup, pwd)) {
-                            onPasswordVerified()
-                            true
-                        } else {
-                            false
-                        }
-                    },
-                    onDismiss = { cancelRestore() },
+                    onVerify = viewModel::verifyPassword,
+                    onDismiss = viewModel::cancelRestore,
                 )
                 VerifyPatternDialog(
-                    visible = restoreStep == RestoreStep.VerifyPattern,
-                    onVerify = { pattern ->
-                        if (backupManager.verifyPattern(backup, pattern)) {
-                            onPatternVerified()
-                            true
-                        } else {
-                            false
-                        }
-                    },
-                    onDismiss = { cancelRestore() },
+                    visible = state.restoreStep == RestoreStep.VerifyPattern,
+                    onVerify = viewModel::verifyPattern,
+                    onDismiss = viewModel::cancelRestore,
                 )
                 RestoreContentPickerDialog(
-                    visible = restoreStep == RestoreStep.SelectContent,
+                    visible = state.restoreStep == RestoreStep.SelectContent,
                     backup = backup,
-                    onConfirm = { options ->
-                        restoreContentOptions = options
-                        if (options.includeComicCache && backup.meta.includeComicCache) {
-                            restoreStep = RestoreStep.SelectComicCache
-                        } else {
-                            applyRestore(backup, options)
-                        }
-                    },
-                    onDismiss = { cancelRestore() },
+                    onConfirm = viewModel::selectRestoreContent,
+                    onDismiss = viewModel::cancelRestore,
                 )
-                val cache = backupManager.extractComicCache(backup)
                 ComicCacheRestoreDialog(
-                    visible = restoreStep == RestoreStep.SelectComicCache,
-                    groups = cache.groups,
+                    visible = state.restoreStep == RestoreStep.SelectComicCache,
+                    groups = state.restoreGroups,
                     imgHost = remoteImageHost,
-                    onConfirm = { selected ->
-                        val opts = restoreContentOptions
-                        if (opts.includeLocalSetting) {
-                            applyRestore(backup, opts.copy(includeComicCache = false))
-                        } else {
-                            restoreBackup = null
-                            restoreStep = RestoreStep.None
-                        }
-                        applyComicCacheRestore(selected)
-                    },
-                    onSkip = {
-                        applyRestore(backup, restoreContentOptions.copy(includeComicCache = false))
-                    },
-                    onDismiss = { cancelRestore() },
+                    onConfirm = viewModel::restoreSelected,
+                    onSkip = viewModel::skipComicCache,
+                    onDismiss = viewModel::cancelRestore,
                 )
             }
         },
@@ -451,10 +180,7 @@ fun BackupRestoreScreen(
                     icon = Icons.Rounded.CloudUpload,
                     title = "备份数据",
                     description = "选择需要备份的内容（本地设置 / 缓存目录），再选择是否设置密码/图案保护",
-                    onClick = {
-                        resetBackupState()
-                        backupStep = BackupStep.SelectContent
-                    },
+                    onClick = viewModel::beginBackup,
                 )
             }
             item {
@@ -462,7 +188,9 @@ fun BackupRestoreScreen(
                     icon = Icons.Rounded.CloudDownload,
                     title = "恢复数据",
                     description = "从备份文件恢复，可选择需要恢复的内容（不会覆盖当前设备的应用锁状态）",
-                    onClick = { openDocumentLauncher.launch(arrayOf("application/json")) },
+                    onClick = {
+                        if (viewModel.beginRestore()) openDocumentLauncher.launch(arrayOf("application/json"))
+                    },
                 )
             }
         }
@@ -658,10 +386,7 @@ private fun ContentToggleRow(
     }
 }
 
-private fun generateBackupFileName(): String {
-    val sdf = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.CHINESE)
-    return "jm-mobile-backup-${sdf.format(Date())}.json"
-}
+
 
 @Composable
 private fun InfoCard() {
@@ -887,16 +612,6 @@ private fun VerifyPatternDialog(
     }
 }
 
-/**
- * 将备份中的章节信息转换回 ComicChapter，用于恢复下载任务。
- */
-private fun ChapterBackup_to_ComicChapter(chapter: com.par9uet.jm.store.ChapterBackup): ComicChapter {
-    return ComicChapter(
-        id = chapter.id,
-        name = chapter.name,
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ComicCacheRestoreDialog(
@@ -924,7 +639,6 @@ private fun ComicCacheRestoreDialog(
                 .padding(24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-                // 标题
                 Text(
                     text = "恢复缓存目录",
                     style = MaterialTheme.typography.headlineSmall,
@@ -937,7 +651,6 @@ private fun ComicCacheRestoreDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
-                // 全选/取消全选
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -956,7 +669,6 @@ private fun ComicCacheRestoreDialog(
                     }
                 }
 
-                // 漫画列表
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -980,7 +692,6 @@ private fun ComicCacheRestoreDialog(
                     }
                 }
 
-                // 底部操作栏
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.End,
@@ -1025,7 +736,6 @@ private fun ComicRestoreRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 左侧缩略图
             Box(
                 modifier = Modifier
                     .size(52.dp, 70.dp)
@@ -1040,7 +750,6 @@ private fun ComicRestoreRow(
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            // 右侧信息
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = group.name.ifBlank { "未命名漫画" },
@@ -1058,7 +767,6 @@ private fun ComicRestoreRow(
                     else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            // 右侧勾选图标
             Icon(
                 imageVector = if (checked) Icons.Rounded.CheckCircle else Icons.Rounded.Circle,
                 contentDescription = null,

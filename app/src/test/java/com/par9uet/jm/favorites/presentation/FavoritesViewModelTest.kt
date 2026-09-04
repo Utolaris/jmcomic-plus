@@ -446,6 +446,8 @@ class FavoritesViewModelTest {
         private val _accountId = MutableStateFlow(initialAccountId)
         private var generation = 0L
 
+        private val _session = MutableStateFlow(FavoriteSessionSnapshot(initialAccountId, 0L))
+        override val sessionFlow = _session.asStateFlow()
         override val accountIdFlow: StateFlow<Int> = _accountId.asStateFlow()
 
         override fun currentAccountId(): Int = _accountId.value
@@ -464,10 +466,12 @@ class FavoritesViewModelTest {
         fun switchAccount(accountId: Int) {
             generation++
             _accountId.value = accountId
+            _session.value = snapshot()
         }
 
         fun bumpGeneration() {
             generation++
+            _session.value = snapshot()
         }
     }
 

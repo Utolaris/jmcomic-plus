@@ -181,6 +181,7 @@ class FavoriteUseCasesTest {
         private var generation = 0L
         val boundBatchesStarted = mutableListOf<Pair<Int, Long>>()
 
+        override val sessionFlow = kotlinx.coroutines.flow.MutableStateFlow(FavoriteSessionSnapshot(initialAccountId, 0L))
         override val accountIdFlow: Flow<Int> get() = kotlinx.coroutines.flow.flowOf(accountId)
 
         override fun currentAccountId(): Int = accountId
@@ -215,6 +216,7 @@ class FavoriteUseCasesTest {
         fun switchAccount(newAccountId: Int) {
             accountId = newAccountId
             generation++
+            sessionFlow.value = snapshot()
         }
     }
 

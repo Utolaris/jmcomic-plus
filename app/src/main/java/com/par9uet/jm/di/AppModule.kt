@@ -116,7 +116,15 @@ val appModule = module {
     single { ToastManager() }
     single { DownloadToastAggregator(get()) }
     single { PostStartupCoordinator(get(), GlobalContext.get()) }
-    single { AppUpdateDownloadManager(get(), get(), get(), get()) }
+    single { AppUpdateDownloadManager(get(), get(), get(), get()) } bind com.par9uet.jm.store.AppUpdateDownloads::class
+    single { com.par9uet.jm.update.GithubReleaseSource() } bind com.par9uet.jm.update.ReleaseSource::class
+    single { com.par9uet.jm.update.ApkInstaller(get()) } bind com.par9uet.jm.update.AppUpdateInstaller::class
+    viewModel { com.par9uet.jm.ui.viewModel.AppUpdateViewModel(get(), get(), get(), get()) }
+    single { com.par9uet.jm.store.BackupManager() }
+    single<com.par9uet.jm.backup.BackupRestoreOperations> {
+        com.par9uet.jm.backup.DeviceBackupRestoreOperations(get(), get(), get(), get(), get())
+    }
+    viewModel { com.par9uet.jm.ui.viewModel.BackupRestoreViewModel(get(), get(), get()) }
     viewModel { com.par9uet.jm.ui.viewModel.SettingsViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
 
     single<Gson> { GsonBuilder().setStrictness(Strictness.LENIENT).serializeNulls().create() }

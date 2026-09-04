@@ -148,7 +148,7 @@ interface AppearancePreferences {
     val editor: AppearanceEditor
 }
 
-/** Base URL every JM API request is rewritten to; the interceptor reads it per call. */
+/** Base URL for the optional Retrofit recommendation service; Embedded API routing is independent. */
 interface ApiEndpointPreference {
     val apiEndpoint: StateFlow<String>
 }

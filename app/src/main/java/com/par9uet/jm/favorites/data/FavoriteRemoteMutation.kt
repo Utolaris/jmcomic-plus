@@ -18,7 +18,7 @@ interface FavoriteRemoteMutation {
     suspend fun moveComicToFolder(comicId: Int, folderId: Int): NetWorkResult<Unit>
 }
 
-/** The only adapter that knows the embedded API's Favorites mutation methods. */
+/** Adapts comic data-source mutations to the Favorites operation contracts. */
 class EmbeddedFavoriteRemoteMutation(
     private val embeddedDataSource: ComicEmbeddedDataSource,
 ) : FavoriteRemoteMutation {

@@ -148,12 +148,14 @@ class ComicDetailViewModelTest {
     fun `collect exposes the real remote error to ComicDetail`() = runTest(scheduler) {
         val environment = environment()
         environment.prepare(comic(isCollected = false))
+        val messages = collectToasts(environment.toastManager)
         environment.remote.collectResult = NetWorkResult.Error("server collect failed", code = 503)
 
         environment.viewModel.collect(COMIC_ID)
         advanceUntilIdle()
 
         assertEquals("server collect failed", environment.viewModel.collectComicState.value.errorMsg)
+        assertTrue("server collect failed" in messages)
         assertTrue(environment.local.added.isEmpty())
         assertFalse(environment.viewModel.comicDetailState.value.data!!.isCollect)
     }
@@ -257,6 +259,8 @@ class ComicDetailViewModelTest {
         val boundAttempts = mutableListOf<FavoriteSessionSnapshot>()
         var afterNextBound: (() -> Unit)? = null
 
+        private val _session = MutableStateFlow(FavoriteSessionSnapshot(42, 0L))
+        override val sessionFlow = _session.asStateFlow()
         override val accountIdFlow: StateFlow<Int> = account.asStateFlow()
         override fun currentAccountId(): Int = account.value
 
@@ -290,6 +294,7 @@ class ComicDetailViewModelTest {
         fun switchAccount(accountId: Int) {
             generation++
             account.value = accountId
+            _session.value = FavoriteSessionSnapshot(accountId, generation)
         }
     }
 

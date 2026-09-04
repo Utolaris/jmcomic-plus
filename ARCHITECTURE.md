@@ -36,6 +36,10 @@ feature/<name>/
 - PDF 导出归属 `download/export`，通用工具包不再反向依赖下载缓存。
 - 屏蔽规则和桌面入口切换分别归属 `contentfilter`、`launcher`，不再作为通用工具依赖业务模型。
 - 阅读器图片链路由 `ReaderImagePipeline`（L2）统一调度，来源加载在 L3，内存和磁盘缓存位于 L4。
+- 更新入口拆为 `AboutScreen` 和 `CheckUpdateScreen`；`AppUpdateViewModel` 管理检查、弹窗、下载和安装决策，`update` 提供版本解析、GitHub 请求与系统安装适配器。
+- `BackupRestoreViewModel` 管理备份/恢复步骤及任务生命周期，`backup/BackupRestoreOperations` 组合设置快照、文档读写和下载排队；Screen 仅持有系统文件选择器和展示组件。
+- `FavoriteSyncController` 是唯一收藏同步任务入口，按登录会话代次隔离任务、进度与结果；`SyncFavorites` 负责远端分页、元数据补齐和受会话保护的本地提交。
+- `FavoriteStore` 保留 Room 事务及 DAO 操作，纯 SQL 构造、同步规划和实体映射分别位于 `FavoriteQueries`、`FavoriteSyncPlanner` 和 `FavoriteMappers`。它直接实现三个窄本地端口，避免额外转发对象。
 - `ArchitectureBoundaryTest` 固定以上边界，防止后续补丁重新引入反向依赖。
 
 ### 阅读器图片链路
@@ -60,17 +64,16 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 
 ## 审查判断
 
-- `AboutScreen`、`BackupRestoreScreen` 是明确的结构膨胀：界面直接执行网络、文件、安装或数据库流程。
-- `DownloadComicWorker`、`FavoriteStore` 是职责膨胀：一个对象同时决定流程并处理多个底层细节。
+- 更新和备份恢复的跨边界流程已移出 Screen；剩余较长的界面文件主要是展示组件，不再按行数继续机械拆分。
+- `FavoriteStore` 的事务边界保持集中，以避免账号快照替换及缓存索引写入被拆散；纯计算和映射可独立验证。
+- `DownloadComicWorker` 仍同时决定下载流程并处理多个底层细节。
 - `ReaderImagePipeline` 已完成首轮拆分；剩余复杂度集中在可独立测试的来源策略和缓存生命周期，不再堆在公开入口中。
 - `LocalSettingScreen` 等纯展示文件虽然较长，但当前主要问题是可读性，不是跨层耦合，因此不作为首批拆分目标。
 - `data`、`repository`、`retrofit`、`store` 之间仍有历史双向依赖。应在迁移具体功能时收拢模型和端口，不能用一次性改包名掩盖依赖环。
 
 ## 当前例外与迁移顺序
 
-1. `AboutScreen` 同时包含 UI、版本判断、GitHub 请求和 APK 安装，应优先拆为更新协调器、版本用例和网络/安装原子。
-2. `BackupRestoreScreen` 在 UI 内编排验证、备份、恢复和数据库写入，应拆出备份恢复协调器。
-3. `DownloadComicWorker` 仍同时承担入口和完整下载流程，应把封面、分页下载、落盘及状态提交移入 L3。
-4. `FavoriteStore` 混合事务、同步规划、SQL 构造和实体映射，应先提取纯同步规划及映射原子。
+1. `DownloadComicWorker` 仍同时承担入口和完整下载流程，应把封面、分页下载、落盘及状态提交移入 L3。
+2. 更新协调器直接使用下载及安装端口，备份协调器直接使用无副作用的校验/提取能力；这些结果直接决定流程分支，避免为它们添加仅转发调用的用例层。
 
 每次只迁移一个可独立验证的边界，并为 L2 分支、L3 组合和 L4 契约分别补测试。

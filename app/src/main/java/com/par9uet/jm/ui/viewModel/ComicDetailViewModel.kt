@@ -159,15 +159,28 @@ class ComicDetailViewModel(
         }
     }
 
-    fun collect(id: Int) {
+    private fun launchFavoriteAction(block: suspend () -> Unit) {
+        if (_collectComicState.value.isLoading) return
+        _collectComicState.update { it.copy(isLoading = true, isError = false, errorMsg = "") }
         viewModelScope.launch {
-            _collectComicState.update {
-                it.copy(
-                    isLoading = true,
-                    isError = false,
-                    errorMsg = ""
-                )
+            try {
+                block()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _collectComicState.update {
+                    it.copy(isError = true, errorMsg = error.message ?: "收藏操作失败，请重试")
+                }
+            } finally {
+                _collectComicState.update { it.copy(isLoading = false) }
+                val state = _collectComicState.value
+                if (state.isError) toastManager.showAsync(state.errorMsg ?: "收藏操作失败，请重试")
             }
+        }
+    }
+
+    fun collect(id: Int) {
+        launchFavoriteAction {
             // One snapshot guards the whole action: remote toggle and local write both belong
             // to the account captured here, never to whoever is active after a mid-flight switch.
             val snapshot = favoriteSession.snapshot()
@@ -176,7 +189,7 @@ class ComicDetailViewModel(
                 _collectComicState.update {
                     it.copy(isLoading = false, isError = true, errorMsg = "漫画信息尚未加载")
                 }
-                return@launch
+                return@launchFavoriteAction
             }
             when (val data = collectFavorite(snapshot, comic)) {
                 is NetWorkResult.Error -> {
@@ -203,23 +216,11 @@ class ComicDetailViewModel(
                     if (!committed) showStaleFavoriteAction()
                 }
             }
-            _collectComicState.update {
-                it.copy(
-                    isLoading = false,
-                )
-            }
         }
     }
 
     fun unCollect(id: Int) {
-        viewModelScope.launch {
-            _collectComicState.update {
-                it.copy(
-                    isLoading = true,
-                    isError = false,
-                    errorMsg = ""
-                )
-            }
+        launchFavoriteAction {
             // Same session-bound discipline as collect: the canonical L3 use case owns both
             // the remote toggle and the local removal, for the snapshot's account only.
             val snapshot = favoriteSession.snapshot()
@@ -248,11 +249,6 @@ class ComicDetailViewModel(
                     }
                     it.copy(isError = true, errorMsg = message)
                 }
-            }
-            _collectComicState.update {
-                it.copy(
-                    isLoading = false,
-                )
             }
         }
     }
@@ -298,9 +294,8 @@ class ComicDetailViewModel(
     }
 
     fun collectWithFolder(comicId: Int, folderId: String) {
-        viewModelScope.launch {
+        launchFavoriteAction {
             _showFolderPicker.value = false
-            _collectComicState.update { it.copy(isLoading = true, isError = false, errorMsg = "") }
 
             // The WHOLE user action belongs to one authenticated identity: collect and the
             // optional move reuse this single snapshot. L2 sequences the two L3 operations;
@@ -312,7 +307,7 @@ class ComicDetailViewModel(
                 _collectComicState.update {
                     it.copy(isLoading = false, isError = true, errorMsg = "漫画信息尚未加载")
                 }
-                return@launch
+                return@launchFavoriteAction
             }
             val collectResult = collectFavorite(snapshot, comic)
             when {
@@ -354,7 +349,6 @@ class ComicDetailViewModel(
                     }
                 }
             }
-            _collectComicState.update { it.copy(isLoading = false) }
         }
     }
 

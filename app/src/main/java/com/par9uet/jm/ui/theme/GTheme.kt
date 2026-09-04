@@ -18,7 +18,6 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_MONET
 import com.par9uet.jm.store.AppearancePreferences
 import org.koin.compose.getKoin
@@ -31,30 +30,6 @@ object ExtendedTheme {
     val colors: ExtendedColorScheme
         @Composable
         get() = LocalExtendedColors.current
-}
-
-// 内置预设的四色（亮色/暗色），保持与 Color.kt 中的 light/dark 一致
-private val PRESET_COLORS_DARK = mapOf(
-    COLOR_PALETTE_PRESET_DEFAULT to longArrayOf(0xFFB8C7EF, 0xFFC2C5DD, 0xFFE4BAD8, 0xFFFFB4AB),
-    "ocean" to longArrayOf(0xFF37C9CD, 0xFFB1CBCB, 0xFFB0C8E8, 0xFFFFB4AB),
-    "sunset" to longArrayOf(0xFFFFB866, 0xFFE0C68F, 0xFFFFB3B5, 0xFFFFB4AB),
-    "forest" to longArrayOf(0xFF7CDFA0, 0xFFB6CCBC, 0xFFA0D0D3, 0xFFFFB4AB),
-    "lavender" to longArrayOf(0xFFD0BCFF, 0xFFCCC2DC, 0xFFEFB8C8, 0xFFFFB4AB),
-)
-private val PRESET_COLORS_LIGHT = mapOf(
-    COLOR_PALETTE_PRESET_DEFAULT to longArrayOf(0xFF4F5F7F, 0xFF5A5D72, 0xFF75546F, 0xFFBA1A1A),
-    "ocean" to longArrayOf(0xFF00696D, 0xFF4A6364, 0xFF48607E, 0xFFBA1A1A),
-    "sunset" to longArrayOf(0xFF8C5000, 0xFF735C2D, 0xFF9C4146, 0xFFBA1A1A),
-    "forest" to longArrayOf(0xFF2E6B3E, 0xFF4F6352, 0xFF38656A, 0xFFBA1A1A),
-    "lavender" to longArrayOf(0xFF6750A4, 0xFF625B71, 0xFF7D5260, 0xFFBA1A1A),
-)
-
-private fun String.toColorOrNull(): Color? {
-    return runCatching {
-        val hex = this.removePrefix("#")
-        val long = if (hex.length == 6) "FF$hex".toLong(16) else hex.toLong(16)
-        Color(long.toInt())
-    }.getOrNull()
 }
 
 @Composable
@@ -126,8 +101,8 @@ private fun applyPaletteOverride(
     isDark: Boolean,
     customOverride: (Int) -> String?,
 ): ColorScheme {
-    val presetColors = (if (isDark) PRESET_COLORS_DARK else PRESET_COLORS_LIGHT)[presetId]
-        ?: (if (isDark) PRESET_COLORS_DARK else PRESET_COLORS_LIGHT)[COLOR_PALETTE_PRESET_DEFAULT]!!
+    val preset = colorPresets.firstOrNull { it.id == presetId } ?: colorPresets.first()
+    val presetColors = if (isDark) preset.darkColors else preset.colors
     val primary = customOverride(0)?.toColorOrNull() ?: Color(presetColors[0])
     val secondary = customOverride(1)?.toColorOrNull() ?: Color(presetColors[1])
     val tertiary = customOverride(2)?.toColorOrNull() ?: Color(presetColors[2])

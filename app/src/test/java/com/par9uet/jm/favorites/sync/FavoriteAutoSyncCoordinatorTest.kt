@@ -110,28 +110,6 @@ class FavoriteAutoSyncCoordinatorTest {
     }
 
     @Test
-    fun `test 8 - manual sync bypasses the automatic window`() {
-        assertTrue(
-            shouldStartFavoriteSync(
-                kind = FavoriteSyncKind.MANUAL,
-                isAutoSyncAllowed = false,
-                isSyncing = false,
-            )
-        )
-    }
-
-    @Test
-    fun `test 9 - force refresh bypasses the automatic window`() {
-        assertTrue(
-            shouldStartFavoriteSync(
-                kind = FavoriteSyncKind.FORCE,
-                isAutoSyncAllowed = false,
-                isSyncing = false,
-            )
-        )
-    }
-
-    @Test
     fun `test 10 - account reset clears timing and pending state`() {
         val clock = FakeClock()
         val coordinator = coordinator(clock)

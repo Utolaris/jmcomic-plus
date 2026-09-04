@@ -482,7 +482,7 @@ class UserManagerSessionTest {
     @Test
     fun boundRemoteWorkRunsOnlyWhileSnapshotStaysCurrent() = runBlocking {
         val userStorage = FakeUserStorage(user(1, "accountA"))
-        val cookieStorage = FakeCookieStorage()
+        val cookieStorage = FakeCookieStorage(listOf(avsCookie()))
         val repository = GateUserRepository(cookieStorage)
         val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
         val snapshot = manager.currentSessionSnapshot()
@@ -498,6 +498,33 @@ class UserManagerSessionTest {
 
         assertEquals("result-A", committed)
         assertEquals(1, remoteCalls)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun restorationCompletesWhileBoundFavoriteWaitsForReadiness() = runTest {
+        val userStorage = FakeUserStorage(user(1, "accountA"))
+        val cookies = FakeCookieStorage()
+        val readiness = SessionReadinessHolder()
+        val repository = object : UserRepository by GateUserRepository(cookies) {
+            override suspend fun verifyLogin(username: String, password: String): NetWorkResult<CandidateSession> =
+                NetWorkResult.Error("Temporary offline")
+        }
+        val manager = manager(userStorage, cookies, repository, FakeSessionClearer(), readiness)
+        val snapshot = manager.currentSessionSnapshot()
+        val authGate = AuthenticatedSessionGate(readiness)
+        val mutation = backgroundScope.async {
+            manager.withBoundRemoteSession(snapshot.accountId, snapshot.generation) {
+                authGate.run { "collected" }
+            }
+        }
+        runCurrent()
+        val verify = backgroundScope.launch { manager.verifyStoredLogin() }
+        withTimeout(1_000) {
+            verify.join()
+            assertEquals("collected", mutation.await())
+        }
+        assertEquals(SessionReadiness.Authenticated, readiness.state.value)
     }
 
     @Test
@@ -525,7 +552,7 @@ class UserManagerSessionTest {
     @Test
     fun sessionTransitionCannotDeadlockBoundRemoteLocalCommit() = runTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
-        val cookieStorage = FakeCookieStorage()
+        val cookieStorage = FakeCookieStorage(listOf(avsCookie()))
         val repository = GateUserRepository(cookieStorage)
         val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
         val snapshotA = manager.currentSessionSnapshot()

@@ -50,6 +50,8 @@ class UserManager(
     val authState = sessionReadinessHolder.state
     private val loginMutex = Mutex()
     private val sessionGeneration = AtomicLong(0L)
+    private val _sessionState = MutableStateFlow(UserSessionSnapshot(0, 0L))
+    val sessionState = _sessionState.asStateFlow()
 
     /** Serializes session transitions with session-bound remote work (see [withBoundRemoteSession]). */
     private val boundRemoteGate = Mutex()
@@ -61,10 +63,7 @@ class UserManager(
     @Volatile
     private var backgroundJob: Job? = null
 
-    fun currentSessionSnapshot(): UserSessionSnapshot = UserSessionSnapshot(
-        accountId = _userState.value.data?.id ?: 0,
-        generation = sessionGeneration.get(),
-    )
+    fun currentSessionSnapshot(): UserSessionSnapshot = _sessionState.value
 
     fun isCurrentSession(accountId: Int, generation: Long): Boolean {
         val currentUser = _userState.value.data ?: return false
@@ -92,7 +91,7 @@ class UserManager(
 
     /**
      * 会话绑定的远程执行原语：把“快照仍是当前会话”校验与“远程能力归属于该会话”合并为
-     * 一个正确性边界。会话转换（[beginManualLogin] / [clearUser] / [updateUser]）与
+     * 一个正确性边界。会话转换（[beginManualLogin] / [clearUser] / [commitLoginResult]）与
      * 绑定远程工作在同一把 [boundRemoteGate] 上串行化：
      *
      *  - 快照已过期 → 远程块一次都不会启动；
@@ -107,6 +106,9 @@ class UserManager(
         generation: Long,
         block: suspend () -> T,
     ): T? {
+        if (!isCurrentSession(accountId, generation)) return null
+        // Restoration commits need boundRemoteGate too; wait before taking that gate.
+        if (sessionReadinessHolder.awaitReady() != SessionReadiness.Authenticated) return null
         return boundRemoteGate.withLock {
             if (!isCurrentSession(accountId, generation)) return@withLock null
             block()
@@ -117,6 +119,7 @@ class UserManager(
         // Restoring the local identity is cheap and keeps the first frame consistent with the
         // last session. Network verification is deliberately started after the UI is ready.
         _userState.value = _userState.value.copy(data = runCatching { userStorage.get() }.getOrNull())
+        publishSession()
         sessionReadinessHolder.set(readinessForCachedUser(_userState.value.data))
     }
 
@@ -273,6 +276,7 @@ class UserManager(
 
     private suspend fun beginManualLogin(): Long = withSessionTransition {
         val generation = sessionGeneration.incrementAndGet()
+        publishSession()
         _userState.update {
             it.copy(
                 isLoading = true,
@@ -336,6 +340,7 @@ class UserManager(
             )
         }
         userStorage.set(user)
+        publishSession()
     }
 
     private fun clearIdentityWhileLocked(errorMsg: String? = null) {
@@ -351,6 +356,14 @@ class UserManager(
         userRepository.clearSession()
         userStorage.remove()
         cookieStorage.remove()
+        publishSession()
+    }
+
+    private fun publishSession() {
+        _sessionState.value = UserSessionSnapshot(
+            accountId = _userState.value.data?.id ?: 0,
+            generation = sessionGeneration.get(),
+        )
     }
 
     private fun readinessForCachedUser(user: User?): SessionReadiness {

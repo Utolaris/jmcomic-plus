@@ -11,6 +11,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -47,12 +48,21 @@ data class AppUpdateDownloadState(
         get() = if (totalBytes > 0L) downloadedBytes.toFloat() / totalBytes else 0f
 }
 
+interface AppUpdateDownloads {
+    val state: StateFlow<AppUpdateDownloadState>
+    fun start(request: AppUpdateDownloadRequest)
+    fun pause()
+    fun resume()
+    fun cancel()
+    fun sendToBackground()
+}
+
 class AppUpdateDownloadManager(
     private val context: Context,
     private val scope: CoroutineScope,
     private val toastManager: ToastManager,
     private val dohManager: com.par9uet.jm.network.DohManager,
-) {
+) : AppUpdateDownloads {
     private val client = OkHttpClient.Builder().dns(dohManager).build()
     private var job: Job? = null
     private var paused = false
@@ -60,9 +70,9 @@ class AppUpdateDownloadManager(
     private var activeRequest: AppUpdateDownloadRequest? = null
 
     private val _state = MutableStateFlow(AppUpdateDownloadState())
-    val state = _state.asStateFlow()
+    override val state = _state.asStateFlow()
 
-    fun start(request: AppUpdateDownloadRequest) {
+    override fun start(request: AppUpdateDownloadRequest) {
         if (request.downloadUrl.isBlank()) {
             toastManager.showAsync("未找到 APK 下载链接")
             return
@@ -82,7 +92,7 @@ class AppUpdateDownloadManager(
         }
     }
 
-    fun pause() {
+    override fun pause() {
         paused = true
         _state.update {
             if (it.status == AppUpdateDownloadStatus.Downloading) {
@@ -93,7 +103,7 @@ class AppUpdateDownloadManager(
         }
     }
 
-    fun resume() {
+    override fun resume() {
         paused = false
         _state.update {
             if (it.status == AppUpdateDownloadStatus.Paused) {
@@ -104,12 +114,12 @@ class AppUpdateDownloadManager(
         }
     }
 
-    fun cancel() {
+    override fun cancel() {
         cancelInternal(resetState = true)
         cancelProgressNotification(context, APP_UPDATE_NOTIFICATION_ID)
     }
 
-    fun sendToBackground() {
+    override fun sendToBackground() {
         _state.update { it.copy(background = true) }
         notifyProgress()
     }

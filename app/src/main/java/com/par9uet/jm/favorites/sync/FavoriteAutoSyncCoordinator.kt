@@ -5,27 +5,6 @@ import android.os.SystemClock
 /** Global automatic favorite synchronization interval. */
 const val FAVORITE_AUTO_SYNC_INTERVAL_MILLIS = 30_000L
 
-enum class FavoriteSyncKind {
-    AUTO,
-    MANUAL,
-    FORCE,
-}
-
-/**
- * Whether a sync may start for [kind] outside the automatic coordinator.
- *
- * - AUTO: requires the automatic window and no in-flight sync.
- * - MANUAL / FORCE: bypass the automatic window, but still coalesce while a sync runs.
- */
-internal fun shouldStartFavoriteSync(
-    kind: FavoriteSyncKind,
-    isAutoSyncAllowed: Boolean,
-    isSyncing: Boolean,
-): Boolean = when (kind) {
-    FavoriteSyncKind.AUTO -> isAutoSyncAllowed && !isSyncing
-    FavoriteSyncKind.MANUAL, FavoriteSyncKind.FORCE -> !isSyncing
-}
-
 sealed class FavoriteAutoRequestResult {
     /** A sync may start immediately; a fresh 30-second window begins now. */
     data class StartNow(val folderId: Int) : FavoriteAutoRequestResult()

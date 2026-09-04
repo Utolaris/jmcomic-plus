@@ -3,9 +3,10 @@ package com.par9uet.jm.store
 import android.os.SystemClock
 import androidx.paging.PagingSource
 import androidx.room.withTransaction
-import androidx.sqlite.db.SimpleSQLiteQuery
-import androidx.sqlite.db.SupportSQLiteQuery
 import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.favorites.data.FavoriteLocalQuery
+import com.par9uet.jm.favorites.data.FavoriteLocalMutation
+import com.par9uet.jm.favorites.data.FavoriteLocalSync
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.database.dao.FavoriteComicDao
@@ -17,47 +18,11 @@ import com.par9uet.jm.database.dao.FavoriteSyncStateDao
 import com.par9uet.jm.database.model.FavoriteComicEntity
 import com.par9uet.jm.database.model.FavoriteFolderEntity
 import com.par9uet.jm.database.model.FavoriteFolderMembershipEntity
-import com.par9uet.jm.database.model.FavoriteMetadataEntity
 import com.par9uet.jm.database.model.FavoriteMetadataTermEntity
 import com.par9uet.jm.database.model.FavoriteSyncStateEntity
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-
-const val FAVORITE_SCOPE_ALL = 0
-const val FAVORITE_TERM_TAG = "tag"
-const val FAVORITE_TERM_AUTHOR = "author"
-
-data class FavoriteRemoteItem(
-    val albumId: Int,
-    val title: String,
-    val authors: List<String> = emptyList(),
-    val description: String = "",
-    val image: String = "",
-    val tags: List<String> = emptyList(),
-    val categoryId: String? = null,
-    val categoryTitle: String? = null,
-    val subCategoryId: String? = null,
-    val subCategoryTitle: String? = null,
-)
-
-data class FavoriteMetadataPayload(
-    val albumId: Int,
-    val title: String,
-    val description: String,
-    val authors: List<String>,
-    val tags: List<String>,
-    val roles: List<String>,
-    val works: List<String>,
-)
-
-data class FavoriteSyncDelta(
-    val added: Int,
-    val removed: Int,
-    val changed: Int,
-    val unchanged: Int,
-    val metadataIds: List<Int>,
-)
 
 class FavoriteStore(
     private val database: AppDatabase,
@@ -67,8 +32,8 @@ class FavoriteStore(
     private val metadataDao: FavoriteMetadataDao,
     private val termDao: FavoriteMetadataTermDao,
     private val syncStateDao: FavoriteSyncStateDao,
-) {
-    fun pagingSource(
+) : FavoriteLocalQuery, FavoriteLocalMutation, FavoriteLocalSync {
+    override fun pagingSource(
         accountId: Int,
         blockedTagList: List<String>,
         searchText: String,
@@ -88,7 +53,7 @@ class FavoriteStore(
         )
     )
 
-    fun observeFolders(accountId: Int): Flow<Map<String, String>> =
+    override fun observeFolders(accountId: Int): Flow<Map<String, String>> =
         folderDao.observeAll(accountId).map { folders ->
             linkedMapOf<String, String>().apply {
                 put("0", folders.firstOrNull { it.folderId == 0 }?.name ?: "全部")
@@ -97,29 +62,29 @@ class FavoriteStore(
             }
         }
 
-    fun observeTagCounts(accountId: Int, folderId: Int): Flow<Map<String, Int>> =
+    override fun observeTagCounts(accountId: Int, folderId: Int): Flow<Map<String, Int>> =
         termDao.observeCounts(accountId, folderId, FAVORITE_TERM_TAG).map { counts ->
             counts.associate { it.value to it.count }
         }
 
-    fun observeAuthorCounts(accountId: Int, folderId: Int): Flow<Map<String, Int>> =
+    override fun observeAuthorCounts(accountId: Int, folderId: Int): Flow<Map<String, Int>> =
         termDao.observeCounts(accountId, folderId, FAVORITE_TERM_AUTHOR).map { counts ->
             counts.associate { it.value to it.count }
         }
 
-    suspend fun getCachedFolders(accountId: Int): Map<String, String> =
+    override suspend fun getCachedFolders(accountId: Int): Map<String, String> =
         folderDao.getAll(accountId).associate { it.folderId.toString() to it.name }
             .toMutableMap()
             .apply { putIfAbsent("0", "全部") }
 
-    suspend fun getComics(accountId: Int, albumIds: Collection<Int>): List<Comic> {
+    override suspend fun getComics(accountId: Int, albumIds: Collection<Int>): List<Comic> {
         val requestedIds = albumIds.distinct()
         if (accountId <= 0 || requestedIds.isEmpty()) return emptyList()
         val comicsById = comicDao.getByIds(accountId, requestedIds).associateBy { it.albumId }
         return requestedIds.mapNotNull { comicsById[it]?.toComic() }
     }
 
-    suspend fun reconcileLightweightSnapshot(
+    override suspend fun reconcileLightweightSnapshot(
         accountId: Int,
         scopeFolderId: Int,
         remoteItems: List<FavoriteRemoteItem>,
@@ -212,14 +177,14 @@ class FavoriteStore(
         return delta
     }
 
-    suspend fun replaceAllSnapshot(
+    override suspend fun replaceAllSnapshot(
         accountId: Int,
         remoteItems: List<FavoriteRemoteItem>,
         remoteFolders: Map<Int, String>,
         metadata: List<FavoriteMetadataPayload>,
         syncedAt: Long,
         forceRefreshedAt: Long,
-        folderMemberships: Map<Int, List<Int>> = emptyMap(),
+        folderMemberships: Map<Int, List<Int>>,
     ) {
         val remoteById = remoteItems.distinctBy { it.albumId }.associateBy { it.albumId }
         val metadataById = metadata.associateBy { it.albumId }
@@ -302,7 +267,7 @@ class FavoriteStore(
         )
     }
 
-    suspend fun applyMetadata(accountId: Int, payload: FavoriteMetadataPayload, syncedAt: Long) {
+    override suspend fun applyMetadata(accountId: Int, payload: FavoriteMetadataPayload, syncedAt: Long) {
         database.withTransaction {
             val existing = comicDao.getByIds(accountId, listOf(payload.albumId))
                 .firstOrNull() ?: return@withTransaction
@@ -329,7 +294,7 @@ class FavoriteStore(
         }
     }
 
-    suspend fun addFromComic(accountId: Int, comic: Comic, folderId: Int = FAVORITE_SCOPE_ALL) {
+    override suspend fun addFromComic(accountId: Int, comic: Comic, folderId: Int) {
         val now = System.currentTimeMillis()
         val item = comic.toRemoteItem()
         val metadata = FavoriteMetadataPayload(
@@ -359,17 +324,17 @@ class FavoriteStore(
         }
     }
 
-    suspend fun remove(accountId: Int, albumIds: List<Int>) {
+    override suspend fun remove(accountId: Int, albumIds: Collection<Int>) {
         if (albumIds.isEmpty()) return
         database.withTransaction {
-            membershipDao.deleteForAlbums(accountId, albumIds)
-            comicDao.deleteByIds(accountId, albumIds)
-            metadataDao.deleteByIds(accountId, albumIds)
+            membershipDao.deleteForAlbums(accountId, albumIds.toList())
+            comicDao.deleteByIds(accountId, albumIds.toList())
+            metadataDao.deleteByIds(accountId, albumIds.toList())
             albumIds.forEach { termDao.deleteForAlbum(accountId, it) }
         }
     }
 
-    suspend fun moveToFolder(accountId: Int, albumId: Int, folderId: Int) {
+    override suspend fun moveToFolder(accountId: Int, albumId: Int, folderId: Int) {
         if (folderId == FAVORITE_SCOPE_ALL) return
         val now = System.currentTimeMillis()
         database.withTransaction {
@@ -393,19 +358,19 @@ class FavoriteStore(
         }
     }
 
-    suspend fun cacheFolder(accountId: Int, folderId: Int, name: String) {
+    override suspend fun cacheFolder(accountId: Int, folderId: Int, name: String) {
         if (accountId <= 0 || folderId <= FAVORITE_SCOPE_ALL || name.isBlank()) return
         folderDao.upsertAll(
             listOf(FavoriteFolderEntity(accountId, folderId, name, System.currentTimeMillis()))
         )
     }
 
-    suspend fun renameFolder(accountId: Int, folderId: Int, name: String) {
+    override suspend fun renameFolder(accountId: Int, folderId: Int, name: String) {
         if (accountId <= 0 || folderId <= FAVORITE_SCOPE_ALL || name.isBlank()) return
         cacheFolder(accountId, folderId, name)
     }
 
-    suspend fun removeFolder(accountId: Int, folderId: Int) {
+    override suspend fun removeFolder(accountId: Int, folderId: Int) {
         if (accountId <= 0 || folderId <= FAVORITE_SCOPE_ALL) return
         database.withTransaction {
             membershipDao.deleteForScope(accountId, folderId)
@@ -413,7 +378,7 @@ class FavoriteStore(
         }
     }
 
-    suspend fun markSyncSuccess(accountId: Int, scopeFolderId: Int, syncedAt: Long) {
+    override suspend fun markSyncSuccess(accountId: Int, scopeFolderId: Int, syncedAt: Long) {
         val previous = syncStateDao.get(accountId, scopeFolderId)
         syncStateDao.upsert(
             FavoriteSyncStateEntity(
@@ -457,279 +422,3 @@ class FavoriteStore(
         if (terms.isNotEmpty()) termDao.upsertAll(terms)
     }
 }
-
-internal fun planFavoriteSync(
-    oldScopeIds: Set<Int>,
-    existing: Map<Int, FavoriteComicEntity>,
-    remoteItems: List<FavoriteRemoteItem>,
-): FavoriteSyncDelta {
-    val remoteById = remoteItems.distinctBy { it.albumId }.associateBy { it.albumId }
-    val added = remoteById.keys.count { it !in existing }
-    val changed = remoteById.values.count { item ->
-        existing[item.albumId]?.let { !it.matchesLightweight(item) } == true
-    }
-    val removed = (oldScopeIds - remoteById.keys).size
-    val metadataIds = remoteById.values.filter { item ->
-        val local = existing[item.albumId]
-        local == null || !local.metadataComplete || item.invalidatesMetadata(local)
-    }.map { it.albumId }
-    return FavoriteSyncDelta(
-        added = added,
-        removed = removed,
-        changed = changed,
-        unchanged = remoteById.size - added - changed,
-        metadataIds = metadataIds,
-    )
-}
-
-/**
- * The global all-favorites order after a scope sync: only folder 0 (the authoritative
- * all-favorites scope) may adopt the scope index; other folders must leave it untouched.
- */
-internal fun resolveGlobalOrderAfterScopeSync(
-    scopeFolderId: Int,
-    scopeIndex: Int,
-    existingGlobalOrder: Int,
-): Int = if (scopeFolderId == FAVORITE_SCOPE_ALL) scopeIndex else existingGlobalOrder
-
-/**
- * Temporary membership order for a locally moved comic: MAX(remoteOrder) + 1 of the folder's
- * known items, instead of jumping to the 'first/newest' position or relying on a dense count.
- * -1 (empty folder) yields 0; sparse orders like 0,1,5,8 yield 9.
- */
-internal fun nextTemporaryRemoteOrder(maxRemoteOrder: Int): Int = maxRemoteOrder + 1
-
-private fun buildFavoritePagingQuery(
-    accountId: Int,
-    blockedTagList: List<String>,
-    searchText: String,
-    selectedTags: Set<String>,
-    selectedAuthors: Set<String>,
-    folderId: Int,
-    tagLogic: TagFilterLogic,
-): SupportSQLiteQuery {
-    val clauses = mutableListOf("c.accountId = ?")
-    val args = mutableListOf<Any>(accountId)
-    clauses += "m.folderId = ?"
-    args += folderId
-
-    val query = searchText.trim().lowercase()
-    if (query.isNotBlank()) {
-        clauses += "(LOWER(c.title) LIKE ? OR EXISTS (SELECT 1 FROM favorite_metadata_terms s WHERE s.accountId = c.accountId AND s.albumId = c.albumId AND s.normalizedValue LIKE ?))"
-        val pattern = "%$query%"
-        args += pattern
-        args += pattern
-    }
-
-    blockedTagList.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct().forEach { tag ->
-        clauses += "NOT EXISTS (SELECT 1 FROM favorite_metadata_terms b WHERE b.accountId = c.accountId AND b.albumId = c.albumId AND b.termType = ? AND b.normalizedValue = ?)"
-        args += FAVORITE_TERM_TAG
-        args += tag
-    }
-
-    val normalizedTags = selectedTags.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
-    when (tagLogic) {
-        TagFilterLogic.AND -> normalizedTags.forEach { tag ->
-            clauses += termExistsClause("t", FAVORITE_TERM_TAG)
-            args += tag
-        }
-        TagFilterLogic.OR -> if (normalizedTags.isNotEmpty()) {
-            clauses += normalizedTags.joinToString(" OR ", prefix = "(") { _ -> termExistsClause("t", FAVORITE_TERM_TAG) } + ")"
-            normalizedTags.forEach { args += it }
-        }
-        TagFilterLogic.NOT -> normalizedTags.forEach { tag ->
-            clauses += "NOT ${termExistsClause("t", FAVORITE_TERM_TAG)}"
-            args += tag
-        }
-    }
-
-    val normalizedAuthors = selectedAuthors.map { it.trim().lowercase() }.filter { it.isNotBlank() }.distinct()
-    if (normalizedAuthors.isNotEmpty()) {
-        clauses += normalizedAuthors.joinToString(" OR ", prefix = "(") { _ -> termExistsClause("a", FAVORITE_TERM_AUTHOR) } + ")"
-        normalizedAuthors.forEach { args += it }
-    }
-
-    // Scope-aware ordering: each folder list follows its own synchronized membership order.
-    val orderBy = "m.remoteOrder ASC"
-    return SimpleSQLiteQuery(
-        "SELECT c.* FROM favorite_comics c " +
-            "JOIN favorite_folder_memberships m ON m.accountId = c.accountId AND m.albumId = c.albumId " +
-            "WHERE ${clauses.joinToString(" AND ")} ORDER BY $orderBy, c.albumId ASC",
-        args.toTypedArray(),
-    )
-}
-
-private fun termExistsClause(alias: String, type: String): String =
-    "EXISTS (SELECT 1 FROM favorite_metadata_terms $alias WHERE $alias.accountId = c.accountId AND $alias.albumId = c.albumId AND $alias.termType = '$type' AND $alias.normalizedValue = ?)"
-
-private fun FavoriteRemoteItem.toComicEntity(
-    accountId: Int,
-    order: Int,
-    syncedAt: Long,
-    existing: FavoriteComicEntity?,
-    keepFullMetadata: Boolean,
-): FavoriteComicEntity {
-    val existingMetadata = existing?.takeIf { keepFullMetadata }
-    val authors = existingMetadata?.authorList ?: authors.normalized()
-    val tags = existingMetadata?.tagList ?: tags.normalized().ifEmpty { categoryTags() }
-    val roles = existingMetadata?.roleList ?: emptyList()
-    val works = existingMetadata?.workList ?: emptyList()
-    return FavoriteComicEntity(
-        accountId = accountId,
-        albumId = albumId,
-        title = title,
-        authorList = authors,
-        description = description,
-        image = image,
-        tagList = tags,
-        roleList = roles,
-        workList = works,
-        categoryId = categoryId,
-        categoryTitle = categoryTitle,
-        subCategoryId = subCategoryId,
-        subCategoryTitle = subCategoryTitle,
-        metadataComplete = existingMetadata != null,
-        metadataUpdatedAt = existingMetadata?.metadataUpdatedAt ?: 0L,
-        lastFavoriteOrder = order,
-        lastFavoriteSyncAt = syncedAt,
-    )
-}
-
-private fun FavoriteRemoteItem.toIncompleteMetadata(
-    accountId: Int,
-    syncedAt: Long,
-) = FavoriteMetadataEntity(
-    accountId = accountId,
-    albumId = albumId,
-    tags = tags.normalized().ifEmpty {
-        listOfNotNull(categoryTitle, subCategoryTitle).normalized()
-    },
-    authors = authors.normalized(),
-    metadataComplete = false,
-    metadataUpdatedAt = syncedAt,
-)
-
-private fun FavoriteRemoteItem.categoryTags(): List<String> =
-    listOfNotNull(categoryTitle, subCategoryTitle).normalized()
-
-private fun FavoriteComicEntity.categoryTags(): List<String> =
-    listOfNotNull(categoryTitle, subCategoryTitle).normalized()
-
-private fun FavoriteRemoteItem.toTerms(accountId: Int): List<FavoriteMetadataTermEntity> =
-    buildTerms(
-        accountId = accountId,
-        albumId = albumId,
-        tags = tags.normalized().ifEmpty {
-            listOfNotNull(categoryTitle, subCategoryTitle)
-        },
-        authors = authors,
-    )
-
-private fun FavoriteMetadataPayload.toEntity(accountId: Int, syncedAt: Long) =
-    FavoriteMetadataEntity(
-        accountId = accountId,
-        albumId = albumId,
-        tags = tags.normalized(),
-        authors = authors.normalized(),
-        roles = roles.normalized(),
-        works = works.normalized(),
-        metadataComplete = true,
-        metadataUpdatedAt = syncedAt,
-    )
-
-private fun FavoriteMetadataPayload.toTerms(
-    accountId: Int,
-    item: FavoriteRemoteItem,
-): List<FavoriteMetadataTermEntity> = buildTerms(
-    accountId = accountId,
-    albumId = albumId,
-    tags = tags.normalized().ifEmpty {
-        listOfNotNull(item.categoryTitle, item.subCategoryTitle)
-    },
-    authors = authors,
-)
-
-private fun FavoriteComicEntity.toRemoteItem() = FavoriteRemoteItem(
-    albumId = albumId,
-    title = title,
-    authors = authorList,
-    description = description,
-    image = image,
-    tags = tagList,
-    categoryId = categoryId,
-    categoryTitle = categoryTitle,
-    subCategoryId = subCategoryId,
-    subCategoryTitle = subCategoryTitle,
-)
-
-private fun FavoriteComicEntity.toComic() = Comic(
-    id = albumId,
-    name = title,
-    authorList = authorList,
-    description = description,
-    readCount = 0,
-    likeCount = 0,
-    commentCount = 0,
-    tagList = tagList,
-    roleList = roleList,
-    workList = workList,
-    isCollect = true,
-    relateComicList = emptyList(),
-    comicChapterList = emptyList(),
-    price = 0,
-    isBuy = false,
-)
-
-private fun FavoriteRemoteItem.invalidatesMetadata(existing: FavoriteComicEntity): Boolean =
-    (authors.isNotEmpty() && !existing.authorList.normalized().containsAll(authors.normalized())) ||
-        (tags.isNotEmpty() && !existing.tagList.normalized().containsAll(tags.normalized())) ||
-        categoryId != existing.categoryId ||
-        categoryTitle != existing.categoryTitle ||
-        subCategoryId != existing.subCategoryId ||
-        subCategoryTitle != existing.subCategoryTitle
-
-private fun FavoriteComicEntity.matchesLightweight(item: FavoriteRemoteItem): Boolean =
-    title == item.title &&
-        description == item.description &&
-        image == item.image &&
-        categoryId == item.categoryId &&
-        categoryTitle == item.categoryTitle &&
-        subCategoryId == item.subCategoryId &&
-        subCategoryTitle == item.subCategoryTitle &&
-        (item.authors.isEmpty() || authorList.normalized().containsAll(item.authors.normalized())) &&
-        (item.tags.isEmpty() || tagList.normalized().containsAll(item.tags.normalized()))
-
-private fun List<String>.normalized(): List<String> =
-    map { it.trim() }.filter { it.isNotBlank() }.distinct()
-
-private fun buildTerms(
-    accountId: Int,
-    albumId: Int,
-    tags: List<String>,
-    authors: List<String>,
-): List<FavoriteMetadataTermEntity> {
-    val result = linkedMapOf<String, FavoriteMetadataTermEntity>()
-    fun add(type: String, values: List<String>) {
-        values.normalized().forEach { value ->
-            val normalized = value.lowercase()
-            result["$type:$normalized"] = FavoriteMetadataTermEntity(
-                accountId = accountId,
-                albumId = albumId,
-                termType = type,
-                value = value,
-                normalizedValue = normalized,
-            )
-        }
-    }
-    add(FAVORITE_TERM_TAG, tags)
-    add(FAVORITE_TERM_AUTHOR, authors)
-    return result.values.toList()
-}
-
-private fun Comic.toRemoteItem() = FavoriteRemoteItem(
-    albumId = id,
-    title = name,
-    authors = authorList,
-    description = description,
-    tags = tagList,
-)

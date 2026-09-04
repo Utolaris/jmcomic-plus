@@ -11,6 +11,16 @@ class ArchitectureBoundaryTest {
         val violations = buildList {
             addAll(forbiddenImports("store", listOf("com.par9uet.jm.ui.", "com.par9uet.jm.worker.")))
             addAll(forbiddenImports("favorites", listOf("com.par9uet.jm.ui.")))
+            addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.")))
+            addAll(forbiddenImports("update", listOf("com.par9uet.jm.ui.")))
+            listOf("AboutScreen.kt", "CheckUpdateScreen.kt", "BackupRestoreScreen.kt").forEach { screen ->
+                addAll(forbiddenImports("ui/screens/$screen", listOf(
+                    "okhttp3.", "com.google.gson.", "java.io.File", "androidx.core.content.FileProvider",
+                    "com.par9uet.jm.database.", "com.par9uet.jm.store.BackupManager",
+                    "com.par9uet.jm.store.DownloadManager", "com.par9uet.jm.store.LocalSettingManager",
+                    "com.par9uet.jm.store.AppUpdateDownloadManager",
+                )))
+            }
             addAll(forbiddenImports("utils", listOf("com.par9uet.jm.cache.", "com.par9uet.jm.data.")))
             addAll(
                 forbiddenImports(

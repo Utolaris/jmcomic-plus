@@ -60,25 +60,13 @@ import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_LAVENDER
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_MONET
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_OCEAN
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_SUNSET
+import com.par9uet.jm.ui.theme.ColorPreset
+import com.par9uet.jm.ui.theme.toColorOrNull
+import com.par9uet.jm.ui.theme.colorPresets
 import com.par9uet.jm.store.AppearancePreferences
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.GlassModal
 import org.koin.compose.getKoin
-
-// 预设方案：每组 4 个颜色对应 [primary, secondary, tertiary, error]，ARGB hex
-private data class ColorPreset(
-    val id: String,
-    val name: String,
-    val colors: List<Long>,
-)
-
-private val COLOR_PRESETS = listOf(
-    ColorPreset(COLOR_PALETTE_PRESET_DEFAULT, "默认蓝", listOf(0xFF4F5F7F, 0xFF5A5D72, 0xFF75546F, 0xFFBA1A1A)),
-    ColorPreset(COLOR_PALETTE_PRESET_OCEAN, "海洋青", listOf(0xFF00696D, 0xFF4A6364, 0xFF48607E, 0xFFBA1A1A)),
-    ColorPreset(COLOR_PALETTE_PRESET_SUNSET, "日落橙", listOf(0xFF8C5000, 0xFF735C2D, 0xFF9C4146, 0xFFBA1A1A)),
-    ColorPreset(COLOR_PALETTE_PRESET_FOREST, "森林绿", listOf(0xFF2E6B3E, 0xFF4F6352, 0xFF38656A, 0xFFBA1A1A)),
-    ColorPreset(COLOR_PALETTE_PRESET_LAVENDER, "薰衣紫", listOf(0xFF6750A4, 0xFF625B71, 0xFF7D5260, 0xFFBA1A1A)),
-)
 
 private enum class ColorSlot(val label: String) {
     Primary("主色"),
@@ -100,7 +88,7 @@ fun ColorPaletteScreen(
 
     var editingSlot by remember { mutableStateOf<ColorSlot?>(null) }
 
-    val currentPreset = COLOR_PRESETS.firstOrNull { it.id == colorPalette.presetId }
+    val currentPreset = colorPresets.firstOrNull { it.id == colorPalette.presetId }
     // 当前生效的四色：莫奈取色时从动态色获取，其余从预设/自定义获取
     val effectiveColors = remember(colorPalette) {
         if (colorPalette.presetId == COLOR_PALETTE_PRESET_MONET &&
@@ -109,7 +97,7 @@ fun ColorPaletteScreen(
             val ds = dynamicLightColorScheme(context)
             listOf(ds.primary, ds.secondary, ds.tertiary, ds.error)
         } else {
-            val presetColors = currentPreset?.colors ?: COLOR_PRESETS[0].colors
+            val presetColors = currentPreset?.colors ?: colorPresets[0].colors
             listOf(
                 colorPalette.customPrimary?.toColorOrNull() ?: Color(presetColors[0]),
                 colorPalette.customSecondary?.toColorOrNull() ?: Color(presetColors[1]),
@@ -286,7 +274,7 @@ private fun PresetGrid(
                 onClick = { onSelect(monetPreset.id) }
             )
         }
-        COLOR_PRESETS.forEach { preset ->
+        colorPresets.forEach { preset ->
             PresetItem(
                 preset = preset,
                 selected = !hasCustomOverride && preset.id == selectedPreset,
@@ -515,14 +503,6 @@ private fun ColorSliderRow(
             modifier = Modifier.width(32.dp)
         )
     }
-}
-
-private fun String.toColorOrNull(): Color? {
-    return runCatching {
-        val hex = this.removePrefix("#")
-        val long = if (hex.length == 6) "FF$hex".toLong(16) else hex.toLong(16)
-        Color(long.toInt())
-    }.getOrNull()
 }
 
 private fun Color.toArgbHex(): String {
