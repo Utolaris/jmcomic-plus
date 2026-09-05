@@ -10,6 +10,22 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FavoriteMetadataTermDao {
+    @Query(
+        "SELECT * FROM favorite_metadata_terms " +
+            "WHERE accountId = :accountId AND albumId IN (:albumIds) " +
+            "ORDER BY albumId, termType, normalizedValue"
+    )
+    suspend fun getForAlbums(
+        accountId: Int,
+        albumIds: List<Int>,
+    ): List<FavoriteMetadataTermEntity>
+
+    @Query(
+        "SELECT * FROM favorite_metadata_terms " +
+            "WHERE accountId = :accountId ORDER BY albumId, termType, normalizedValue"
+    )
+    suspend fun getAll(accountId: Int): List<FavoriteMetadataTermEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertAll(entities: List<FavoriteMetadataTermEntity>)
 

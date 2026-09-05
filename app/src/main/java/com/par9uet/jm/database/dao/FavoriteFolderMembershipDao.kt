@@ -9,6 +9,12 @@ import com.par9uet.jm.database.model.FavoriteFolderMembershipEntity
 @Dao
 interface FavoriteFolderMembershipDao {
     @Query(
+        "SELECT * FROM favorite_folder_memberships " +
+            "WHERE accountId = :accountId ORDER BY folderId, remoteOrder, albumId"
+    )
+    suspend fun getAll(accountId: Int): List<FavoriteFolderMembershipEntity>
+
+    @Query(
         "SELECT albumId FROM favorite_folder_memberships " +
             "WHERE accountId = :accountId AND folderId = :folderId ORDER BY remoteOrder"
     )

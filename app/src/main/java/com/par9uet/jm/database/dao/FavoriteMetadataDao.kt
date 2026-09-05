@@ -8,6 +8,9 @@ import com.par9uet.jm.database.model.FavoriteMetadataEntity
 
 @Dao
 interface FavoriteMetadataDao {
+    @Query("SELECT * FROM favorite_metadata WHERE accountId = :accountId ORDER BY albumId")
+    suspend fun getAll(accountId: Int): List<FavoriteMetadataEntity>
+
     @Query("SELECT * FROM favorite_metadata WHERE accountId = :accountId AND albumId IN (:albumIds)")
     suspend fun getByIds(accountId: Int, albumIds: List<Int>): List<FavoriteMetadataEntity>
 

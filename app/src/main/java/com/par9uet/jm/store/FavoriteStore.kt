@@ -18,6 +18,7 @@ import com.par9uet.jm.database.dao.FavoriteSyncStateDao
 import com.par9uet.jm.database.model.FavoriteComicEntity
 import com.par9uet.jm.database.model.FavoriteFolderEntity
 import com.par9uet.jm.database.model.FavoriteFolderMembershipEntity
+import com.par9uet.jm.database.model.FavoriteMetadataEntity
 import com.par9uet.jm.database.model.FavoriteMetadataTermEntity
 import com.par9uet.jm.database.model.FavoriteSyncStateEntity
 import com.par9uet.jm.utils.log
@@ -92,7 +93,8 @@ class FavoriteStore(
         syncedAt: Long,
     ): FavoriteSyncDelta {
         val remoteById = remoteItems.distinctBy { it.albumId }.associateBy { it.albumId }
-        val oldScopeIds = membershipDao.getAlbumIds(accountId, scopeFolderId).toSet()
+        val oldScopeOrder = membershipDao.getAlbumIds(accountId, scopeFolderId)
+        val oldScopeIds = oldScopeOrder.toSet()
         val existing = if (remoteById.isEmpty()) {
             emptyMap()
         } else {
@@ -100,6 +102,8 @@ class FavoriteStore(
         }
         val delta = planFavoriteSync(oldScopeIds, existing, remoteById.values.toList())
         val removedIds = oldScopeIds - remoteById.keys
+        val remoteOrder = remoteById.keys.toList()
+        val membershipChanged = oldScopeOrder != remoteOrder
         val remoteOrderById = remoteById.keys.withIndex().associate { it.value to it.index }
         // lastFavoriteOrder is the global/all-favorites order. Only an authoritative
         // all-favorites sync (folder 0) may rewrite it; a non-zero folder sync updates
@@ -108,15 +112,34 @@ class FavoriteStore(
 
         val transactionStartedAt = SystemClock.elapsedRealtime()
         database.withTransaction {
-            if (scopeFolderId == FAVORITE_SCOPE_ALL && removedIds.isNotEmpty()) {
-                // The all-favorites snapshot is authoritative. Remove memberships in every
-                // folder only after all remote pages have completed successfully.
-                membershipDao.deleteForAlbums(accountId, removedIds.toList())
+            val existingMetadataById = if (remoteById.isEmpty()) {
+                emptyMap()
             } else {
-                membershipDao.deleteForScope(accountId, scopeFolderId)
+                metadataDao.getByIds(accountId, remoteById.keys.toList()).associateBy { it.albumId }
             }
-            membershipDao.upsertAll(
-                remoteById.values.mapIndexed { index, item ->
+            val incompleteMetadataIds = remoteById.values
+                .filter { item ->
+                    val local = existing[item.albumId]
+                    local?.metadataComplete != true &&
+                        (local == null || !local.matchesLightweight(item))
+                }
+                .map { it.albumId }
+            val existingTermsByAlbum = if (incompleteMetadataIds.isEmpty()) {
+                emptyMap()
+            } else {
+                termDao.getForAlbums(accountId, incompleteMetadataIds)
+                    .groupBy { it.albumId }
+            }
+
+            if (membershipChanged) {
+                if (scopeFolderId == FAVORITE_SCOPE_ALL && removedIds.isNotEmpty()) {
+                    // The all-favorites snapshot is authoritative. Remove memberships in every
+                    // folder only after all remote pages have completed successfully.
+                    membershipDao.deleteForAlbums(accountId, removedIds.toList())
+                } else {
+                    membershipDao.deleteForScope(accountId, scopeFolderId)
+                }
+                val memberships = remoteById.values.mapIndexed { index, item ->
                     FavoriteFolderMembershipEntity(
                         accountId = accountId,
                         folderId = scopeFolderId,
@@ -125,7 +148,8 @@ class FavoriteStore(
                         lastSyncedAt = syncedAt,
                     )
                 }
-            )
+                if (memberships.isNotEmpty()) membershipDao.upsertAll(memberships)
+            }
 
             remoteById.values.forEach { item ->
                 val local = existing[item.albumId]
@@ -153,8 +177,15 @@ class FavoriteStore(
                     )
                 }
                 if (!keepFullMetadata && lightweightChanged) {
-                    metadataDao.upsert(item.toIncompleteMetadata(accountId, syncedAt))
-                    replaceTerms(accountId, item.albumId, item.toTerms(accountId))
+                    val nextMetadata = item.toIncompleteMetadata(accountId, syncedAt)
+                    val currentMetadata = existingMetadataById[item.albumId]
+                    if (currentMetadata == null || !currentMetadata.sameSnapshotContent(nextMetadata)) {
+                        metadataDao.upsert(nextMetadata)
+                    }
+                    val nextTerms = item.toTerms(accountId)
+                    if (existingTermsByAlbum[item.albumId].orEmpty().toSet() != nextTerms.toSet()) {
+                        replaceTerms(accountId, item.albumId, nextTerms)
+                    }
                 }
             }
             updateFolders(
@@ -191,60 +222,94 @@ class FavoriteStore(
         require(metadataById.keys.containsAll(remoteById.keys)) {
             "force refresh metadata is incomplete"
         }
-        val transactionStartedAt = SystemClock.elapsedRealtime()
-        database.withTransaction {
-            membershipDao.deleteAll(accountId)
-            membershipDao.upsertAll(
-                buildList {
-                    remoteById.values.forEachIndexed { index, item ->
-                        add(
-                            FavoriteFolderMembershipEntity(
-                                accountId = accountId,
-                                folderId = FAVORITE_SCOPE_ALL,
-                                albumId = item.albumId,
-                                remoteOrder = index,
-                                lastSyncedAt = syncedAt,
+        val desiredMemberships = buildList {
+            remoteById.values.forEachIndexed { index, item ->
+                add(
+                    FavoriteFolderMembershipEntity(
+                        accountId = accountId,
+                        folderId = FAVORITE_SCOPE_ALL,
+                        albumId = item.albumId,
+                        remoteOrder = index,
+                        lastSyncedAt = syncedAt,
+                    )
+                )
+            }
+            folderMemberships.filterKeys { it > FAVORITE_SCOPE_ALL }
+                .forEach { (folderId, albumIds) ->
+                    albumIds.distinct()
+                        .filter { it in remoteById }
+                        .forEachIndexed { index, albumId ->
+                            add(
+                                FavoriteFolderMembershipEntity(
+                                    accountId = accountId,
+                                    folderId = folderId,
+                                    albumId = albumId,
+                                    remoteOrder = index,
+                                    lastSyncedAt = syncedAt,
+                                )
                             )
-                        )
-                    }
-                    folderMemberships.filterKeys { it > FAVORITE_SCOPE_ALL }
-                        .forEach { (folderId, albumIds) ->
-                            albumIds.distinct()
-                                .filter { it in remoteById }
-                                .forEachIndexed { index, albumId ->
-                                    add(
-                                        FavoriteFolderMembershipEntity(
-                                            accountId = accountId,
-                                            folderId = folderId,
-                                            albumId = albumId,
-                                            remoteOrder = index,
-                                            lastSyncedAt = syncedAt,
-                                        )
-                                    )
-                                }
                         }
                 }
+        }
+        val desiredComics = remoteById.values.mapIndexed { index, item ->
+            val full = checkNotNull(metadataById[item.albumId])
+            item.toComicEntity(
+                accountId = accountId,
+                order = index,
+                syncedAt = syncedAt,
+                existing = null,
+                keepFullMetadata = true,
+            ).copy(
+                authorList = full.authors.normalized(),
+                tagList = full.tags.normalized().ifEmpty { item.categoryTags() },
+                roleList = full.roles.normalized(),
+                workList = full.works.normalized(),
+                title = full.title.ifBlank { item.title },
+                description = full.description,
+                metadataComplete = true,
+                metadataUpdatedAt = syncedAt,
             )
-            remoteById.values.forEachIndexed { index, item ->
-                val full = checkNotNull(metadataById[item.albumId])
-                comicDao.upsert(item.toComicEntity(
-                    accountId = accountId,
-                    order = index,
-                    syncedAt = syncedAt,
-                    existing = null,
-                    keepFullMetadata = true,
-                ).copy(
-                    authorList = full.authors.normalized(),
-                    tagList = full.tags.normalized().ifEmpty { item.categoryTags() },
-                    roleList = full.roles.normalized(),
-                    workList = full.works.normalized(),
-                    title = full.title.ifBlank { item.title },
-                    description = full.description,
-                    metadataComplete = true,
-                    metadataUpdatedAt = syncedAt,
-                ))
-                metadataDao.upsert(full.toEntity(accountId, syncedAt))
-                replaceTerms(accountId, full.albumId, full.toTerms(accountId, item))
+        }
+        val desiredMetadata = remoteById.values.map { item ->
+            checkNotNull(metadataById[item.albumId]).toEntity(accountId, syncedAt)
+        }
+        val desiredTermsByAlbum = remoteById.values.associate { item ->
+            item.albumId to checkNotNull(metadataById[item.albumId])
+                .toTerms(accountId, item)
+        }
+        val transactionStartedAt = SystemClock.elapsedRealtime()
+        database.withTransaction {
+            val existingMemberships = membershipDao.getAll(accountId)
+            val membershipChanged = existingMemberships.map { it.copy(lastSyncedAt = 0L) }.toSet() !=
+                desiredMemberships.map { it.copy(lastSyncedAt = 0L) }.toSet()
+            if (membershipChanged) {
+                membershipDao.deleteAll(accountId)
+                if (desiredMemberships.isNotEmpty()) membershipDao.upsertAll(desiredMemberships)
+            }
+
+            val existingComics = comicDao.getAll(accountId).associateBy { it.albumId }
+            desiredComics.forEach { nextComic ->
+                val currentComic = existingComics[nextComic.albumId]
+                if (currentComic == null || !currentComic.sameSnapshotContent(nextComic)) {
+                    comicDao.upsert(nextComic)
+                }
+            }
+
+            val existingMetadata = metadataDao.getAll(accountId).associateBy { it.albumId }
+            desiredMetadata.forEach { nextMetadata ->
+                val currentMetadata = existingMetadata[nextMetadata.albumId]
+                if (currentMetadata == null || !currentMetadata.sameSnapshotContent(nextMetadata)) {
+                    metadataDao.upsert(nextMetadata)
+                }
+            }
+
+            val existingTermsByAlbum = termDao.getAll(accountId)
+                .groupBy { it.albumId }
+                .mapValues { (_, terms) -> terms.toSet() }
+            desiredTermsByAlbum.forEach { (albumId, nextTerms) ->
+                if (existingTermsByAlbum[albumId].orEmpty() != nextTerms.toSet()) {
+                    replaceTerms(accountId, albumId, nextTerms)
+                }
             }
             updateFolders(accountId, remoteFolders, syncedAt)
             comicDao.deleteOrphans(accountId)
@@ -271,26 +336,30 @@ class FavoriteStore(
         database.withTransaction {
             val existing = comicDao.getByIds(accountId, listOf(payload.albumId))
                 .firstOrNull() ?: return@withTransaction
-            comicDao.upsert(
-                existing.copy(
-                    title = payload.title.ifBlank { existing.title },
-                    description = payload.description,
-                    authorList = payload.authors.normalized(),
-                    tagList = payload.tags.normalized().ifEmpty {
-                        existing.categoryTags()
-                    },
-                    roleList = payload.roles.normalized(),
-                    workList = payload.works.normalized(),
-                    metadataComplete = true,
-                    metadataUpdatedAt = syncedAt,
-                )
+            val nextComic = existing.copy(
+                title = payload.title.ifBlank { existing.title },
+                description = payload.description,
+                authorList = payload.authors.normalized(),
+                tagList = payload.tags.normalized().ifEmpty { existing.categoryTags() },
+                roleList = payload.roles.normalized(),
+                workList = payload.works.normalized(),
+                metadataComplete = true,
+                metadataUpdatedAt = syncedAt,
             )
-            metadataDao.upsert(payload.toEntity(accountId, syncedAt))
-            replaceTerms(
-                accountId,
-                payload.albumId,
-                payload.toTerms(accountId, existing.toRemoteItem()),
-            )
+            if (!existing.sameSnapshotContent(nextComic)) comicDao.upsert(nextComic)
+
+            val nextMetadata = payload.toEntity(accountId, syncedAt)
+            val existingMetadata = metadataDao.getByIds(accountId, listOf(payload.albumId))
+                .firstOrNull()
+            if (existingMetadata == null || !existingMetadata.sameSnapshotContent(nextMetadata)) {
+                metadataDao.upsert(nextMetadata)
+            }
+
+            val nextTerms = payload.toTerms(accountId, existing.toRemoteItem())
+            val existingTerms = termDao.getForAlbums(accountId, listOf(payload.albumId)).toSet()
+            if (existingTerms != nextTerms.toSet()) {
+                replaceTerms(accountId, payload.albumId, nextTerms)
+            }
         }
     }
 
@@ -399,12 +468,13 @@ class FavoriteStore(
     ) {
         if (remoteFolders.isEmpty()) return
         val normalized = remoteFolders.toMutableMap().apply { putIfAbsent(0, "全部") }
-        val oldIds = folderDao.getAll(accountId).map { it.folderId }.toSet()
-        folderDao.upsertAll(
-            normalized.map { (id, name) ->
-                FavoriteFolderEntity(accountId, id, name, syncedAt)
-            }
-        )
+        val existingById = folderDao.getAll(accountId).associateBy { it.folderId }
+        val changed = normalized.mapNotNull { (id, name) ->
+            val next = FavoriteFolderEntity(accountId, id, name, syncedAt)
+            next.takeUnless { existingById[id]?.sameSnapshotContent(next) == true }
+        }
+        if (changed.isNotEmpty()) folderDao.upsertAll(changed)
+        val oldIds = existingById.keys
         val removed = if (removeMissing) oldIds - normalized.keys else emptySet()
         if (removed.isNotEmpty()) {
             folderDao.deleteByIds(accountId, removed.toList())
@@ -422,3 +492,13 @@ class FavoriteStore(
         if (terms.isNotEmpty()) termDao.upsertAll(terms)
     }
 }
+
+private fun FavoriteComicEntity.sameSnapshotContent(other: FavoriteComicEntity): Boolean =
+    copy(metadataUpdatedAt = 0L, lastFavoriteSyncAt = 0L) ==
+        other.copy(metadataUpdatedAt = 0L, lastFavoriteSyncAt = 0L)
+
+private fun FavoriteMetadataEntity.sameSnapshotContent(other: FavoriteMetadataEntity): Boolean =
+    copy(metadataUpdatedAt = 0L) == other.copy(metadataUpdatedAt = 0L)
+
+private fun FavoriteFolderEntity.sameSnapshotContent(other: FavoriteFolderEntity): Boolean =
+    copy(lastSyncedAt = 0L) == other.copy(lastSyncedAt = 0L)
