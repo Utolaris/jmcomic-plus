@@ -5,8 +5,10 @@ import com.par9uet.jm.store.DohPreferencesEditor
 import com.par9uet.jm.store.DohSettingsState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
+import java.net.UnknownHostException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class DohManagerTest {
@@ -32,6 +34,12 @@ class DohManagerTest {
 
         manager.setEnabled(true)
         assertEquals(true, editor.enabled)
+
+        // Whether the TLS client can be initialized in this JVM, an enabled DoH session must
+        // never fall through to Dns.SYSTEM when the resolver is unavailable.
+        if (!manager.status.value.active) {
+            assertThrows(UnknownHostException::class.java) { manager.lookup("example.com") }
+        }
     }
 
     @Test
