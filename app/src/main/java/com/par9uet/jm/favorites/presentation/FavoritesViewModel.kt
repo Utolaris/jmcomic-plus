@@ -88,6 +88,7 @@ class FavoritesViewModel(
                         searchActive = false,
                         filter = FavoritesFilter(),
                         modal = null,
+                        syncErrorVisible = false,
                         viewport = state.viewport.reset(),
                     )
                 }
@@ -108,7 +109,7 @@ class FavoritesViewModel(
         }
         viewModelScope.launch {
             syncController.state.collect { sync ->
-                _uiState.update { it.copy(sync = sync) }
+                _uiState.update { it.copy(sync = sync, syncErrorVisible = sync.errorMessage != null) }
             }
         }
     }
@@ -170,6 +171,15 @@ class FavoritesViewModel(
                 folderId = _uiState.value.selectedFolderId,
             )
             FavoritesIntent.ForceRefresh -> syncController.request(FavoriteSyncRequestKind.FORCE)
+            FavoritesIntent.SyncErrorDismissed -> _uiState.update { it.copy(syncErrorVisible = false) }
+            FavoritesIntent.SyncRetried -> {
+                val force = _uiState.value.sync.isForceRefresh
+                _uiState.update { it.copy(syncErrorVisible = false) }
+                syncController.request(
+                    kind = if (force) FavoriteSyncRequestKind.FORCE else FavoriteSyncRequestKind.MANUAL,
+                    folderId = _uiState.value.selectedFolderId,
+                )
+            }
 
             is FavoritesIntent.FolderSelected -> selectFolder(intent.folderId)
             FavoritesIntent.SearchEntered -> _uiState.update { it.copy(searchActive = true) }

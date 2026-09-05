@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,9 +40,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.par9uet.jm.data.models.BlockedTagTemplate
 import com.par9uet.jm.store.HistorySearchManager
 import com.par9uet.jm.store.LocalSettingManager
@@ -67,6 +74,7 @@ fun ComicSearchScreen(
 ) {
     val mainNavController = LocalMainNavController.current
     val focusRequester = remember { FocusRequester() }
+    val pageLifecycleOwner = LocalLifecycleOwner.current
     val searchComicFilterState by comicViewModel.searchComicFilterState.collectAsState()
     // 从搜索结果页返回时，ViewModel 持有最新搜索参数；首次进入时 ViewModel 为空，回退到 URL 参数
     val effectiveSearchContent = searchComicFilterState.searchContent.ifBlank { initialSearchContent }
@@ -111,10 +119,10 @@ fun ComicSearchScreen(
         if (textFieldState.text.toString() != editableInitialContent) {
             textFieldState.edit { replace(0, length, editableInitialContent) }
         }
-        focusRequester.requestFocus()
     }
 
     CommonScaffold(title = "搜索") { topContentPadding, bottomContentPadding ->
+        SearchPageFocusEffect(pageLifecycleOwner)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
@@ -215,6 +223,31 @@ fun ComicSearchScreen(
     }
 }
 
+@Composable
+internal fun SearchPageFocusEffect(pageLifecycleOwner: LifecycleOwner) {
+    // Read the owners inside GlassCaptureHost's source composition, where the input lives.
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    DisposableEffect(pageLifecycleOwner, focusManager, keyboardController) {
+        var inputCleared = false
+        fun clearInput() {
+            if (inputCleared) return
+            inputCleared = true
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+        }
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) inputCleared = false
+            if (event == Lifecycle.Event.ON_PAUSE || event == Lifecycle.Event.ON_STOP) clearInput()
+        }
+        pageLifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            pageLifecycleOwner.lifecycle.removeObserver(observer)
+            clearInput()
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SearchInputCard(
@@ -222,6 +255,9 @@ private fun SearchInputCard(
     focusRequester: FocusRequester,
     onSearch: () -> Unit
 ) {
+    LaunchedEffect(focusRequester) {
+        focusRequester.requestFocus()
+    }
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),

@@ -62,7 +62,15 @@ fun AppScreen(
                 val tabName = backStackEntry.arguments?.getString("tabName") ?: "home"
                 TabScreen(tabName = tabName)
             }
-            composable("login") { LoginScreen() }
+            composable(
+                route = "login?reauthenticate={reauthenticate}",
+                arguments = listOf(navArgument("reauthenticate") {
+                    type = NavType.BoolType
+                    defaultValue = false
+                }),
+            ) { entry ->
+                LoginScreen(reauthenticate = entry.arguments?.getBoolean("reauthenticate") == true)
+            }
             composable(route = "userCollectComic") {
                 val favoritesViewModel: FavoritesViewModel = koinActivityViewModel()
                 UserCollectComicScreen(favoritesViewModel = favoritesViewModel)

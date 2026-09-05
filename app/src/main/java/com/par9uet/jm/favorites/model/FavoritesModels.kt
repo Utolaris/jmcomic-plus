@@ -1,6 +1,7 @@
 package com.par9uet.jm.favorites.model
 
 import com.par9uet.jm.data.models.TagFilterLogic
+import com.par9uet.jm.retrofit.model.NetworkErrorKind
 
 data class FavoritesFilter(
     val searchText: String = "",
@@ -28,6 +29,7 @@ data class FavoriteSyncUiState(
     val total: Int = 0,
     val phase: String = "",
     val errorMessage: String? = null,
+    val errorKind: NetworkErrorKind? = null,
 )
 
 sealed interface FavoritesModal {
@@ -51,6 +53,7 @@ data class FavoritesUiState(
     val tagCounts: Map<String, Int> = emptyMap(),
     val authorCounts: Map<String, Int> = emptyMap(),
     val sync: FavoriteSyncUiState = FavoriteSyncUiState(),
+    val syncErrorVisible: Boolean = false,
 )
 
 sealed interface FavoritesIntent {
@@ -59,6 +62,8 @@ sealed interface FavoritesIntent {
     data class AccountStateChanged(val authenticated: Boolean) : FavoritesIntent
     data object ManualSync : FavoritesIntent
     data object ForceRefresh : FavoritesIntent
+    data object SyncErrorDismissed : FavoritesIntent
+    data object SyncRetried : FavoritesIntent
 
     data class FolderSelected(val folderId: Int) : FavoritesIntent
     data object SearchEntered : FavoritesIntent

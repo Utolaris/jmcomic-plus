@@ -34,7 +34,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bookmark
@@ -83,6 +82,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
+import com.par9uet.jm.ui.components.BackIconButton
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.Comment
 import com.par9uet.jm.storage.ComicReadHistory
@@ -519,12 +519,7 @@ fun ComicDetailScreen(
                     statusBarInset = statusBarInset,
                     modifier = Modifier.align(Alignment.TopCenter),
                     navigationIcon = {
-                        IconButton(onClick = { mainNavController.popBackStack() }) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "\u8fd4\u56de",
-                            )
-                        }
+                        BackIconButton()
                     },
                     title = {
                         Text(

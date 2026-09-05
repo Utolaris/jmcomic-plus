@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.DownloadDone
@@ -53,6 +52,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.par9uet.jm.ui.components.BackIconButton
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.ChromeMode
@@ -295,9 +295,7 @@ private fun DownloadVariableTopBar(
                 statusBarInset = statusBarInset,
                 surfaceAlpha = surfaceAlpha,
                 navigationIcon = {
-                    IconButton(onClick = { mainNavController.popBackStack() }) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回上一页")
-                    }
+                    BackIconButton()
                 },
                 title = {
                     Text(

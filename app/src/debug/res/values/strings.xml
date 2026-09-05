@@ -1,4 +1,4 @@
 <resources>
-    <string name="app_name">JMComic Plus Nagram</string>
-    <string name="launcher_disguise_default">JMComic Plus Nagram</string>
+    <string name="app_name">JMcomic Plus Debug</string>
+    <string name="launcher_disguise_default">JMcomic Plus Debug</string>
 </resources>

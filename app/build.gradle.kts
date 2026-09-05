@@ -74,7 +74,7 @@ android {
         versionCode = versionCodeProp
         versionName = versionNameProp
 
-        // testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
         }
@@ -83,7 +83,7 @@ android {
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
-            versionNameSuffix = "-nagram"
+            versionNameSuffix = "-debug"
         }
         release {
             applicationIdSuffix = ".plus"

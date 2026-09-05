@@ -5,6 +5,11 @@ import com.par9uet.jm.favorites.data.FavoriteLocalSync
 import com.par9uet.jm.favorites.data.FavoriteRemotePage
 import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.retrofit.model.NetworkErrorKind
+import com.par9uet.jm.store.AuthenticatedSessionRequiredException
+import io.github.jukomu.jmcomic.api.exception.NetworkException
+import io.github.jukomu.jmcomic.api.exception.ParseResponseException
+import io.github.jukomu.jmcomic.api.exception.ResponseException
 import com.par9uet.jm.store.FavoriteMetadataPayload
 import com.par9uet.jm.store.FavoriteRemoteItem
 import com.par9uet.jm.store.FavoriteSyncDelta
@@ -14,6 +19,73 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class SyncFavoritesTest {
+    @Test
+    fun `network failures explain how to recover`() = runTest {
+        val session = TestFavoriteSession()
+        val remote = Remote().apply {
+            pageHandler = { _, _ -> throw java.net.SocketTimeoutException("timeout") }
+        }
+        val result = SyncFavorites(remote, LocalSnapshot(), session) { 0L }
+            .synchronize(session.snapshot()) as NetWorkResult.Error
+        assertEquals("网络连接失败，请检查网络后重试", result.message)
+        assertEquals(NetworkErrorKind.Network, result.kind)
+    }
+
+    @Test
+    fun `force refresh preserves metadata failure reason`() = runTest {
+        val session = TestFavoriteSession()
+        val local = LocalSnapshot()
+        val remote = Remote().apply {
+            metadataHandler = { throw java.net.SocketTimeoutException("timeout") }
+        }
+        val result = SyncFavorites(remote, local, session) { 0L }
+            .synchronize(session.snapshot(), force = true) as NetWorkResult.Error
+        assertEquals("网络连接失败，请检查网络后重试", result.message)
+        assertEquals(NetworkErrorKind.Network, result.kind)
+        assertTrue(generateSequence(result.cause) { it.cause }.any { it is java.net.SocketTimeoutException })
+        assertTrue(local.replacements.isEmpty())
+    }
+
+    @Test
+    fun `sync keeps structured SDK failures and their original cause`() = runTest {
+        val failures = listOf(
+            NetworkException("offline") to NetworkErrorKind.Network,
+            AuthenticatedSessionRequiredException() to NetworkErrorKind.Authentication,
+            ResponseException("expired", 401) to NetworkErrorKind.Authentication,
+            ResponseException("denied", 403) to NetworkErrorKind.Server,
+            ResponseException("unavailable", 503) to NetworkErrorKind.Server,
+            ParseResponseException("invalid payload") to NetworkErrorKind.Parsing,
+            IllegalStateException("local write failed") to NetworkErrorKind.Unknown,
+        )
+        for ((failure, kind) in failures) {
+            val session = TestFavoriteSession()
+            val local = LocalSnapshot()
+            val remote = Remote().apply { pageHandler = { _, _ -> throw failure } }
+            val result = SyncFavorites(remote, local, session) { 0L }
+                .synchronize(session.snapshot()) as NetWorkResult.Error
+            assertEquals(kind, result.kind)
+            // Coroutine stack recovery can add a copy above the original exception.
+            assertTrue(generateSequence(result.cause) { it.cause }.any { it === failure })
+            assertEquals((failure as? ResponseException)?.errorCode ?: -1, result.code)
+            assertFalse(local.markedSuccessful)
+        }
+    }
+
+    @Test
+    fun `SDK wrapped cancellation is not reported as a sync error`() = runTest {
+        val session = TestFavoriteSession()
+        val cancellation = CancellationException("cancelled")
+        val remote = Remote().apply {
+            pageHandler = { _, _ -> throw NetworkException("interrupted", cancellation) }
+        }
+        try {
+            SyncFavorites(remote, LocalSnapshot(), session) { 0L }.synchronize(session.snapshot())
+            fail("Cancellation must propagate")
+        } catch (error: CancellationException) {
+            assertSame(cancellation, error)
+        }
+    }
+
     private class LocalSnapshot : FavoriteLocalSync {
         val replacements = mutableListOf<Pair<Int, List<Int>>>()
         var markedSuccessful = false

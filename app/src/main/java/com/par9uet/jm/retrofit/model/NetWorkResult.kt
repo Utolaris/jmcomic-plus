@@ -7,12 +7,22 @@ enum class AuthFailure {
     Unknown,
 }
 
+enum class NetworkErrorKind {
+    Network,
+    Authentication,
+    Server,
+    Parsing,
+    Unknown,
+}
+
 sealed class NetWorkResult<out T> {
     data class Success<T>(val data: T) : NetWorkResult<T>()
     data class Error(
         val message: String,
         val code: Int = -1,
         val authFailure: AuthFailure? = null,
+        val kind: NetworkErrorKind = NetworkErrorKind.Unknown,
+        val cause: Throwable? = null,
     ) : NetWorkResult<Nothing>()
 }
 

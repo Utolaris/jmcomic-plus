@@ -52,6 +52,41 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FavoritesViewModelTest {
+    @Test
+    fun `sync failure opens dialog and dismissal survives unrelated UI changes`() = runTest(scheduler) {
+        val environment = environment()
+        runCurrent()
+        environment.sync.publish(FavoriteSyncUiState(errorMessage = "网络连接失败"))
+        runCurrent()
+        assertTrue(environment.viewModel.uiState.value.syncErrorVisible)
+        environment.viewModel.onIntent(FavoritesIntent.SyncErrorDismissed)
+        environment.viewModel.onIntent(FavoritesIntent.SearchEntered)
+        assertFalse(environment.viewModel.uiState.value.syncErrorVisible)
+        assertEquals("网络连接失败", environment.viewModel.uiState.value.sync.errorMessage)
+
+        environment.sync.publish(FavoriteSyncUiState(isSyncing = true))
+        runCurrent()
+        environment.sync.publish(FavoriteSyncUiState(errorMessage = "网络连接失败"))
+        runCurrent()
+        assertTrue(environment.viewModel.uiState.value.syncErrorVisible)
+        environment.sync.publish(FavoriteSyncUiState())
+        runCurrent()
+        assertFalse(environment.viewModel.uiState.value.syncErrorVisible)
+    }
+
+    @Test
+    fun `dialog retry preserves force refresh and leaves another modal intact`() = runTest(scheduler) {
+        val environment = environment()
+        runCurrent()
+        environment.viewModel.onIntent(FavoritesIntent.FilterOpened)
+        environment.sync.publish(FavoriteSyncUiState(isForceRefresh = true, errorMessage = "失败"))
+        runCurrent()
+        assertEquals(FavoritesModal.Filter, environment.viewModel.uiState.value.modal)
+        environment.viewModel.onIntent(FavoritesIntent.SyncRetried)
+        assertEquals(SyncRequest(FavoriteSyncRequestKind.FORCE, 0), environment.sync.requests.single())
+        assertFalse(environment.viewModel.uiState.value.syncErrorVisible)
+    }
+
     private lateinit var scheduler: TestCoroutineScheduler
 
     @Before
@@ -481,6 +516,8 @@ class FavoritesViewModelTest {
         private val _state = MutableStateFlow(FavoriteSyncUiState())
         override val state: StateFlow<FavoriteSyncUiState> = _state.asStateFlow()
         val requests = mutableListOf<SyncRequest>()
+
+        fun publish(state: FavoriteSyncUiState) { _state.value = state }
 
         override fun request(kind: FavoriteSyncRequestKind, folderId: Int) {
             requests += SyncRequest(kind, folderId)

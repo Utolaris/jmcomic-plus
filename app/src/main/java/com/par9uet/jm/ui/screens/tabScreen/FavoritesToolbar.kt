@@ -68,6 +68,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.par9uet.jm.ui.components.BackIconButton
 import com.par9uet.jm.ui.components.FavoriteSyncIconButton
 import com.par9uet.jm.ui.glass.GlassAnchoredMenuState
 import com.par9uet.jm.ui.glass.GlassSurface
@@ -640,9 +641,7 @@ internal fun FavoritesMaterialTopBar(
                 }) {
                     Icon(Icons.Rounded.Close, contentDescription = "退出选择")
                 }
-                onNavigateBack != null -> IconButton(onClick = onNavigateBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-                }
+                onNavigateBack != null -> BackIconButton(onClick = onNavigateBack)
             }
         },
         title = {

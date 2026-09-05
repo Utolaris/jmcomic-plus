@@ -2,6 +2,7 @@ package com.par9uet.jm.favorites.sync
 
 import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
+import com.par9uet.jm.favorites.data.toFavoriteSyncError
 import com.par9uet.jm.favorites.model.FavoriteSyncUiState
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
@@ -121,7 +122,7 @@ class FavoriteSyncController(
         val generation = ++requestGeneration
         _state.value = FavoriteSyncUiState(isSyncing = true, isForceRefresh = force)
         val job = applicationScope.launch(start = CoroutineStart.LAZY) {
-            var errorMessage: String? = null
+            var failure: NetWorkResult.Error? = null
             try {
                 val result = syncOperation(snapshot, folderId, force) { progress ->
                     synchronized(lock) {
@@ -132,19 +133,23 @@ class FavoriteSyncController(
                         }
                     }
                 }
-                if (result is NetWorkResult.Error) errorMessage = result.message
+                if (result is NetWorkResult.Error) failure = result
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                errorMessage = error.message ?: "同步收藏夹失败"
+                failure = error.toFavoriteSyncError()
             } finally {
                 synchronized(lock) {
                     if (isCurrentRequest(snapshot, generation)) {
                         syncJob = null
-                        _state.value = if (errorMessage == null) {
+                        _state.value = if (failure == null) {
                             FavoriteSyncUiState()
                         } else {
-                            _state.value.copy(isSyncing = false, errorMessage = errorMessage)
+                            _state.value.copy(
+                                isSyncing = false,
+                                errorMessage = failure.message,
+                                errorKind = failure.kind,
+                            )
                         }
                         autoSyncCoordinator.onSyncFinished()?.let { startSync(it, force = false) }
                     }

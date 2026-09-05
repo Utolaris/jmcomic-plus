@@ -3,6 +3,7 @@ package com.par9uet.jm.favorites.usecase
 import android.os.SystemClock
 import com.par9uet.jm.favorites.data.FavoriteLocalSync
 import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
+import com.par9uet.jm.favorites.data.toFavoriteSyncError
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
 import com.par9uet.jm.store.FavoriteMetadataPayload
@@ -150,7 +151,7 @@ class SyncFavorites(
                 "FavoritesSync",
                 "${e.message ?: "同步收藏夹失败"} duration=${elapsedRealtime() - startedAt}ms",
             )
-            NetWorkResult.Error(e.message ?: "同步收藏夹失败")
+            e.toFavoriteSyncError()
         }
     }
 
@@ -251,7 +252,10 @@ class SyncFavorites(
                 "failures=$failures duration=${elapsedRealtime() - startedAt}ms",
         )
         if (failFast && failures > 0) {
-            throw IllegalStateException("强制刷新收藏夹时有 $failures 部漫画元数据获取失败")
+            throw IllegalStateException(
+                "强制刷新收藏夹时有 $failures 部漫画元数据获取失败",
+                results.firstNotNullOf { it.exceptionOrNull() },
+            )
         }
         MetadataFetchResult(
             payloads = results.mapNotNull { it.getOrNull() },

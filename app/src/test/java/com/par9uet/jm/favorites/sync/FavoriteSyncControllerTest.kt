@@ -1,6 +1,7 @@
 package com.par9uet.jm.favorites.sync
 
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.retrofit.model.NetworkErrorKind
 import com.par9uet.jm.favorites.TestFavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import kotlinx.coroutines.NonCancellable
@@ -24,6 +25,28 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FavoriteSyncControllerTest {
+    @Test
+    fun `failure kind reaches UI and a successful retry clears it`() = runTest {
+        var shouldFail = true
+        val controller = controller(backgroundScope, TestFavoriteSession(), mutableListOf(), operation = { _, _, _, _ ->
+            if (shouldFail) {
+                NetWorkResult.Error("登录已失效，请重新登录后同步", kind = NetworkErrorKind.Authentication)
+            } else {
+                success()
+            }
+        })
+        controller.request(FavoriteSyncRequestKind.FORCE)
+        runCurrent()
+        assertEquals(NetworkErrorKind.Authentication, controller.state.value.errorKind)
+        assertEquals("登录已失效，请重新登录后同步", controller.state.value.errorMessage)
+        assertTrue(controller.state.value.isForceRefresh)
+        shouldFail = false
+        controller.request(FavoriteSyncRequestKind.MANUAL)
+        runCurrent()
+        assertEquals(null, controller.state.value.errorKind)
+        assertEquals(null, controller.state.value.errorMessage)
+    }
+
     private data class Request(
         val accountId: Int,
         val folderId: Int,

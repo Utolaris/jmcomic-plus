@@ -63,6 +63,7 @@ import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.favorites.model.FavoritesIntent
 import com.par9uet.jm.favorites.model.FavoritesModal
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel
+import com.par9uet.jm.retrofit.model.NetworkErrorKind
 import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassModal
 
@@ -70,6 +71,7 @@ import com.par9uet.jm.ui.glass.GlassModal
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun FavoritesModalHost(favoritesViewModel: FavoritesViewModel) {
+    val navController = LocalMainNavController.current
     val favoritesState by favoritesViewModel.uiState.collectAsState()
     val collectComicFilter = favoritesState.filter
     val tagCountMap = favoritesState.tagCounts
@@ -142,6 +144,25 @@ internal fun FavoritesModalHost(favoritesViewModel: FavoritesViewModel) {
     }
 
     val activeModal = favoritesState.modal
+
+    val needsLogin = favoritesState.sync.errorKind == NetworkErrorKind.Authentication
+    GlassConfirmDialog(
+        visible = favoritesState.syncErrorVisible && activeModal == null,
+        title = "收藏同步失败",
+        message = favoritesState.sync.errorMessage.orEmpty(),
+        confirmText = if (needsLogin) "重新登录" else "重试",
+        dismissText = "关闭",
+        onConfirm = {
+            if (needsLogin) {
+                favoritesViewModel.onIntent(FavoritesIntent.SyncErrorDismissed)
+                navController.navigate("login?reauthenticate=true")
+            } else {
+                favoritesViewModel.onIntent(FavoritesIntent.SyncRetried)
+            }
+        },
+        onDismiss = { favoritesViewModel.onIntent(FavoritesIntent.SyncErrorDismissed) },
+        surfaceId = "favorites-sync-error",
+    )
 
     GlassModal(
         visible = activeModal is FavoritesModal.CreateFolder,

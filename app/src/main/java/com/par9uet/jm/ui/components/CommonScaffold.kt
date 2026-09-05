@@ -9,10 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -28,7 +24,6 @@ import androidx.compose.ui.unit.sp
 import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.AppGlassTopBarDefaults
 import com.par9uet.jm.ui.glass.GlassCaptureHost
-import com.par9uet.jm.ui.screens.LocalMainNavController
 
 /** Shared glass scaffold for hierarchical destinations. */
 @Composable
@@ -44,7 +39,6 @@ fun CommonScaffold(
     variableTopBar: (@Composable (statusBarInset: Dp) -> Unit)? = null,
     content: @Composable (topContentPadding: Dp, bottomContentPadding: Dp) -> Unit = { _, _ -> },
 ) {
-    val mainNavController = LocalMainNavController.current
     val density = LocalDensity.current
     val statusBarInset = with(density) { WindowInsets.statusBars.getTop(this).toDp() }
     val navigationBarInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
@@ -83,16 +77,7 @@ fun CommonScaffold(
                             if (navigationContent != null) {
                                 navigationContent()
                             } else {
-                                IconButton(
-                                    onClick = {
-                                        onNavigateBack?.invoke() ?: mainNavController.popBackStack()
-                                    },
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = "返回上一页",
-                                    )
-                                }
+                                BackIconButton(onClick = onNavigateBack)
                             }
                         },
                         title = {

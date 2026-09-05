@@ -56,6 +56,7 @@ import org.koin.compose.viewmodel.koinActivityViewModel
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
+    reauthenticate: Boolean = false,
     userManager: UserManager = getKoin().get(),
     userViewModel: UserViewModel = koinActivityViewModel(),
 ) {
@@ -63,6 +64,7 @@ fun LoginScreen(
     val mainNavController = LocalMainNavController.current
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
+    var loginSubmitted by rememberSaveable { mutableStateOf(false) }
     val authState by userManager.authState.collectAsState()
     val loginState by userViewModel.loginState.collectAsState()
 
@@ -76,8 +78,10 @@ fun LoginScreen(
         }
     }
 
-    LaunchedEffect(authState) {
-        if (authState == SessionReadiness.Authenticated) {
+    LaunchedEffect(authState, loginState.isLoading, loginState.isError) {
+        if (authState == SessionReadiness.Authenticated &&
+            (!reauthenticate || (loginSubmitted && !loginState.isLoading && !loginState.isError))
+        ) {
             mainNavController.navigate("tab/user") {
                 popUpTo("login") { inclusive = true }
             }
@@ -88,6 +92,7 @@ fun LoginScreen(
 
     fun toLogin() {
         if (username.isBlank() || password.isBlank()) return
+        loginSubmitted = true
         userViewModel.login(username, password)
     }
 
