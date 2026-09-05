@@ -11,7 +11,7 @@ import com.par9uet.jm.store.BackupFile
 import com.par9uet.jm.store.BackupManager
 import com.par9uet.jm.store.ComicCacheBackup
 import com.par9uet.jm.store.ComicGroupBackup
-import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.store.BackupTaskScheduler
 import com.par9uet.jm.store.LocalSettingManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,7 +36,7 @@ internal class DeviceBackupRestoreOperations(
     private val context: Context,
     private val settings: LocalSettingManager,
     private val downloadDao: DownloadComicDao,
-    private val downloads: DownloadManager,
+    private val downloads: BackupTaskScheduler,
     private val codec: BackupManager,
 ) : BackupRestoreOperations {
     override suspend fun loadComicCache(): ComicCacheBackup = withContext(Dispatchers.IO) {

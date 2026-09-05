@@ -96,7 +96,7 @@ internal fun JmCoverImage(
                             // 只标记主机健康，不写入 Reader 排序使用的延迟 EWMA。
                             resolver.recordHealthy(loadedUrl)
                         }
-                        if (scrollingState.value && !state.result.dataSource.isMemorySource()) {
+                        if (shouldDeferCoverResult(scrollingState.value, state.result.dataSource)) {
                             displayGate.deferSuccess(state.painter)
                         } else {
                             // Memory cache hits are cheap to publish even during a fling.
@@ -161,6 +161,9 @@ internal fun JmCoverImage(
 
 private fun DataSource.isMemorySource(): Boolean =
     this == DataSource.MEMORY_CACHE || this == DataSource.MEMORY
+
+internal fun shouldDeferCoverResult(isScrolling: Boolean, dataSource: DataSource): Boolean =
+    isScrolling && !dataSource.isMemorySource()
 
 /** The public AsyncImage API keeps this resolver internal, so mirror its grid-size behavior here. */
 private class JmCoverSizeResolver : SizeResolver, LayoutModifier {

@@ -47,7 +47,6 @@ import java.io.File
 import java.io.FileOutputStream
 
 private const val DOWNLOAD_PAGE_TIMEOUT_MS = 180_000L
-private const val DOWNLOAD_MAX_ATTEMPTS = 6
 
 class DownloadComicWorker(
     private val appContext: Context,
@@ -99,7 +98,7 @@ class DownloadComicWorker(
             Result.success()
         } catch (e: Exception) {
             e.cancellationExceptionOrNull()?.let { throw it }
-            if (runAttemptCount < DOWNLOAD_MAX_ATTEMPTS - 1) {
+            if (shouldRetryDownload(runAttemptCount)) {
                 Result.retry()
             } else {
                 downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.ERROR))
@@ -243,7 +242,7 @@ class DownloadComicWorker(
         currentMaxProgress: Float,
         nextProgress: Float
     ): DownloadProgress {
-        val chapterProgress = maxOf(currentMaxProgress, nextProgress.coerceIn(0f, 1f))
+        val chapterProgress = advancedDownloadProgress(currentMaxProgress, nextProgress)
         if (chapterProgress > currentMaxProgress) {
             downloadComicDao.updateProgress(UpdateComicProgress(downloadTask.id, chapterProgress))
         }
@@ -256,14 +255,7 @@ class DownloadComicWorker(
     private suspend fun resolveGroupProgress(downloadTask: DownloadComic, currentProgress: Float): Float {
         val groupId = downloadTask.groupId.takeIf { it != 0 } ?: downloadTask.id
         val chapters = downloadComicDao.getByGroupId(groupId)
-        if (chapters.isEmpty()) return currentProgress
-        return chapters.map { chapter ->
-            when {
-                chapter.id == downloadTask.id -> currentProgress
-                chapter.status == DownloadStatus.COMPLETE -> 1f
-                else -> chapter.progress.coerceIn(0f, 1f)
-            }
-        }.average().toFloat().coerceIn(0f, 1f)
+        return groupDownloadProgress(chapters, downloadTask.id, currentProgress)
     }
 
     private suspend fun cancelComicCacheNotificationIfIdle(downloadTask: DownloadComic) {

@@ -199,21 +199,20 @@ class EmbeddedComicDataSource(
                     } catch (_: Exception) {
                         null
                     }
-                    val images = photo?.images()?.takeIf { it.isNotEmpty() }
-                        ?: client.getComicRead(id.toString()).images().orEmpty()
+                    val images = loadEmbeddedImagesWithFallback(
+                        photo = { photo?.images().orEmpty() },
+                        read = { client.getComicRead(id.toString()).images().orEmpty() },
+                    )
                     if (images.isEmpty()) {
                         NetWorkResult.Error("内置 API 未返回图片列表")
                     } else {
                         synchronized(imageCache) { imageCache[id] = images }
-                        NetWorkResult.Success(
-                            ComicPicListResponse(
-                                list = images.map { fixImageUrl(it.getDownloadUrl()) },
-                                __aId = photo?.albumId()?.toIntOrNull() ?: id,
-                                __scrambleId = photo?.scrambleId()?.toIntOrNull()
-                                    ?: images.firstOrNull()?.scrambleId()?.toIntOrNull()
-                                    ?: 0,
-                                __speed = "0",
-                            )
+                        NetWorkResult.Success(buildComicPicListResponse(
+                            id = id,
+                            photoAlbumId = photo?.albumId(),
+                            photoScrambleId = photo?.scrambleId(),
+                            images = images,
+                        )
                         )
                     }
                 }
@@ -448,13 +447,12 @@ class EmbeddedComicDataSource(
 
     private fun getEmbeddedClient() = embeddedClientManager.getClient()
 
-    private fun <T> withEmbeddedClient(block: (io.github.jukomu.jmcomic.core.client.impl.JmApiClient) -> T): T =
+    private suspend fun <T> withEmbeddedClient(
+        block: suspend (io.github.jukomu.jmcomic.core.client.impl.JmApiClient) -> T,
+    ): T =
         block(getEmbeddedClient())
 
-    private fun fixImageUrl(url: String): String {
-        val secondHttps = url.indexOf("https://", 8)
-        return if (secondHttps > 0) url.substring(secondHttps) else url
-    }
+    private fun fixImageUrl(url: String): String = fixEmbeddedImageUrl(url)
 
     private fun buildImageRequest(url: String): Request = Request.Builder()
         .url(url)
@@ -467,4 +465,40 @@ class EmbeddedComicDataSource(
         )
         .header("Referer", "https://18comic.vip")
         .build()
+}
+
+/** Loads photo images first and falls back to the reader endpoint when photo data is unavailable. */
+internal suspend fun loadEmbeddedImagesWithFallback(
+    photo: suspend () -> List<JmImage>,
+    read: suspend () -> List<JmImage>,
+): List<JmImage> {
+    val photoImages = try {
+        photo()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        emptyList()
+    }
+    return photoImages.takeIf { it.isNotEmpty() } ?: read()
+}
+
+internal fun buildComicPicListResponse(
+    id: Int,
+    photoAlbumId: String?,
+    photoScrambleId: String?,
+    images: List<JmImage>,
+): ComicPicListResponse {
+    return ComicPicListResponse(
+        list = images.map { fixEmbeddedImageUrl(it.getDownloadUrl()) },
+        __aId = photoAlbumId?.toIntOrNull() ?: id,
+        __scrambleId = photoScrambleId?.toIntOrNull()
+            ?: images.firstOrNull()?.scrambleId()?.toIntOrNull()
+            ?: 0,
+        __speed = "0",
+    )
+}
+
+internal fun fixEmbeddedImageUrl(url: String): String {
+    val secondHttps = url.indexOf("https://", 8)
+    return if (secondHttps > 0) url.substring(secondHttps) else url
 }

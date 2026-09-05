@@ -10,13 +10,18 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+internal interface BackupTaskScheduler {
+    fun downloadComic(comic: Comic)
+    fun downloadChapters(parentComic: Comic, chapters: List<ComicChapter>)
+}
+
 class DownloadManager(
     private val downloadComicDao: DownloadComicDao,
     private val scope: CoroutineScope,
     private val toastManager: ToastManager,
     private val downloadWorkScheduler: DownloadWorkScheduler,
-) {
-    fun downloadComic(comic: Comic) {
+) : BackupTaskScheduler {
+    override fun downloadComic(comic: Comic) {
         scope.launch(Dispatchers.IO) {
             if (downloadComicDao.getExistingIds(listOf(comic.id)).isNotEmpty()) {
                 toastManager.showAsync("该漫画已在缓存列表中")
@@ -52,7 +57,7 @@ class DownloadManager(
         }
     }
 
-    fun downloadChapters(parentComic: Comic, chapters: List<ComicChapter>) {
+    override fun downloadChapters(parentComic: Comic, chapters: List<ComicChapter>) {
         if (chapters.isEmpty()) return
         scope.launch(Dispatchers.IO) {
             val existingIds = downloadComicDao.getExistingIds(chapters.map { it.id }).toSet()

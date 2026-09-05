@@ -245,7 +245,11 @@ private class DohResolver(
 
         // IPv6 is opt-in. When disabled, do not even query AAAA records so a device
         // without IPv6 routing cannot fail before trying the usable IPv4 address.
-        val types = if (preferIpv6) listOf(TYPE_AAAA, TYPE_A) else listOf(TYPE_A)
+        val types = if (preferIpv6) {
+            listOf(DohPacketParser.TYPE_AAAA, DohPacketParser.TYPE_A)
+        } else {
+            listOf(DohPacketParser.TYPE_A)
+        }
         val records = types.flatMap { type -> resolve(hostname, type) }
             .distinctBy { it.address.hostAddress }
         if (records.isEmpty()) {
@@ -265,7 +269,7 @@ private class DohResolver(
         client.connectionPool.evictAll()
     }
 
-    private fun resolve(hostname: String, type: Int): List<DnsRecord> {
+    private fun resolve(hostname: String, type: Int): List<DohDnsRecord> {
         val query = createQuery(hostname, type)
         val encoded = Base64.encodeToString(query, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
         val endpoint = server.endpointUrl.toHttpUrlOrNull()
@@ -281,7 +285,7 @@ private class DohResolver(
                 throw UnknownHostException("DoH 服务返回 HTTP ${response.code}")
             }
             val bytes = response.body?.bytes() ?: throw UnknownHostException("DoH 服务返回空数据")
-            return parseResponse(bytes, type)
+            return DohPacketParser.parse(bytes, type)
         }
     }
 
@@ -305,65 +309,8 @@ private class DohResolver(
             }
             write(0)
             writeU16(type)
-            writeU16(CLASS_IN)
+            writeU16(DohPacketParser.CLASS_IN)
         }.toByteArray()
-    }
-
-    private fun parseResponse(bytes: ByteArray, requestedType: Int): List<DnsRecord> {
-        if (bytes.size < DNS_HEADER_SIZE) throw UnknownHostException("DoH 响应不完整")
-        val flags = bytes.u16(2)
-        if ((flags and 0x000f) != 0) throw UnknownHostException("DoH 解析失败，rcode=${flags and 0x000f}")
-        val questionCount = bytes.u16(4)
-        val answerCount = bytes.u16(6)
-        var offset = DNS_HEADER_SIZE
-        repeat(questionCount) {
-            offset = bytes.skipName(offset)
-            offset += 4
-            if (offset > bytes.size) throw UnknownHostException("DoH 问题段无效")
-        }
-        val records = mutableListOf<DnsRecord>()
-        repeat(answerCount) {
-            offset = bytes.skipName(offset)
-            if (offset + 10 > bytes.size) throw UnknownHostException("DoH 回答段无效")
-            val type = bytes.u16(offset)
-            val recordClass = bytes.u16(offset + 2)
-            val ttl = bytes.u32(offset + 4)
-            val length = bytes.u16(offset + 8)
-            offset += 10
-            if (offset + length > bytes.size) throw UnknownHostException("DoH 地址数据无效")
-            if (recordClass == CLASS_IN && type == requestedType &&
-                ((type == TYPE_A && length == 4) || (type == TYPE_AAAA && length == 16))
-            ) {
-                records += DnsRecord(InetAddress.getByAddress(bytes.copyOfRange(offset, offset + length)), ttl)
-            }
-            offset += length
-        }
-        return records
-    }
-
-    private data class DnsRecord(val address: InetAddress, val ttlSeconds: Long)
-
-    private fun ByteArray.u16(offset: Int): Int =
-        ((this[offset].toInt() and 0xff) shl 8) or (this[offset + 1].toInt() and 0xff)
-
-    private fun ByteArray.u32(offset: Int): Long =
-        ((this[offset].toLong() and 0xff) shl 24) or
-            ((this[offset + 1].toLong() and 0xff) shl 16) or
-            ((this[offset + 2].toLong() and 0xff) shl 8) or
-            (this[offset + 3].toLong() and 0xff)
-
-    private fun ByteArray.skipName(start: Int): Int {
-        var offset = start
-        while (offset < size) {
-            val sizeByte = this[offset].toInt() and 0xff
-            when {
-                sizeByte == 0 -> return offset + 1
-                sizeByte and 0xc0 == 0xc0 -> return offset + 2
-                sizeByte and 0xc0 != 0 || offset + sizeByte >= size -> throw UnknownHostException("DoH 域名压缩格式无效")
-                else -> offset += sizeByte + 1
-            }
-        }
-        throw UnknownHostException("DoH 域名超出响应范围")
     }
 
     private fun ByteArrayOutputStream.writeU16(value: Int) {
@@ -371,12 +318,6 @@ private class DohResolver(
         write(value and 0xff)
     }
 
-    companion object {
-        private const val DNS_HEADER_SIZE = 12
-        private const val CLASS_IN = 1
-        private const val TYPE_A = 1
-        private const val TYPE_AAAA = 28
-    }
 }
 
 private fun com.par9uet.jm.store.DohSettingsState.toDohServer(): DohServer = resolveDohServer(

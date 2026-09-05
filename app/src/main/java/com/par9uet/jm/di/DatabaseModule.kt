@@ -24,8 +24,7 @@ val databaseModule = module {
             AppDatabase::class.java,
             "app_database"
         )
-            .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
-            .addMigrations(MIGRATION_4_5)
+            .addMigrations(*appDatabaseMigrations.toTypedArray())
             .fallbackToDestructiveMigration(false)
             .build()
     }
@@ -49,23 +48,24 @@ val databaseModule = module {
     }
 }
 
-private val MIGRATION_2_3 = object : Migration(2, 3) {
-    override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("ALTER TABLE download_comics ADD COLUMN groupId INTEGER NOT NULL DEFAULT 0")
-        db.execSQL("ALTER TABLE download_comics ADD COLUMN groupName TEXT NOT NULL DEFAULT ''")
-        db.execSQL("ALTER TABLE download_comics ADD COLUMN chapterName TEXT NOT NULL DEFAULT ''")
-    }
-}
+internal val appDatabaseMigrations = listOf<Migration>(
+    object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE download_comics ADD COLUMN groupId INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE download_comics ADD COLUMN groupName TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE download_comics ADD COLUMN chapterName TEXT NOT NULL DEFAULT ''")
+        }
+    },
 
-private val MIGRATION_3_4 = object : Migration(3, 4) {
-    override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL("ALTER TABLE download_comics ADD COLUMN tagList TEXT NOT NULL DEFAULT '[]'")
-    }
-}
+    object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE download_comics ADD COLUMN tagList TEXT NOT NULL DEFAULT '[]'")
+        }
+    },
 
-private val MIGRATION_4_5 = object : Migration(4, 5) {
-    override fun migrate(db: SupportSQLiteDatabase) {
-        db.execSQL(
+    object : Migration(4, 5) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL(
             """
             CREATE TABLE IF NOT EXISTS favorite_comics (
                 accountId INTEGER NOT NULL,
@@ -158,5 +158,6 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
             )
             """.trimIndent()
         )
-    }
-}
+        }
+    },
+)
