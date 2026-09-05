@@ -1,19 +1,22 @@
 package com.par9uet.jm.ui.components
 
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.ColorPainter
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Test
 
 class CoverImageDisplayGateTest {
     @Test
-    fun deferredSuccessIsReleasedOnce() {
+    fun deferredPainterIsReleasedOnce() {
         val gate = CoverImageDisplayGate()
+        val painter = ColorPainter(Color.Red)
 
-        assertFalse(gate.consumeDeferredSuccess())
+        assertNull(gate.takeDeferredPainter())
 
-        gate.deferSuccess()
+        gate.deferSuccess(painter)
 
-        assertTrue(gate.consumeDeferredSuccess())
-        assertFalse(gate.consumeDeferredSuccess())
+        assertSame(painter, gate.takeDeferredPainter())
+        assertNull(gate.takeDeferredPainter())
     }
 }
