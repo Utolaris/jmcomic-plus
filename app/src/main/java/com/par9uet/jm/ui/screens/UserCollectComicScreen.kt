@@ -73,6 +73,12 @@ internal fun UserCollectComicScreen(
         initialFirstVisibleItemIndex = savedViewport.firstVisibleItemIndex,
         initialFirstVisibleItemScrollOffset = savedViewport.firstVisibleItemScrollOffset,
     )
+    var isGridScrolling by remember { mutableStateOf(false) }
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { isGridScrolling = it }
+    }
     val favoriteItemCount = collectComicLazyPagingItems.itemCount
     val favoriteAppendComplete = collectComicLazyPagingItems.loadState.append.let {
         it is LoadState.NotLoading && it.endOfPaginationReached
@@ -168,6 +174,7 @@ internal fun UserCollectComicScreen(
                 comic = comic,
                 editing = collectEditState.editing,
                 selected = comic.id in collectEditState.selectedComicIds,
+                isScrolling = isGridScrolling,
                 onLongClick = {
                     favoritesViewModel.onIntent(FavoritesIntent.ComicLongPressed(comic.id))
                 },

@@ -33,6 +33,7 @@ fun Comic(
     modifier: Modifier = Modifier,
     editing: Boolean = false,
     selected: Boolean = false,
+    isScrolling: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onToggleSelected: (() -> Unit)? = null,
     comicDetailViewModel: ComicDetailViewModel = koinActivityViewModel()
@@ -70,7 +71,7 @@ fun Comic(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Box {
-                ComicCoverImage(comic)
+                ComicCoverImage(comic = comic, isScrolling = isScrolling)
                 if (editing && selected) {
                     Checkbox(
                         checked = true,

@@ -49,6 +49,7 @@ fun ComicCoverImage(
     comic: Comic,
     modifier: Modifier = Modifier.fillMaxWidth(),
     showIdChip: Boolean = false,
+    isScrolling: Boolean = false,
     remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
     toastManager: ToastManager = getKoin().get(),
@@ -68,6 +69,7 @@ fun ComicCoverImage(
             imageLoader = imageLoader,
             contentDescription = "${comic.name}的封面",
             contentScale = ContentScale.Crop,
+            isScrolling = isScrolling,
             modifier = Modifier
                 .aspectRatio(3f / 4f)
                 .fillMaxWidth()

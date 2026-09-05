@@ -41,6 +41,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -63,6 +64,7 @@ import com.par9uet.jm.ui.interaction.PullDownActionState
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.ui.viewModel.ComicViewModel
 import com.par9uet.jm.contentfilter.filterBlockedTags
+import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 
@@ -178,6 +180,12 @@ internal fun HomeScreen(
     val miscSettings by localSettingManager.misc.collectAsState()
     val pullRevealPadding = 36.dp * pullDownState.progress
     val gridState = rememberLazyGridState()
+    var isGridScrolling by remember { mutableStateOf(false) }
+    LaunchedEffect(gridState) {
+        snapshotFlow { gridState.isScrollInProgress }
+            .distinctUntilChanged()
+            .collect { isGridScrolling = it }
+    }
     val pullDownModifier = Modifier.pullDownToAction(
         state = pullDownState,
         isAtTop = { !gridState.canScrollBackward },
@@ -254,7 +262,7 @@ internal fun HomeScreen(
                 }
             }
             items(items = comicList, key = { it.id }) {
-                Comic(it)
+                Comic(comic = it, isScrolling = isGridScrolling)
             }
             if (comicList.isEmpty() && !(selectedState?.isLoading == true) &&
                 !(selectedState?.isError == true)

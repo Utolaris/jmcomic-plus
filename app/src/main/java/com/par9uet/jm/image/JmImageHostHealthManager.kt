@@ -54,8 +54,8 @@ internal interface JmImageHostHealth {
     /** TTFB 级延迟样本（响应头到达耗时），进入延迟 EWMA 参与 Reader 排序。 */
     fun recordLatencySample(rawHost: String?, ttfbMillis: Long)
 
-    /** 资源加载成功（如封面）：清除失败/冷却状态，但不注入延迟样本。 */
-    fun recordHealthy(rawHost: String?)
+    /** 资源加载成功（如封面）：清除失败/冷却状态，但不注入延迟样本。返回是否发生恢复。 */
+    fun recordHealthy(rawHost: String?): Boolean
 
     /** 主机/网络级失败：标记失败时间，进入冷却。 */
     fun recordHostFailure(rawHost: String?)
@@ -145,12 +145,17 @@ internal class JmImageHostHealthStore(
     }
 
     @Synchronized
-    override fun recordHealthy(rawHost: String?) {
-        val host = normalizeJmImageHost(rawHost) ?: return
-        if (host !in allHostsLocked()) return
+    override fun recordHealthy(rawHost: String?): Boolean {
+        val host = normalizeJmImageHost(rawHost) ?: return false
+        if (host !in allHostsLocked()) return false
+        val state = hostStates.getOrPut(host) { HostState() }
+        val wasCooling = state.failedAtMillis != 0L
+        if (!wasCooling && _preferredHost.value != null) return false
         // 只清除失败/冷却状态；保留既有延迟测量，不注入伪延迟样本
-        hostStates.getOrPut(host) { HostState() }.failedAtMillis = 0L
+        state.failedAtMillis = 0L
+        val previousPreferredHost = _preferredHost.value
         _preferredHost.value = fastestHealthyHostLocked()
+        return wasCooling || previousPreferredHost != _preferredHost.value
     }
 
     @Synchronized
@@ -319,9 +324,10 @@ internal class JmImageHostHealthManager(
         schedulePersistence()
     }
 
-    override fun recordHealthy(rawHost: String?) {
-        store.recordHealthy(rawHost)
-        schedulePersistence()
+    override fun recordHealthy(rawHost: String?): Boolean {
+        val changed = store.recordHealthy(rawHost)
+        if (changed) schedulePersistence()
+        return changed
     }
 
     override fun recordHostFailure(rawHost: String?) {

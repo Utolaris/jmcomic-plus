@@ -1,6 +1,7 @@
 package com.par9uet.jm.image
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -135,7 +136,8 @@ class JmImageHostHealthStoreTest {
         store.recordHostFailure("a.example")
         assertEquals(setOf("a.example"), store.snapshot().failedHosts)
 
-        store.recordHealthy("a.example")
+        assertTrue(store.recordHealthy("a.example"))
+        assertFalse(store.recordHealthy("a.example"))
 
         val snapshot = store.snapshot()
         assertTrue(snapshot.failedHosts.isEmpty())
@@ -158,8 +160,23 @@ class JmImageHostHealthStoreTest {
     fun recordHealthyDoesNotInjectLatencyForUnmeasuredHost() {
         val store = store()
 
-        store.recordHealthy("a.example")
+        assertFalse(store.recordHealthy("a.example"))
 
         assertNull(store.snapshot().latencyMillis["a.example"])
+    }
+
+    @Test
+    fun recordHealthyCanRestoreMissingPreferredHostFromSavedLatency() {
+        val store = store()
+        store.restore(
+            JmImageHostPersistence(
+                preferredHost = null,
+                latencies = mapOf("a.example" to JmImageHostLatency(50L, 1L)),
+            )
+        )
+
+        assertTrue(store.recordHealthy("a.example"))
+        assertEquals("a.example", store.preferredHost.value)
+        assertFalse(store.recordHealthy("a.example"))
     }
 }
