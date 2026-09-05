@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -52,6 +53,26 @@ import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class FavoritesViewModelTest {
+    @Test
+    fun `sync progress and completion preserve the paging generation and viewport`() = runTest(scheduler) {
+        val environment = environment()
+        var generations = 0
+        backgroundScope.launch {
+            environment.viewModel.collectComicPager.collect { generations++ }
+        }
+        runCurrent()
+        val viewport = environment.viewModel.uiState.value.viewport
+        environment.sync.publish(FavoriteSyncUiState(isSyncing = true))
+        runCurrent()
+        environment.sync.publish(FavoriteSyncUiState(isSyncing = true, completed = 20, total = 20))
+        runCurrent()
+        environment.sync.publish(FavoriteSyncUiState())
+        runCurrent()
+
+        assertEquals(1, generations)
+        assertEquals(viewport, environment.viewModel.uiState.value.viewport)
+    }
+
     @Test
     fun `sync failure opens dialog and dismissal survives unrelated UI changes`() = runTest(scheduler) {
         val environment = environment()

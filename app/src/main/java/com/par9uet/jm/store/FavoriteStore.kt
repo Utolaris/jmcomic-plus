@@ -166,15 +166,18 @@ class FavoriteStore(
                 val orderChanged = updateGlobalOrder && local != null && local.lastFavoriteOrder != order
                 val shouldUpdateComic = lightweightChanged || orderChanged
                 if (shouldUpdateComic) {
-                    comicDao.upsert(
-                        item.toComicEntity(
-                            accountId = accountId,
-                            order = order,
-                            syncedAt = syncedAt,
-                            existing = local,
-                            keepFullMetadata = keepFullMetadata,
-                        )
+                    val nextComic = item.toComicEntity(
+                        accountId = accountId,
+                        order = order,
+                        syncedAt = syncedAt,
+                        existing = local,
+                        keepFullMetadata = keepFullMetadata,
                     )
+                    // List metadata may differ from the retained detail metadata. Only the
+                    // merged row, not that remote difference, can justify invalidating Paging.
+                    if (local == null || !local.sameSnapshotContent(nextComic)) {
+                        comicDao.upsert(nextComic)
+                    }
                 }
                 if (!keepFullMetadata && lightweightChanged) {
                     val nextMetadata = item.toIncompleteMetadata(accountId, syncedAt)

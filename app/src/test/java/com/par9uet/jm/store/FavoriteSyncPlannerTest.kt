@@ -25,7 +25,7 @@ class FavoriteSyncPlannerTest {
         assertEquals(1, delta.removed)
         assertEquals(1, delta.changed)
         assertEquals(1, delta.unchanged)
-        assertEquals(listOf(4), delta.metadataIds)
+        assertEquals(listOf(2, 4), delta.metadataIds)
     }
 
     @Test

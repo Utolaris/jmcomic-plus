@@ -20,9 +20,10 @@ internal fun FavoriteRemoteItem.toComicEntity(
     return FavoriteComicEntity(
         accountId = accountId,
         albumId = albumId,
-        title = title,
+        title = existingMetadata?.title ?: title,
         authorList = authors,
-        description = description,
+        // Keep detail text while a possibly shorter/incomplete list response is reconciled.
+        description = existingMetadata?.description ?: description,
         image = image,
         tagList = tags,
         roleList = roles,
@@ -124,7 +125,9 @@ internal fun FavoriteComicEntity.toComic() = Comic(
 )
 
 internal fun FavoriteRemoteItem.invalidatesMetadata(existing: FavoriteComicEntity): Boolean =
-    (authors.isNotEmpty() && !existing.authorList.normalized().containsAll(authors.normalized())) ||
+    (title.isNotBlank() && title != existing.title) ||
+        (description.isNotBlank() && description != existing.description) ||
+        (authors.isNotEmpty() && !existing.authorList.normalized().containsAll(authors.normalized())) ||
         (tags.isNotEmpty() && !existing.tagList.normalized().containsAll(tags.normalized())) ||
         categoryId != existing.categoryId ||
         categoryTitle != existing.categoryTitle ||
@@ -133,7 +136,7 @@ internal fun FavoriteRemoteItem.invalidatesMetadata(existing: FavoriteComicEntit
 
 internal fun FavoriteComicEntity.matchesLightweight(item: FavoriteRemoteItem): Boolean =
     title == item.title &&
-        description == item.description &&
+        ((metadataComplete && item.description.isBlank()) || description == item.description) &&
         image == item.image &&
         categoryId == item.categoryId &&
         categoryTitle == item.categoryTitle &&
