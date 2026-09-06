@@ -4,6 +4,8 @@ import androidx.room.Room
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.par9uet.jm.database.AppDatabase
+import com.par9uet.jm.download.atom.DownloadFiles
+import com.par9uet.jm.download.molecule.DownloadTaskOperations
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.DownloadWorkScheduler
 import com.par9uet.jm.store.FavoriteStore
@@ -37,6 +39,8 @@ val databaseModule = module {
     single { get<AppDatabase>().favoriteSyncStateDao() }
     single { FavoriteStore(get(), get(), get(), get(), get(), get(), get()) }
     single<DownloadWorkScheduler> { WorkManagerDownloadWorkScheduler(androidContext()) }
+    single { DownloadFiles() }
+    single { DownloadTaskOperations(get(), get()) }
     single { DownloadManager(get(), get(), get(), get()) }
     viewModel { DownloadViewModel(get(), get()) }
     viewModel { DownloadComicDetailViewModel(get()) }

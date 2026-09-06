@@ -31,6 +31,10 @@ feature/<name>/
 
 - 启动后任务由 `startup/PostStartupCoordinator` 统一排序。
 - 下载业务通过 `DownloadWorkScheduler` 端口提交任务，不直接构造 Worker。
+- `DownloadManager` 是下载任务管理的 L2 兼容入口，持有协程生命周期，按业务结果入队并发送提示；
+  `download/molecule/DownloadTaskOperations` 组合 DAO 与文件操作，处理创建、重试、恢复和重新下载；
+  `download/atom/DownloadFiles` 只清理已有缓存文件。业务层不依赖 Store、Worker 或 UI。
+  排队端口仍由 L2 调用，以保留单篇创建先提示后入队、其他操作先入队后提示的现有顺序。
 - 通用异步状态放在 `core/model`，状态存储层不再依赖 UI 包。
 - 收藏分页适配器归属收藏功能，收藏功能不再反向依赖通用 UI 包。
 - PDF 导出归属 `download/export`，通用工具包不再反向依赖下载缓存。

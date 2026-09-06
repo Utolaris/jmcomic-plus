@@ -13,6 +13,17 @@ class ArchitectureBoundaryTest {
             addAll(forbiddenImports("favorites", listOf("com.par9uet.jm.ui.")))
             addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.")))
             addAll(forbiddenImports("update", listOf("com.par9uet.jm.ui.")))
+            addAll(forbiddenImports("store/DownloadManager.kt", listOf(
+                "com.par9uet.jm.database.", "com.par9uet.jm.download.atom.", "java.io.",
+            )))
+            addAll(forbiddenImports("download/molecule", listOf(
+                "com.par9uet.jm.store.", "com.par9uet.jm.ui.", "com.par9uet.jm.worker.",
+                "java.io.", "androidx.work.",
+            )))
+            addAll(forbiddenImports("download/atom", listOf(
+                "com.par9uet.jm.download.molecule.", "com.par9uet.jm.store.",
+                "com.par9uet.jm.ui.", "com.par9uet.jm.worker.", "com.par9uet.jm.database.",
+            )))
             listOf("AboutScreen.kt", "CheckUpdateScreen.kt", "BackupRestoreScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
                     "okhttp3.", "com.google.gson.", "java.io.File", "androidx.core.content.FileProvider",
