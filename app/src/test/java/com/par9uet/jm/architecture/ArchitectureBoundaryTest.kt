@@ -18,11 +18,19 @@ class ArchitectureBoundaryTest {
             )))
             addAll(forbiddenImports("download/molecule", listOf(
                 "com.par9uet.jm.store.", "com.par9uet.jm.ui.", "com.par9uet.jm.worker.",
+                "com.par9uet.jm.download.coordinator.", "com.par9uet.jm.reader.",
                 "java.io.", "androidx.work.",
             )))
             addAll(forbiddenImports("download/atom", listOf(
                 "com.par9uet.jm.download.molecule.", "com.par9uet.jm.store.",
-                "com.par9uet.jm.ui.", "com.par9uet.jm.worker.", "com.par9uet.jm.database.",
+                "com.par9uet.jm.download.coordinator.", "com.par9uet.jm.reader.",
+                "com.par9uet.jm.ui.", "com.par9uet.jm.worker.", "com.par9uet.jm.database.dao.",
+                "com.par9uet.jm.database.AppDatabase",
+            )))
+            addAll(forbiddenImports("worker/DownloadComicWorker.kt", listOf(
+                "com.par9uet.jm.database.", "com.par9uet.jm.repository.", "com.par9uet.jm.reader.",
+                "com.par9uet.jm.store.", "com.par9uet.jm.download.molecule.",
+                "com.par9uet.jm.download.atom.", "coil.", "java.io.",
             )))
             listOf("AboutScreen.kt", "CheckUpdateScreen.kt", "BackupRestoreScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(

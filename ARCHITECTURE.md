@@ -35,6 +35,13 @@ feature/<name>/
   `download/molecule/DownloadTaskOperations` 组合 DAO 与文件操作，处理创建、重试、恢复和重新下载；
   `download/atom/DownloadFiles` 只清理已有缓存文件。业务层不依赖 Store、Worker 或 UI。
   排队端口仍由 L2 调用，以保留单篇创建先提示后入队、其他操作先入队后提示的现有顺序。
+- `DownloadComicWorker` 只解析 WorkManager 参数并映射结果；`download/coordinator/DownloadComicCoordinator`
+  负责下载顺序、进度、重试和取消，`DownloadFeedback` 适配通知、速度统计与批量提示；
+  `download/molecule/DownloadContentOperations` 组合封面回退、逐页下载和完成提交。
+  `download/atom` 封装 Coil 请求与缓存文件读写，沿用原有缓存目录和配置格式。
+  L2 直接操作下载 DAO，以集中维护进度和失败分支；L3 不反向依赖 Worker 或协调器。
+  已有 `ReaderImagePipeline` 通过组合根注入 `DownloadPageDecoder` 窄端口，复用原解码链路；
+  这是已有阅读器协调器的适配边界，下载 L3/L4 不直接依赖阅读器包。
 - 通用异步状态放在 `core/model`，状态存储层不再依赖 UI 包。
 - 收藏分页适配器归属收藏功能，收藏功能不再反向依赖通用 UI 包。
 - PDF 导出归属 `download/export`，通用工具包不再反向依赖下载缓存。
@@ -70,14 +77,14 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 
 - 更新和备份恢复的跨边界流程已移出 Screen；剩余较长的界面文件主要是展示组件，不再按行数继续机械拆分。
 - `FavoriteStore` 的事务边界保持集中，以避免账号快照替换及缓存索引写入被拆散；纯计算和映射可独立验证。
-- `DownloadComicWorker` 仍同时决定下载流程并处理多个底层细节。
+- 下载任务入口、执行协调、内容下载及文件适配已分离；取消仍直接传播，重试次数和终态提交顺序保持不变。
 - `ReaderImagePipeline` 已完成首轮拆分；剩余复杂度集中在可独立测试的来源策略和缓存生命周期，不再堆在公开入口中。
 - `LocalSettingScreen` 等纯展示文件虽然较长，但当前主要问题是可读性，不是跨层耦合，因此不作为首批拆分目标。
 - `data`、`repository`、`retrofit`、`store` 之间仍有历史双向依赖。应在迁移具体功能时收拢模型和端口，不能用一次性改包名掩盖依赖环。
 
 ## 当前例外与迁移顺序
 
-1. `DownloadComicWorker` 仍同时承担入口和完整下载流程，应把封面、分页下载、落盘及状态提交移入 L3。
+1. 下载协调器直接使用 DAO 和反馈适配器；进度与同组任务状态决定通知和终态分支，避免把这些判断拆散。
 2. 更新协调器直接使用下载及安装端口，备份协调器直接使用无副作用的校验/提取能力；这些结果直接决定流程分支，避免为它们添加仅转发调用的用例层。
 
 每次只迁移一个可独立验证的边界，并为 L2 分支、L3 组合和 L4 契约分别补测试。

@@ -1,5 +1,10 @@
 package com.par9uet.jm.worker
 
+import com.par9uet.jm.download.coordinator.DOWNLOAD_MAX_ATTEMPTS
+import com.par9uet.jm.download.coordinator.shouldRetryDownload
+import com.par9uet.jm.download.coordinator.advancedDownloadProgress
+import com.par9uet.jm.download.coordinator.groupDownloadProgress
+
 import com.par9uet.jm.coil.CoverImageHostResolver
 import com.par9uet.jm.coil.jmCoverCacheKey
 import com.par9uet.jm.database.model.DownloadComic

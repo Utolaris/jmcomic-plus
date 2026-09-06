@@ -1,4 +1,4 @@
-package com.par9uet.jm.worker
+package com.par9uet.jm.download.coordinator
 
 import com.par9uet.jm.database.model.DownloadComic
 import com.par9uet.jm.database.model.DownloadStatus

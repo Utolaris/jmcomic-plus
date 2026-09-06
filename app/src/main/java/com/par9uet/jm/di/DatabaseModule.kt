@@ -5,7 +5,18 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.download.atom.DownloadFiles
+import com.par9uet.jm.download.atom.DownloadContentFiles
+import com.par9uet.jm.download.atom.DownloadContentStorage
+import com.par9uet.jm.download.atom.DownloadCoverImages
+import com.par9uet.jm.download.atom.CoilDownloadCoverImages
+import com.par9uet.jm.download.atom.DownloadPageDecoder
+import com.par9uet.jm.download.coordinator.DownloadComicCoordinator
+import com.par9uet.jm.download.coordinator.DownloadFeedback
+import com.par9uet.jm.download.coordinator.DeviceDownloadFeedback
+import com.par9uet.jm.download.molecule.DownloadContentOperations
+import com.par9uet.jm.download.molecule.DeviceDownloadContentOperations
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
+import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.DownloadWorkScheduler
 import com.par9uet.jm.store.FavoriteStore
@@ -42,12 +53,23 @@ val databaseModule = module {
     single { DownloadFiles() }
     single { DownloadTaskOperations(get(), get()) }
     single { DownloadManager(get(), get(), get(), get()) }
+    single<DownloadContentStorage> { DownloadContentFiles(androidContext()) }
+    single<DownloadCoverImages> { CoilDownloadCoverImages(androidContext(), get()) }
+    single<DownloadPageDecoder> {
+        val pipeline = get<ReaderImagePipeline>()
+        DownloadPageDecoder { image -> pipeline.loadForDownload(image.toReaderPage()).bitmap }
+    }
+    single<DownloadContentOperations> {
+        DeviceDownloadContentOperations(get(), get(), get(), get(), get(), get())
+    }
+    single<DownloadFeedback> { DeviceDownloadFeedback(androidContext(), get(), get()) }
+    single { DownloadComicCoordinator(get(), get(), get(), get()) }
     viewModel { DownloadViewModel(get(), get()) }
     viewModel { DownloadComicDetailViewModel(get()) }
 
     worker {
         DownloadComicWorker(
-            get(), get(), get(), get(), get(), get(), get(), get(), get(), get(),
+            get(), get(), get(),
         )
     }
 }

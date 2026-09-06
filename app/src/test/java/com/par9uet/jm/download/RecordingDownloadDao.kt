@@ -21,7 +21,10 @@ internal class RecordingDownloadDao : DownloadComicDao {
     override suspend fun getCompleteByGroupId(groupId: Int): List<DownloadComic> = error("Unexpected DAO call")
     override suspend fun getExistingIds(ids: List<Int>): List<Int> = ids.filter { it in tasks }
     override fun isExist(comicId: Int): Flow<Boolean> = error("Unexpected DAO call")
-    override suspend fun updateCover(updateComicCover: UpdateComicCover): Unit = error("Unexpected DAO call")
+    override suspend fun updateCover(updateComicCover: UpdateComicCover) {
+        val task = tasks.getValue(updateComicCover.id)
+        tasks[task.id] = task.copy(coverPath = updateComicCover.coverPath)
+    }
     override suspend fun updateStatus(updateComicStatus: UpdateComicStatus) {
         val task = tasks.getValue(updateComicStatus.id)
         tasks[task.id] = task.copy(status = updateComicStatus.status)
@@ -30,7 +33,10 @@ internal class RecordingDownloadDao : DownloadComicDao {
         val task = tasks.getValue(updateComicProgress.id)
         tasks[task.id] = task.copy(progress = updateComicProgress.progress)
     }
-    override suspend fun updateZipPath(updateComicZipPath: UpdateComicZipPath): Unit = error("Unexpected DAO call")
+    override suspend fun updateZipPath(updateComicZipPath: UpdateComicZipPath) {
+        val task = tasks.getValue(updateComicZipPath.id)
+        tasks[task.id] = task.copy(zipPath = updateComicZipPath.zipPath)
+    }
     override suspend fun insert(task: DownloadComic) {
         failure?.let { throw it }
         tasks[task.id] = task
