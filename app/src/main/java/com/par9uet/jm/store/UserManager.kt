@@ -6,6 +6,7 @@ import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.retrofit.model.NetworkErrorKind
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.UserStorage
@@ -129,6 +130,47 @@ class UserManager(
             sessionGeneration.incrementAndGet()
             clearIdentityWhileLocked()
             sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
+        }
+    }
+
+    /** Refresh cookies for a rejected session without changing identity or invalidating Favorites. */
+    suspend fun recoverExpiredSession(accountId: Int, generation: Long): NetWorkResult<Unit>? {
+        val snapshot = loginMutex.withLock {
+            if (!isCurrentSession(accountId, generation) || _userState.value.isLoading) {
+                return@withLock null
+            }
+            val user = _userState.value.data?.takeIf {
+                it.username.isNotBlank() && it.password.isNotEmpty()
+            } ?: return@withLock null
+            SessionSnapshot(generation, user)
+        } ?: return null
+
+        // Do not hold either session lock across the isolated login request. Logout and manual
+        // account changes must remain possible even when the SDK call cannot be cancelled.
+        val result = userRepository.verifyLogin(snapshot.user.username, snapshot.user.password)
+        coroutineContext.ensureActive()
+        return withSessionTransition {
+            if (!isCurrentSession(snapshot)) return@withSessionTransition null
+            when (result) {
+                is NetWorkResult.Error -> result.copy(
+                    kind = when (result.authFailure) {
+                        AuthFailure.InvalidCredentials -> NetworkErrorKind.Authentication
+                        AuthFailure.TemporaryFailure -> NetworkErrorKind.Network
+                        else -> result.kind
+                    },
+                )
+                is NetWorkResult.Success -> {
+                    if (result.data.loginResponse.uid != snapshot.user.id) {
+                        return@withSessionTransition NetWorkResult.Error(
+                            "恢复的登录账号不一致，请重新登录",
+                            kind = NetworkErrorKind.Authentication,
+                        )
+                    }
+                    userRepository.activateVerifiedSession(result.data)
+                    sessionReadinessHolder.set(SessionReadiness.Authenticated)
+                    NetWorkResult.Success(Unit)
+                }
+            }
         }
     }
 

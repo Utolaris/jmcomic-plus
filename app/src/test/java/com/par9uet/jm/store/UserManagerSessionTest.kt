@@ -23,6 +23,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -46,6 +47,88 @@ import java.util.concurrent.TimeUnit
  * 陈旧验证结果不能覆盖更新的登录/登出，临时失败保留身份，InvalidCredentials 才清除。
  */
 class UserManagerSessionTest {
+    @Test
+    fun expiredSessionRecoveryCannotRestoreLoggedOutAccount() = runBlocking {
+        val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+        val repository = GateUserRepository(cookies)
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer())
+        val snapshot = manager.currentSessionSnapshot()
+        val recovery = async { manager.recoverExpiredSession(snapshot.accountId, snapshot.generation) }
+        repository.verifyStarted.await()
+        manager.clearUser()
+        repository.completeVerify(NetWorkResult.Success(CandidateSession(
+            loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
+        )))
+        assertNull(recovery.await())
+        assertTrue(repository.activated.isEmpty())
+        assertTrue(cookies.get().isEmpty())
+        assertEquals(0, manager.currentSessionSnapshot().accountId)
+    }
+
+    @Test
+    fun expiredSessionRecoveryRejectsWrongAccountAndPreservesLocalIdentityOnNetworkFailure() = runBlocking {
+        val results = listOf(
+            NetWorkResult.Success(CandidateSession(loginResponse(2, "accountB"), listOf(avsCookie("B")))),
+            NetWorkResult.Error("offline", authFailure = AuthFailure.TemporaryFailure),
+            NetWorkResult.Error("invalid", authFailure = AuthFailure.InvalidCredentials),
+        )
+        for (result in results) {
+            val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+            val repository = GateUserRepository(cookies)
+            repository.completeVerify(result)
+            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer())
+            val snapshot = manager.currentSessionSnapshot()
+            val recovered = manager.recoverExpiredSession(snapshot.accountId, snapshot.generation)
+            assertTrue(recovered is NetWorkResult.Error)
+            assertEquals(
+                if (result is NetWorkResult.Error && result.authFailure == AuthFailure.TemporaryFailure)
+                    com.par9uet.jm.retrofit.model.NetworkErrorKind.Network
+                else com.par9uet.jm.retrofit.model.NetworkErrorKind.Authentication,
+                (recovered as NetWorkResult.Error).kind,
+            )
+            assertTrue(repository.activated.isEmpty())
+            assertEquals("expired", cookies.get().single().value)
+            assertEquals(snapshot, manager.currentSessionSnapshot())
+        }
+    }
+
+
+    @Test
+    fun expiredFavoritesSessionRecoversWithoutRestartOrIdentityChange() = runBlocking {
+        val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+        val repository = GateUserRepository(cookies)
+        repository.completeVerify(NetWorkResult.Success(CandidateSession(
+            loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
+        )))
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer())
+        val snapshot = manager.currentSessionSnapshot()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
+        var calls = 0
+        try {
+            val controller = com.par9uet.jm.favorites.sync.FavoriteSyncController(
+                com.par9uet.jm.favorites.data.UserManagerFavoriteSession(manager),
+                { _, _, _, _ ->
+                    calls++
+                    if (cookies.get().single().value == "expired") {
+                        NetWorkResult.Error("登录会话已失效", kind = com.par9uet.jm.retrofit.model.NetworkErrorKind.Authentication)
+                    } else {
+                        NetWorkResult.Success(FavoriteSyncReport(0, 0, 0, 0, 0))
+                    }
+                },
+                scope,
+            )
+            controller.request(com.par9uet.jm.favorites.sync.FavoriteSyncRequestKind.MANUAL)
+            withTimeout(2_000) {
+                controller.state.first { !it.isSyncing }
+            }
+            assertNull(controller.state.value.errorMessage)
+            assertEquals(2, calls)
+            assertEquals("renewed", cookies.get().single().value)
+            assertEquals(snapshot, manager.currentSessionSnapshot())
+        } finally {
+            scope.coroutineContext[kotlinx.coroutines.Job]!!.cancel()
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test

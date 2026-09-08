@@ -1,6 +1,7 @@
 package com.par9uet.jm.favorites.data
 
 import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.retrofit.model.NetWorkResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -21,6 +22,9 @@ interface FavoriteSession {
 
     fun isCurrent(snapshot: FavoriteSessionSnapshot): Boolean
 
+    /** Null means the snapshot cannot be renewed; never switches the active account. */
+    suspend fun recoverExpiredSession(snapshot: FavoriteSessionSnapshot): NetWorkResult<Unit>? = null
+
     suspend fun <T> withCurrentSession(
         snapshot: FavoriteSessionSnapshot,
         block: suspend () -> T,
@@ -40,6 +44,9 @@ interface FavoriteSession {
 class UserManagerFavoriteSession(
     private val userManager: UserManager,
 ) : FavoriteSession {
+    override suspend fun recoverExpiredSession(snapshot: FavoriteSessionSnapshot): NetWorkResult<Unit>? =
+        userManager.recoverExpiredSession(snapshot.accountId, snapshot.generation)
+
     override val accountIdFlow: Flow<Int> = userManager.userState.map { it.data?.id ?: 0 }
     override val sessionFlow: Flow<FavoriteSessionSnapshot> = userManager.sessionState.map {
         FavoriteSessionSnapshot(it.accountId, it.generation)

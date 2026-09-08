@@ -26,6 +26,82 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class FavoriteSyncControllerTest {
     @Test
+    fun `renewal retries auth failure only once and keeps sync active until finished`() = runTest {
+        val session = TestFavoriteSession()
+        val gate = CompletableDeferred<Unit>()
+        var renewals = 0
+        session.recovery = {
+            renewals++
+            gate.await()
+            NetWorkResult.Success(Unit)
+        }
+        val requests = mutableListOf<Request>()
+        val controller = controller(backgroundScope, session, requests, operation = { _, _, _, _ ->
+            NetWorkResult.Error("expired", kind = NetworkErrorKind.Authentication)
+        })
+        controller.request(FavoriteSyncRequestKind.MANUAL, folderId = 3)
+        runCurrent()
+        assertTrue(controller.state.value.isSyncing)
+        assertEquals(null, controller.state.value.errorMessage)
+        controller.request(FavoriteSyncRequestKind.MANUAL)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(1, renewals)
+        assertEquals(listOf(Request(7, 3, false), Request(7, 3, false)), requests)
+        assertFalse(controller.state.value.isSyncing)
+        assertEquals(NetworkErrorKind.Authentication, controller.state.value.errorKind)
+    }
+
+    @Test
+    fun `network errors never trigger renewal and renewal network failure is reported accurately`() = runTest {
+        val session = TestFavoriteSession()
+        var renewals = 0
+        session.recovery = {
+            renewals++
+            NetWorkResult.Error("offline", kind = NetworkErrorKind.Network)
+        }
+        var authFailure = false
+        val requests = mutableListOf<Request>()
+        val controller = controller(backgroundScope, session, requests, operation = { _, _, _, _ ->
+            NetWorkResult.Error("failed", kind = if (authFailure) NetworkErrorKind.Authentication else NetworkErrorKind.Network)
+        })
+        controller.request(FavoriteSyncRequestKind.MANUAL)
+        runCurrent()
+        assertEquals(0, renewals)
+        authFailure = true
+        controller.request(FavoriteSyncRequestKind.MANUAL)
+        runCurrent()
+        assertEquals(1, renewals)
+        assertEquals(2, requests.size)
+        assertEquals(NetworkErrorKind.Network, controller.state.value.errorKind)
+        assertEquals("offline", controller.state.value.errorMessage)
+        assertEquals(7, session.currentAccountId())
+    }
+
+    @Test
+    fun `switching accounts during renewal prevents stale retry and error publication`() = runTest {
+        val session = TestFavoriteSession()
+        val gate = CompletableDeferred<Unit>()
+        session.recovery = {
+            withContext(NonCancellable) { gate.await() }
+            NetWorkResult.Success(Unit)
+        }
+        val requests = mutableListOf<Request>()
+        val controller = controller(backgroundScope, session, requests, operation = { _, _, _, _ ->
+            NetWorkResult.Error("expired", kind = NetworkErrorKind.Authentication)
+        })
+        controller.request(FavoriteSyncRequestKind.MANUAL)
+        runCurrent()
+        session.switchAccount(8)
+        runCurrent()
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(1, requests.size)
+        assertFalse(controller.state.value.isSyncing)
+        assertEquals(null, controller.state.value.errorMessage)
+    }
+
+    @Test
     fun `failure kind reaches UI and a successful retry clears it`() = runTest {
         var shouldFail = true
         val controller = controller(backgroundScope, TestFavoriteSession(), mutableListOf(), operation = { _, _, _, _ ->
