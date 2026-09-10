@@ -4,5 +4,5 @@ import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.launcher.LauncherIdentityApplier
 
 class NoOpLauncherIdentityApplier : LauncherIdentityApplier {
-    override fun apply(disguise: LauncherDisguise) = Unit
+    override fun apply(disguise: LauncherDisguise) = true
 }

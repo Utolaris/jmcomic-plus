@@ -91,8 +91,13 @@ class LocalSettingManager(
 
     fun updateLauncherDisguise(launcherDisguise: String) {
         val disguise = LauncherDisguise.fromId(launcherDisguise)
+        // Switch the alias first: the stored value has to describe the entry that is actually
+        // installed, so a failed switch keeps both the current entry and the current setting.
+        if (!launcherDisguiseApplier.apply(disguise)) {
+            log("桌面图标入口未切换，保留当前入口：${disguise.id}")
+            return
+        }
         updateSetting { it.copy(launcherDisguise = disguise.id) }
-        launcherDisguiseApplier.apply(disguise)
     }
 
     fun dismissNsfwWarning() =
@@ -216,18 +221,26 @@ class LocalSettingManager(
      */
     fun applyLocalSetting(setting: LocalSetting) {
         val previousLauncherDisguise = _localSettingState.value.launcherDisguise
+        val requestedLauncherDisguise = LauncherDisguise.fromId(setting.launcherDisguise)
+        // Never store a disguise whose alias did not switch, otherwise the next launch would
+        // reassert a launcher entry this device never managed to install.
+        val launcherDisguise = if (requestedLauncherDisguise.id == previousLauncherDisguise ||
+            launcherDisguiseApplier.apply(requestedLauncherDisguise)
+        ) {
+            requestedLauncherDisguise.id
+        } else {
+            log("桌面图标入口未切换，保留当前入口：${requestedLauncherDisguise.id}")
+            previousLauncherDisguise
+        }
         updateSetting { current ->
             setting.copy(
+                launcherDisguise = launcherDisguise,
                 appLockEnabled = current.appLockEnabled,
                 appLockPassword = current.appLockPassword,
                 appLockPasswordLength = current.appLockPasswordLength,
                 appLockPattern = current.appLockPattern,
                 appLockUnlockMode = current.appLockUnlockMode,
             )
-        }
-        val newLauncherDisguise = _localSettingState.value.launcherDisguise
-        if (newLauncherDisguise != previousLauncherDisguise) {
-            launcherDisguiseApplier.apply(LauncherDisguise.fromId(newLauncherDisguise))
         }
     }
 

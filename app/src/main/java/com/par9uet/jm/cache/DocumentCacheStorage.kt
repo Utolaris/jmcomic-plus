@@ -97,7 +97,9 @@ fun findExistingComicChapterPath(context: Context, root: String, comic: Download
             }
         }
     } ?: error("无法读取缓存目录")
-    return candidates.firstOrNull { listComicImageEntries(context, it).isNotEmpty() }
+    // Strict listing: a provider that cannot answer must fail the caller, not look like a
+    // chapter directory without images.
+    return candidates.firstOrNull { listComicImageEntriesOrThrow(context, it).isNotEmpty() }
 }
 
 fun getOrCreateCacheFile(
@@ -235,33 +237,45 @@ fun listComicImagePaths(context: Context, directoryPath: String): List<String> =
     listComicImageEntries(context, directoryPath).map(CacheImageEntry::path)
 
 fun listComicImageEntries(context: Context, directoryPath: String): List<CacheImageEntry> {
+    return runCatching { listComicImageEntriesOrThrow(context, directoryPath) }.getOrDefault(emptyList())
+}
+
+/**
+ * Lists the images in a cache directory, failing instead of returning an empty list when the
+ * directory cannot be read. Callers that read "no images" as "nothing saved here" need this,
+ * because a swallowed provider failure would otherwise look like an empty chapter.
+ */
+fun listComicImageEntriesOrThrow(context: Context, directoryPath: String): List<CacheImageEntry> {
     if (!isDocumentCachePath(directoryPath)) {
-        return runCatching {
-            listComicImageFiles(File(directoryPath)).map { CacheImageEntry(it.name, it.absolutePath) }
-        }.getOrDefault(emptyList())
+        val directory = File(directoryPath)
+        if (!directory.isDirectory) return emptyList()
+        val files = directory.listFiles() ?: error("无法读取缓存目录")
+        return files
+            .filter { it.isFile && it.extension.lowercase() in setOf("webp", "jpg", "jpeg", "png") }
+            .sortedWith(compareBy<File> { it.nameWithoutExtension.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it.name })
+            .map { CacheImageEntry(it.name, it.absolutePath) }
     }
-    return runCatching {
-        val parent = Uri.parse(directoryPath)
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
-        val result = mutableListOf<CacheImageEntry>()
-        context.contentResolver.query(
-            children,
-            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-            null, null, null,
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val name = cursor.getString(1)
-                if (name.substringAfterLast('.', "").lowercase() in setOf("webp", "jpg", "jpeg", "png")) {
-                    val uri = DocumentsContract.buildDocumentUriUsingTree(parent, cursor.getString(0)).toString()
-                    result += CacheImageEntry(name, uri)
-                }
+    val parent = Uri.parse(directoryPath)
+    val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
+    val cursor = context.contentResolver.query(
+        children,
+        arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+        null, null, null,
+    ) ?: error("无法读取缓存目录")
+    val result = mutableListOf<CacheImageEntry>()
+    cursor.use {
+        while (it.moveToNext()) {
+            val name = it.getString(1)
+            if (name.substringAfterLast('.', "").lowercase() in setOf("webp", "jpg", "jpeg", "png")) {
+                val uri = DocumentsContract.buildDocumentUriUsingTree(parent, it.getString(0)).toString()
+                result += CacheImageEntry(name, uri)
             }
         }
-        result.sortedWith(
-            compareBy<CacheImageEntry> { it.name.substringBeforeLast('.').toIntOrNull() ?: Int.MAX_VALUE }
-                .thenBy { it.name }
-        )
-    }.getOrDefault(emptyList())
+    }
+    return result.sortedWith(
+        compareBy<CacheImageEntry> { it.name.substringBeforeLast('.').toIntOrNull() ?: Int.MAX_VALUE }
+            .thenBy { it.name }
+    )
 }
 
 fun getCacheParentPath(path: String): String? = runCatching {

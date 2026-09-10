@@ -41,7 +41,7 @@ class BackupRestoreOperationsTest {
             override fun persist(localSetting: LocalSetting) { value = localSetting }
         }
         val settings = LocalSettingManager(persistence, object : LauncherIdentityApplier {
-            override fun apply(disguise: LauncherDisguise) = Unit
+            override fun apply(disguise: LauncherDisguise) = true
         })
         operations = DeviceBackupRestoreOperations(
             context = context,

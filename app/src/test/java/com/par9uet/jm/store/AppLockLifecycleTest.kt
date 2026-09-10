@@ -43,7 +43,7 @@ class AppLockLifecycleTest {
             override fun persist(localSetting: LocalSetting) { persisted += localSetting }
         }
         return LocalSettingManager(persistence, object : LauncherIdentityApplier {
-            override fun apply(disguise: LauncherDisguise) = Unit
+            override fun apply(disguise: LauncherDisguise) = true
         })
     }
 }

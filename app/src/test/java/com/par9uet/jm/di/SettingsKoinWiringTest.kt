@@ -98,7 +98,7 @@ class SettingsKoinWiringTest {
     }
 
     private class LauncherDisguiseApplierFake : LauncherIdentityApplier {
-        override fun apply(disguise: com.par9uet.jm.data.models.LauncherDisguise) = Unit
+        override fun apply(disguise: com.par9uet.jm.data.models.LauncherDisguise) = true
     }
 
     private class InMemoryRemoteConfigStore : com.par9uet.jm.store.RemoteConfigStore {

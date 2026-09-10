@@ -3,7 +3,6 @@ package com.par9uet.jm.cache
 import android.content.Context
 import android.content.ContextWrapper
 import android.graphics.Bitmap
-import android.content.Intent
 import android.provider.DocumentsContract
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -57,7 +56,6 @@ class CacheMigrationWorkerTest {
                 base.getSharedPreferences("$token-$name", mode)
         }
         database = Room.inMemoryDatabaseBuilder(base, AppDatabase::class.java).build()
-        grantProviderAccess()
     }
 
     @After
@@ -359,27 +357,6 @@ class CacheMigrationWorkerTest {
         } finally {
             bitmap.recycle()
         }
-    }
-
-    private fun grantProviderAccess() {
-        val done = java.util.concurrent.CountDownLatch(1)
-        base.sendOrderedBroadcast(
-            Intent().setComponent(
-                android.content.ComponentName(
-                    "jmcomic.debug.test",
-                    TestCacheGrantReceiver::class.java.name,
-                ),
-            ),
-            null,
-            object : android.content.BroadcastReceiver() {
-                override fun onReceive(context: Context, intent: Intent) = done.countDown()
-            },
-            null,
-            0,
-            null,
-            null,
-        )
-        check(done.await(5, java.util.concurrent.TimeUnit.SECONDS))
     }
 
     private object ImmediateTaskExecutor : TaskExecutor {

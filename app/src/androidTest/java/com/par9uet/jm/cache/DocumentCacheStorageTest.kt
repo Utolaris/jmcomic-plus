@@ -21,17 +21,19 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class DocumentCacheStorageTest {
+    @Test fun strictListingFailsWhereLenientListingLooksEmpty() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val base = instrumentation.targetContext
+        val missing = "content://jmcomic.debug.test.cache-documents/document/root/not-there"
+
+        assertEquals(emptyList<CacheImageEntry>(), listComicImageEntries(base, missing))
+        val failure = runCatching { listComicImageEntriesOrThrow(base, missing) }.exceptionOrNull()
+        assertNotNull("严格读取必须把 Provider 失败暴露出来", failure)
+    }
+
     @Test fun customDirectorySupportsDownloadReadExportAndDelete() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val base = instrumentation.targetContext
-        val granted = java.util.concurrent.CountDownLatch(1)
-        base.sendOrderedBroadcast(
-            android.content.Intent().setComponent(android.content.ComponentName("jmcomic.debug.test", TestCacheGrantReceiver::class.java.name)),
-            null, object : android.content.BroadcastReceiver() {
-                override fun onReceive(context: Context, intent: android.content.Intent) { granted.countDown() }
-            }, null, 0, null, null,
-        )
-        check(granted.await(5, java.util.concurrent.TimeUnit.SECONDS)) { "Test URI permission grant timed out" }
         val token = UUID.randomUUID().toString()
         val context = object : ContextWrapper(base) {
             override fun getCacheDir() = File(base.cacheDir, token).also { it.mkdirs() }

@@ -161,8 +161,8 @@ class CacheMigrationWorker(
             Result.success(workDataOf(CACHE_MIGRATION_PROGRESS to 100, CACHE_MIGRATION_STAGE to "迁移完成"))
         } catch (cancelled: CancellationException) {
             throw cancelled
-        } catch (throwable: Throwable) {
-            Result.failure(workDataOf(CACHE_MIGRATION_ERROR to (throwable.message ?: "缓存迁移失败，原路径未切换")))
+        } catch (error: Exception) {
+            Result.failure(workDataOf(CACHE_MIGRATION_ERROR to (error.message ?: "缓存迁移失败，原路径未切换")))
         }
     }
 

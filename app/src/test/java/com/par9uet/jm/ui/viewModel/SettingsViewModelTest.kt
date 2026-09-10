@@ -169,6 +169,6 @@ class SettingsViewModelTest {
     }
 
     private class RecordingLauncherApplier : com.par9uet.jm.launcher.LauncherIdentityApplier {
-        override fun apply(disguise: com.par9uet.jm.data.models.LauncherDisguise) = Unit
+        override fun apply(disguise: com.par9uet.jm.data.models.LauncherDisguise) = true
     }
 }

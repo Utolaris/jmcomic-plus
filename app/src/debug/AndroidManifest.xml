@@ -1,0 +1,16 @@
+<!--
+  Debug-only DocumentsProvider backing the cache tests. It lives in the app module so the
+  instrumentation process shares its UID: a provider owned by the test APK needs a URI grant
+  that some OEM builds refuse to honour. Debug source set only, never part of a release APK.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- DocumentsProvider.attachInfo() rejects a provider that is not protected this way. -->
+        <provider
+            android:name="com.par9uet.jm.cache.TestCacheDocumentsProvider"
+            android:authorities="jmcomic.debug.test.cache-documents"
+            android:exported="true"
+            android:grantUriPermissions="true"
+            android:permission="android.permission.MANAGE_DOCUMENTS" />
+    </application>
+</manifest>

@@ -50,9 +50,15 @@ public class TestCacheDocumentsProvider extends DocumentsProvider {
         if (file.exists()) row(cursor, file);
         return cursor;
     }
-    @Override public Cursor queryChildDocuments(String id, String[] projection, String sortOrder) {
+    @Override public Cursor queryChildDocuments(String id, String[] projection, String sortOrder) throws FileNotFoundException {
+        return queryChildDocumentsOrThrow(id, projection);
+    }
+    private Cursor queryChildDocumentsOrThrow(String id, String[] projection) throws FileNotFoundException {
         MatrixCursor cursor = cursor(projection);
-        File[] children = file(id).listFiles();
+        File parent = file(id);
+        // Real providers reject unknown documents instead of answering with nothing.
+        if (!parent.exists()) throw new FileNotFoundException("Unknown document " + id);
+        File[] children = parent.listFiles();
         if (children != null) for (File child : children) row(cursor, child);
         return cursor;
     }
