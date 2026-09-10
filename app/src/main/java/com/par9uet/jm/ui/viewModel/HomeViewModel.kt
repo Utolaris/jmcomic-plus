@@ -2,27 +2,12 @@ package com.par9uet.jm.ui.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.paging.Pager
-import androidx.paging.PagingConfig
-import androidx.paging.cachedIn
-import com.par9uet.jm.data.models.ComicSearchOrderFilter
-import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekResponse
-import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.RecommendationPreferences
-import com.par9uet.jm.core.model.CommonUIState
-import com.par9uet.jm.ui.pagingSource.SearchComicFilter
-import com.par9uet.jm.ui.pagingSource.SearchComicPagingSource
-import com.par9uet.jm.ui.pagingSource.WeekComicPagingSource
-import com.par9uet.jm.ui.pagingSource.WeekFilter
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
@@ -37,19 +22,8 @@ internal fun <T> swapFirstTwoHomePages(input: List<T>): List<T> {
     }
 }
 
-data class SearchViewportState(
-    val firstVisibleItemIndex: Int = 0,
-    val firstVisibleItemScrollOffset: Int = 0,
-    val resetGeneration: Long = 0L,
-) {
-    fun reset(): SearchViewportState = SearchViewportState(
-        resetGeneration = resetGeneration + 1L,
-    )
-}
-
-class ComicViewModel(
+class HomeViewModel(
     private val comicRepository: ComicRepository,
-    private val contentPreferences: ContentPreferences,
     private val recommendationPreferences: RecommendationPreferences,
 ) : ViewModel() {
     /** 首页分类描述：id 供仓库加载，title 为展示名。 */
@@ -358,171 +332,4 @@ class ComicViewModel(
             activeCategoryLoads[token.key] == token &&
             (!requireCategory || _homeState.value.categories.any { it.id == token.key })
 
-    private val _searchComicFilterState = MutableStateFlow(SearchComicFilter())
-    val searchComicFilterState = _searchComicFilterState.asStateFlow()
-    private val _searchComicIdState = MutableStateFlow<Int?>(null)
-    val searchComicIdState = _searchComicIdState.asStateFlow()
-    private val _searchViewportState = MutableStateFlow(SearchViewportState())
-    val searchViewportState = _searchViewportState.asStateFlow()
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val searchComicPager = combine(
-        _searchComicFilterState,
-        contentPreferences.blockedTags
-    ) { filter, blockedTagList -> filter to blockedTagList }
-        .flatMapLatest { (filter, blockedTagList) ->
-        Pager(
-            config = PagingConfig(
-                pageSize = 20,
-                prefetchDistance = 6,
-                initialLoadSize = 20
-            ),
-            pagingSourceFactory = {
-                SearchComicPagingSource(
-                    comicRepository,
-                    filter.copy(excludedTags = (filter.excludedTags + blockedTagList).distinct()),
-                ) { id ->
-                    _searchComicIdState.update {
-                        id
-                    }
-                }
-            }
-        ).flow
-    }.cachedIn(viewModelScope)
-
-    fun changeSearchComicOrderFilter(order: ComicSearchOrderFilter) {
-        _searchComicIdState.update { null }
-        val current = _searchComicFilterState.value
-        val next = current.copy(order = order)
-        if (next == current) return
-        _searchComicFilterState.value = next
-        _searchViewportState.update(SearchViewportState::reset)
-    }
-
-    fun changeSearchComicContent(searchContent: String) {
-        _searchComicIdState.update { null }
-        updateSearchFilter(_searchComicFilterState.value.copy(searchContent = searchContent))
-    }
-
-    fun changeSearchComicContent(searchContent: String, excludedTags: List<String>) {
-        _searchComicIdState.update { null }
-        updateSearchFilter(
-            _searchComicFilterState.value.copy(
-                searchContent = searchContent,
-                excludedTags = excludedTags,
-            )
-        )
-    }
-
-    fun saveSearchViewport(
-        firstVisibleItemIndex: Int,
-        firstVisibleItemScrollOffset: Int,
-        resetGeneration: Long,
-    ) {
-        _searchViewportState.update { current ->
-            if (current.resetGeneration != resetGeneration) {
-                current
-            } else {
-                current.copy(
-                    firstVisibleItemIndex = firstVisibleItemIndex.coerceAtLeast(0),
-                    firstVisibleItemScrollOffset = firstVisibleItemScrollOffset.coerceAtLeast(0),
-                )
-            }
-        }
-    }
-
-    private fun updateSearchFilter(next: SearchComicFilter) {
-        if (next == _searchComicFilterState.value) return
-        _searchComicFilterState.value = next
-        _searchViewportState.update(SearchViewportState::reset)
-    }
-
-    fun consumeSearchComicId() {
-        _searchComicIdState.update { null }
-    }
-
-    private val _weekDataState = MutableStateFlow(CommonUIState<WeekData>())
-    val weekDataState = _weekDataState.asStateFlow()
-    fun getWeekData() {
-        viewModelScope.launch {
-            _weekDataState.update {
-                it.copy(
-                    isLoading = true,
-                    isError = false,
-                    errorMsg = ""
-                )
-            }
-            when (val data = comicRepository.getWeekData()) {
-                is NetWorkResult.Error -> {
-                    _weekDataState.update {
-                        it.copy(isError = true, errorMsg = data.message)
-                    }
-                }
-
-                is NetWorkResult.Success<WeekResponse> -> {
-                    val d = data.data.toWeekData()
-                    _weekDataState.update {
-                        it.copy(data = d)
-                    }
-                    if (d.categoryList.isNotEmpty()) {
-                        _weekFilterState.update {
-                            it.copy(categoryId = d.categoryList[0].first)
-                        }
-                    }
-                    if (d.typeList.isNotEmpty()) {
-                        _weekFilterState.update {
-                            it.copy(typeId = d.typeList[0].first)
-                        }
-                    }
-                }
-            }
-            _weekDataState.update {
-                it.copy(isLoading = false)
-            }
-        }
-    }
-
-    private val _weekFilterState = MutableStateFlow(WeekFilter())
-    val weekFilterState = _weekFilterState.asStateFlow()
-
-    @OptIn(ExperimentalCoroutinesApi::class)
-    val weekComicPager = combine(
-        _weekFilterState,
-        contentPreferences.blockedTags,
-        contentPreferences.homeExcludedTags,
-    ) { filter, blockedTagList, homeExcludedTags ->
-        filter to (blockedTagList + homeExcludedTags).distinct()
-    }
-        .flatMapLatest { (filter, blockedTagList) ->
-        Pager(
-            config = PagingConfig(
-                pageSize = 20,
-                prefetchDistance = 6,
-                initialLoadSize = 20
-            ),
-            pagingSourceFactory = {
-                WeekComicPagingSource(
-                    comicRepository,
-                    filter,
-                    blockedTagList
-                )
-            }
-        ).flow
-    }.cachedIn(viewModelScope)
-
-    fun changeWeekCategoryFilter(categoryId: String?) {
-        _weekFilterState.update {
-            it.copy(
-                categoryId = categoryId
-            )
-        }
-    }
-
-    fun changeWeekTypeFilter(typeId: String?) {
-        _weekFilterState.update {
-            it.copy(
-                typeId = typeId
-            )
-        }
-    }
 }

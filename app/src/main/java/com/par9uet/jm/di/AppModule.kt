@@ -38,6 +38,7 @@ import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.LocalSettingSnapshotProvider
 import com.par9uet.jm.store.MiscSettingsPreferences
 import com.par9uet.jm.store.ReadHistoryManager
+import com.par9uet.jm.store.ReaderResumeManager
 import com.par9uet.jm.store.SessionReadinessHolder
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager
@@ -113,7 +114,16 @@ val appModule = module {
     single { LocalSettingManager(get<LocalSettingStorage>(), get()) } binds LOCAL_SETTING_MANAGER_ALIASES
     single { HistorySearchManager(get()) }
     single { ReadHistoryManager(get()) }
+    single { ReaderResumeManager(secureStorage = get()) }
     single { ToastManager() }
+    single<com.par9uet.jm.cache.atom.CacheFiles> {
+        com.par9uet.jm.cache.atom.DeviceCacheFiles(get<android.content.Context>().cacheDir)
+    }
+    viewModel {
+        val reader = get<com.par9uet.jm.reader.ReaderImagePipeline>()
+        val downloads = get<com.par9uet.jm.store.DownloadManager>()
+        com.par9uet.jm.ui.viewModel.CacheCleanupViewModel(get(), reader::clearDiskCache, downloads::clearDownloadedCache)
+    }
     single { DownloadToastAggregator(get()) }
     single { PostStartupCoordinator(get(), GlobalContext.get()) }
     single { AppUpdateDownloadManager(get(), get(), get(), get()) } bind com.par9uet.jm.store.AppUpdateDownloads::class

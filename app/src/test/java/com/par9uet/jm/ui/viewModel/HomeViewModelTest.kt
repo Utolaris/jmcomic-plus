@@ -43,7 +43,7 @@ import org.junit.Test
  * - 失败后可重试
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class ComicViewModelHomeLoadingTest {
+class HomeViewModelTest {
 
     private val scheduler = TestCoroutineScheduler()
 
@@ -170,7 +170,7 @@ class ComicViewModelHomeLoadingTest {
     fun recommendOffStartupPromotesCurrentSecondPageToFirst() = runTest(scheduler) {
         val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -200,7 +200,7 @@ class ComicViewModelHomeLoadingTest {
             },
         )
         val settings = FakeSettings(recommendEnabled = true)
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -215,7 +215,7 @@ class ComicViewModelHomeLoadingTest {
         assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
         assertEquals(listOf("1"), vm.homeState.value.states["net_serial"]?.content?.map { it.id })
         assertEquals(listOf("3"), vm.homeState.value.states["net_other"]?.content?.map { it.id })
-        assertNull(vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST])
+        assertNull(vm.homeState.value.states[HomeViewModel.CATEGORY_LATEST])
 
         vm.selectHomeCategory("net_rec")
         advanceUntilIdle()
@@ -236,9 +236,8 @@ class ComicViewModelHomeLoadingTest {
                 )
             },
         )
-        val vm = ComicViewModel(
+        val vm = HomeViewModel(
             repo,
-            FakeSettings(recommendEnabled = true),
             FakeSettings(recommendEnabled = true),
         )
 
@@ -265,9 +264,8 @@ class ComicViewModelHomeLoadingTest {
                 )
             },
         )
-        val vm = ComicViewModel(
+        val vm = HomeViewModel(
             repo,
-            FakeSettings(recommendEnabled = true),
             FakeSettings(recommendEnabled = true),
         )
 
@@ -286,39 +284,39 @@ class ComicViewModelHomeLoadingTest {
     fun clickingCategoryRequestsItOnceThenUsesCache() = runTest(scheduler) {
         val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
 
-        vm.selectHomeCategory(ComicViewModel.CATEGORY_LATEST)
+        vm.selectHomeCategory(HomeViewModel.CATEGORY_LATEST)
         advanceUntilIdle()
-        assertEquals(listOf("builtin_week_hot", ComicViewModel.CATEGORY_LATEST), repo.embeddedCalls)
-        assertEquals(ComicViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
+        assertEquals(listOf("builtin_week_hot", HomeViewModel.CATEGORY_LATEST), repo.embeddedCalls)
+        assertEquals(HomeViewModel.CATEGORY_LATEST, vm.homeState.value.selectedCategoryId)
 
         // 再次点击同一分类：无新请求。
-        vm.selectHomeCategory(ComicViewModel.CATEGORY_LATEST)
+        vm.selectHomeCategory(HomeViewModel.CATEGORY_LATEST)
         advanceUntilIdle()
         assertEquals(2, repo.embeddedCalls.size)
 
         // 切走再切回：命中缓存，无新请求。
         vm.selectHomeCategory("builtin_week_hot")
         advanceUntilIdle()
-        vm.selectHomeCategory(ComicViewModel.CATEGORY_LATEST)
+        vm.selectHomeCategory(HomeViewModel.CATEGORY_LATEST)
         advanceUntilIdle()
         assertEquals(2, repo.embeddedCalls.size)
-        assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
+        assertEquals(1, vm.homeState.value.states[HomeViewModel.CATEGORY_LATEST]?.content?.size)
     }
 
     @Test
     fun forceRefreshOnlyRefreshesCurrentCategory() = runTest(scheduler) {
         val repo = FakeComicRepository(embeddedHandler = { embeddedOk(it) })
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
-        vm.selectHomeCategory(ComicViewModel.CATEGORY_LATEST)
+        vm.selectHomeCategory(HomeViewModel.CATEGORY_LATEST)
         advanceUntilIdle()
         vm.selectHomeCategory("builtin_week_hot")
         advanceUntilIdle()
@@ -327,11 +325,11 @@ class ComicViewModelHomeLoadingTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf("builtin_week_hot", ComicViewModel.CATEGORY_LATEST, "builtin_week_hot"),
+            listOf("builtin_week_hot", HomeViewModel.CATEGORY_LATEST, "builtin_week_hot"),
             repo.embeddedCalls,
         )
         // 其它分类缓存未被破坏。
-        assertEquals(1, vm.homeState.value.states[ComicViewModel.CATEGORY_LATEST]?.content?.size)
+        assertEquals(1, vm.homeState.value.states[HomeViewModel.CATEGORY_LATEST]?.content?.size)
     }
 
     @Test
@@ -344,7 +342,7 @@ class ComicViewModelHomeLoadingTest {
             networkHandler = { NetWorkResult.Success(listOf(page("home", "首页", listOf(item(3))))) },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -381,7 +379,7 @@ class ComicViewModelHomeLoadingTest {
             },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -413,7 +411,7 @@ class ComicViewModelHomeLoadingTest {
             },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         // 默认只加载交换后的 Embedded 第 1 页。
         vm.refreshHome()
@@ -429,7 +427,7 @@ class ComicViewModelHomeLoadingTest {
             listOf("C108推荐本本", "连载漫画"),
             vm.homeState.value.categories.take(2).map { it.title },
         )
-        assertTrue(vm.homeState.value.categories.any { it.id == ComicViewModel.CATEGORY_LATEST })
+        assertTrue(vm.homeState.value.categories.any { it.id == HomeViewModel.CATEGORY_LATEST })
         assertEquals("net_rec", vm.homeState.value.selectedCategoryId)
 
         // 关闭网络推荐：回到 Embedded，并复用已加载的首屏缓存。
@@ -464,7 +462,7 @@ class ComicViewModelHomeLoadingTest {
             },
         )
         val settings = FakeSettings()
-        val vm = ComicViewModel(repo, settings, settings)
+        val vm = HomeViewModel(repo, settings)
 
         vm.refreshHome()
         advanceUntilIdle()
@@ -497,7 +495,7 @@ class ComicViewModelHomeLoadingTest {
                 if (categoryId == "builtin_week_hot") aGate.await() else embeddedOk(categoryId)
             },
         )
-        val vm = ComicViewModel(repo, FakeSettings(), FakeSettings())
+        val vm = HomeViewModel(repo, FakeSettings())
         vm.refreshHome()
         advanceUntilIdle()
 
@@ -531,7 +529,7 @@ class ComicViewModelHomeLoadingTest {
                 }
             },
         )
-        val vm = ComicViewModel(repo, FakeSettings(), FakeSettings())
+        val vm = HomeViewModel(repo, FakeSettings())
         vm.refreshHome()
         advanceUntilIdle()
 
@@ -550,90 +548,4 @@ class ComicViewModelHomeLoadingTest {
         )
     }
 
-    @Test
-    fun searchOrderChangeUpdatesFilterAndClearsPendingComicId() = runTest(scheduler) {
-        val vm = ComicViewModel(FakeComicRepository(), FakeSettings(), FakeSettings())
-
-        assertEquals(ComicSearchOrderFilter.NEWEST, vm.searchComicFilterState.value.order)
-
-        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT)
-        assertEquals(ComicSearchOrderFilter.MOST_COLLECT_COUNT, vm.searchComicFilterState.value.order)
-        assertNull(vm.searchComicIdState.value)
-
-        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_PIC_COUNT)
-        assertEquals(ComicSearchOrderFilter.MOST_PIC_COUNT, vm.searchComicFilterState.value.order)
-        assertNull(vm.searchComicIdState.value)
-
-        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_LIKE_COUNT)
-        assertEquals(ComicSearchOrderFilter.MOST_LIKE_COUNT, vm.searchComicFilterState.value.order)
-        assertNull(vm.searchComicIdState.value)
-
-        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.NEWEST)
-        assertEquals(ComicSearchOrderFilter.NEWEST, vm.searchComicFilterState.value.order)
-    }
-
-    @Test
-    fun searchOrderChangeKeepsSearchCriteria() = runTest(scheduler) {
-        val vm = ComicViewModel(FakeComicRepository(), FakeSettings(), FakeSettings())
-        vm.changeSearchComicContent("neko", listOf("tag1", "tag2"))
-
-        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_PIC_COUNT)
-
-        val filter = vm.searchComicFilterState.value
-        assertEquals("neko", filter.searchContent)
-        assertEquals(listOf("tag1", "tag2"), filter.excludedTags)
-        assertEquals(ComicSearchOrderFilter.MOST_PIC_COUNT, filter.order)
-    }
-
-    @Test
-    fun returningToUnchangedSearchKeepsSavedViewport() = runTest(scheduler) {
-        val vm = ComicViewModel(FakeComicRepository(), FakeSettings(), FakeSettings())
-        vm.changeSearchComicContent("neko", listOf("tag1"))
-        val generation = vm.searchViewportState.value.resetGeneration
-        vm.saveSearchViewport(
-            firstVisibleItemIndex = 42,
-            firstVisibleItemScrollOffset = 96,
-            resetGeneration = generation,
-        )
-
-        vm.changeSearchComicContent("neko", listOf("tag1"))
-
-        assertEquals(42, vm.searchViewportState.value.firstVisibleItemIndex)
-        assertEquals(96, vm.searchViewportState.value.firstVisibleItemScrollOffset)
-        assertEquals(generation, vm.searchViewportState.value.resetGeneration)
-    }
-
-    @Test
-    fun changingSearchContextResetsViewportAndRejectsStaleSaves() = runTest(scheduler) {
-        val vm = ComicViewModel(FakeComicRepository(), FakeSettings(), FakeSettings())
-        val oldGeneration = vm.searchViewportState.value.resetGeneration
-        vm.saveSearchViewport(12, 48, oldGeneration)
-
-        vm.changeSearchComicContent("new query", emptyList())
-        val reset = vm.searchViewportState.value
-
-        assertEquals(0, reset.firstVisibleItemIndex)
-        assertEquals(0, reset.firstVisibleItemScrollOffset)
-        assertTrue(reset.resetGeneration > oldGeneration)
-
-        vm.saveSearchViewport(99, 99, oldGeneration)
-        assertEquals(reset, vm.searchViewportState.value)
-    }
-
-    @Test
-    fun changingSearchOrderResetsViewport() = runTest(scheduler) {
-        val vm = ComicViewModel(FakeComicRepository(), FakeSettings(), FakeSettings())
-        val generation = vm.searchViewportState.value.resetGeneration
-        vm.saveSearchViewport(18, 72, generation)
-
-        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT)
-
-        assertEquals(0, vm.searchViewportState.value.firstVisibleItemIndex)
-        assertEquals(0, vm.searchViewportState.value.firstVisibleItemScrollOffset)
-        assertTrue(vm.searchViewportState.value.resetGeneration > generation)
-
-        val resetGeneration = vm.searchViewportState.value.resetGeneration
-        vm.changeSearchComicOrderFilter(ComicSearchOrderFilter.MOST_COLLECT_COUNT)
-        assertEquals(resetGeneration, vm.searchViewportState.value.resetGeneration)
-    }
 }

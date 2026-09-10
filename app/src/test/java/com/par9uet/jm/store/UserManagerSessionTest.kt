@@ -48,6 +48,184 @@ import java.util.concurrent.TimeUnit
  */
 class UserManagerSessionTest {
     @Test
+    fun identityWithoutCredentialsRequiresLoginInsteadOfCancellingRequest() = runBlocking {
+        val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+        val repository = GateUserRepository(cookies)
+        val readiness = SessionReadinessHolder()
+        manager(FakeUserStorage(user(1, "accountA", password = "")), cookies, repository, FakeSessionClearer(), readiness)
+        try {
+            AuthenticatedSessionGate(readiness).run { error("Request must not start") }
+            error("Expected login required")
+        } catch (error: SessionRecoveryException) {
+            assertTrue(error.error.message.contains("登录"))
+        }
+        assertFalse(repository.verifyStarted.isCompleted)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun accountSwitchWhileWaitingForReadinessNeverStartsOldRequest() = runTest {
+        val cookies = FakeCookieStorage()
+        val repository = GateUserRepository(cookies)
+        repository.loginHandler = { _, _ -> NetWorkResult.Success(CandidateSession(
+            loginResponse(2, "accountB"), listOf(avsCookie("B")),
+        )) }
+        val readiness = SessionReadinessHolder()
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        var calls = 0
+        val request = async { AuthenticatedSessionGate(readiness).run { calls++ } }
+        runCurrent()
+        manager.login("accountB", "pwd")
+        try { request.await(); error("Expected stale request cancellation") }
+        catch (_: CancellationException) { }
+        assertEquals(0, calls)
+        assertEquals(2, manager.currentSessionSnapshot().accountId)
+    }
+
+    @Test
+    fun authenticatedRequestRecoversOnceAndKeepsGeneration() = runBlocking {
+        val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+        val repository = GateUserRepository(cookies)
+        repository.completeVerify(NetWorkResult.Success(CandidateSession(
+            loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
+        )))
+        val readiness = SessionReadinessHolder()
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        val snapshot = manager.currentSessionSnapshot()
+        var calls = 0
+        val result = AuthenticatedSessionGate(readiness).run {
+            calls++
+            if (cookies.get().single().value == "expired") {
+                throw AuthenticatedSessionRequiredException("登录会话已失效，请重新登录")
+            }
+            "history or sign-in"
+        }
+        assertEquals("history or sign-in", result)
+        assertEquals(2, calls)
+        assertEquals(1, repository.activated.size)
+        assertEquals(snapshot, manager.currentSessionSnapshot())
+    }
+
+    @Test
+    fun failedRecoveryPreservesNetworkErrorAndOnlyInvalidCredentialsClearIdentity() = runBlocking {
+        for (failure in listOf(AuthFailure.TemporaryFailure, AuthFailure.InvalidCredentials)) {
+            val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+            val repository = GateUserRepository(cookies)
+            repository.completeVerify(NetWorkResult.Error("offline", authFailure = failure))
+            val readiness = SessionReadinessHolder()
+            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+            var calls = 0
+            val error = try {
+                AuthenticatedSessionGate(readiness).run<Unit> {
+                    calls++
+                    throw AuthenticatedSessionRequiredException("expired")
+                }
+                error("Expected recovery error")
+            } catch (error: SessionRecoveryException) { error.error }
+            assertEquals(1, calls)
+            if (failure == AuthFailure.TemporaryFailure) {
+                assertEquals("offline", error.message)
+                assertEquals(com.par9uet.jm.retrofit.model.NetworkErrorKind.Network, error.kind)
+                assertEquals(1, manager.currentSessionSnapshot().accountId)
+                assertEquals("expired", cookies.get().single().value)
+            } else {
+                assertTrue(error.message.contains("请重新登录"))
+                assertEquals(SessionReadiness.Unauthenticated, readiness.state.value)
+                assertEquals(0, manager.currentSessionSnapshot().accountId)
+            }
+        }
+    }
+
+    @Test
+    fun retryIsBoundedAndOrdinaryNetworkFailureDoesNotStartRecovery() = runBlocking {
+        val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+        val repository = GateUserRepository(cookies)
+        repository.completeVerify(NetWorkResult.Success(CandidateSession(loginResponse(1, "accountA"))))
+        val readiness = SessionReadinessHolder()
+        manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        val gate = AuthenticatedSessionGate(readiness)
+        var calls = 0
+        try {
+            gate.run<Unit> { calls++; throw java.net.SocketTimeoutException("timeout") }
+            error("Expected timeout")
+        } catch (_: java.net.SocketTimeoutException) { }
+        assertEquals(1, calls)
+        assertFalse(repository.verifyStarted.isCompleted)
+        calls = 0
+        try {
+            gate.run<Unit> { calls++; throw AuthenticatedSessionRequiredException("expired") }
+            error("Expected auth failure")
+        } catch (_: SessionRecoveryException) { }
+        assertEquals(2, calls)
+        assertEquals(1, repository.activated.size)
+    }
+
+    @Test
+    fun requestCannotRetryAcrossLogoutOrAccountSwitch() = runBlocking {
+        for (logout in listOf(true, false)) {
+            val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+            val repository = GateUserRepository(cookies)
+            repository.loginHandler = { _, _ -> NetWorkResult.Success(CandidateSession(
+                loginResponse(2, "accountB"), listOf(avsCookie("B")),
+            )) }
+            val readiness = SessionReadinessHolder()
+            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+            var calls = 0
+            val request = async {
+                AuthenticatedSessionGate(readiness).run<Unit> {
+                    calls++
+                    throw AuthenticatedSessionRequiredException("expired")
+                }
+            }
+            repository.verifyStarted.await()
+            if (logout) manager.clearUser() else manager.login("accountB", "pwd")
+            repository.completeVerify(NetWorkResult.Success(CandidateSession(
+                loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
+            )))
+            try { request.await(); error("Expected stale request cancellation") }
+            catch (_: CancellationException) { }
+            assertEquals(1, calls)
+            assertEquals(if (logout) 0 else 2, manager.currentSessionSnapshot().accountId)
+            assertFalse(repository.activated.any { it.loginResponse.uid == 1 })
+        }
+    }
+
+    @Test
+    fun nestedBoundRequestLeavesRecoveryToOwnerWithoutDeadlock() = runBlocking {
+        val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
+        val repository = GateUserRepository(cookies)
+        repository.completeVerify(NetWorkResult.Success(CandidateSession(
+            loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
+        )))
+        val readiness = SessionReadinessHolder()
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        val snapshot = manager.currentSessionSnapshot()
+        var calls = 0
+        val result = withTimeout(2_000) {
+            withAuthenticationRecovery(
+                isCurrent = { manager.isCurrentSession(snapshot.accountId, snapshot.generation) },
+                recover = { manager.recoverExpiredSession(snapshot.accountId, snapshot.generation) },
+            ) {
+                try {
+                    manager.withBoundRemoteSession(snapshot.accountId, snapshot.generation) {
+                        AuthenticatedSessionGate(readiness).run {
+                            calls++
+                            if (cookies.get().single().value == "expired") {
+                                throw AuthenticatedSessionRequiredException("expired")
+                            }
+                            NetWorkResult.Success(Unit)
+                        }
+                    }!!
+                } catch (error: AuthenticatedSessionRequiredException) {
+                    NetWorkResult.Error("expired", kind = com.par9uet.jm.retrofit.model.NetworkErrorKind.Authentication)
+                }
+            }
+        }
+        assertTrue(result is NetWorkResult.Success)
+        assertEquals(2, calls)
+    }
+
+    @Test
     fun expiredSessionRecoveryCannotRestoreLoggedOutAccount() = runBlocking {
         val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
         val repository = GateUserRepository(cookies)
@@ -87,8 +265,15 @@ class UserManagerSessionTest {
                 (recovered as NetWorkResult.Error).kind,
             )
             assertTrue(repository.activated.isEmpty())
-            assertEquals("expired", cookies.get().single().value)
-            assertEquals(snapshot, manager.currentSessionSnapshot())
+            if (result is NetWorkResult.Error && result.authFailure == AuthFailure.InvalidCredentials) {
+                assertTrue(cookies.get().isEmpty())
+                assertEquals(UserSessionSnapshot(0, snapshot.generation), manager.currentSessionSnapshot())
+                assertEquals(SessionReadiness.Unauthenticated, manager.authState.value)
+            } else {
+                assertEquals("expired", cookies.get().single().value)
+                assertEquals(snapshot, manager.currentSessionSnapshot())
+                assertEquals(SessionReadiness.Authenticated, manager.authState.value)
+            }
         }
     }
 

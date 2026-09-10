@@ -5,7 +5,7 @@ import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.data.toFavoriteSyncError
 import com.par9uet.jm.favorites.model.FavoriteSyncUiState
 import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.retrofit.model.NetworkErrorKind
+import com.par9uet.jm.store.withAuthenticationRecovery
 import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
 import com.par9uet.jm.store.FavoriteSyncProgress
 import com.par9uet.jm.store.FavoriteSyncReport
@@ -134,21 +134,11 @@ class FavoriteSyncController(
                         }
                     }
                 }
-                var result = syncOperation(snapshot, folderId, force, onProgress)
-                if (result is NetWorkResult.Error && result.kind == NetworkErrorKind.Authentication &&
-                    session.isCurrent(snapshot)
+                val result = withAuthenticationRecovery(
+                    isCurrent = { session.isCurrent(snapshot) },
+                    recover = { session.recoverExpiredSession(snapshot) },
                 ) {
-                    // Retry this read/reconcile operation once, after releasing its bound remote
-                    // gate. Keep the same UI request and identity generation throughout renewal.
-                    when (val recovery = session.recoverExpiredSession(snapshot)) {
-                        is NetWorkResult.Success -> {
-                            if (session.isCurrent(snapshot)) {
-                                result = syncOperation(snapshot, folderId, force, onProgress)
-                            }
-                        }
-                        is NetWorkResult.Error -> result = recovery
-                        null -> Unit
-                    }
+                    syncOperation(snapshot, folderId, force, onProgress)
                 }
                 if (result is NetWorkResult.Error) failure = result
             } catch (cancelled: CancellationException) {

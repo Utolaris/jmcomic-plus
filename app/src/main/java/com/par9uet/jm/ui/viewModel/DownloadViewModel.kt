@@ -105,7 +105,7 @@ class DownloadViewModel(
         val ids = _editState.value.selectedIds.toList()
         if (ids.isEmpty()) return
         viewModelScope.launch {
-            downloadComicDao.deleteByIds(ids)
+            downloadManager.deleteDownloads(ids)
             clearSelection()
         }
     }
@@ -117,7 +117,7 @@ class DownloadViewModel(
     fun deleteMany(ids: Set<Int>) {
         if (ids.isEmpty()) return
         viewModelScope.launch {
-            downloadComicDao.deleteByIds(ids.toList())
+            downloadManager.deleteDownloads(ids)
             _editState.update {
                 val selected = it.selectedIds - ids
                 it.copy(editing = selected.isNotEmpty(), selectedIds = selected)
@@ -126,7 +126,12 @@ class DownloadViewModel(
     }
 
     fun pauseSelected() {
-        updateSelectedStatus(DownloadStatus.PAUSED)
+        val ids = _editState.value.selectedIds.toList()
+        if (ids.isEmpty()) return
+        viewModelScope.launch {
+            downloadManager.pauseDownloads(ids)
+            clearSelection()
+        }
     }
 
     fun startSelected() {
@@ -136,31 +141,11 @@ class DownloadViewModel(
         downloadManager.resumeDownloads(ids)
     }
 
-    private fun updateSelectedStatus(status: DownloadStatus) {
-        val ids = _editState.value.selectedIds.toList()
-        if (ids.isEmpty()) return
-        viewModelScope.launch {
-            downloadComicDao.updateStatusByIds(ids, status)
-            clearSelection()
-        }
-    }
-
     fun redownloadSelected() {
         val ids = _editState.value.selectedIds.toList()
         if (ids.isEmpty()) return
-        viewModelScope.launch {
-            val groupIds = mutableSetOf<Int>()
-            ids.forEach { id ->
-                val item = downloadComicDao.getById(id)
-                if (item != null) {
-                    groupIds.add(if (item.groupId != 0) item.groupId else item.id)
-                }
-            }
-            groupIds.forEach { groupId ->
-                downloadManager.redownloadGroup(groupId)
-            }
-            clearSelection()
-        }
+        downloadManager.redownloadDownloads(ids)
+        clearSelection()
     }
 
     fun redownloadOne(groupId: Int) {

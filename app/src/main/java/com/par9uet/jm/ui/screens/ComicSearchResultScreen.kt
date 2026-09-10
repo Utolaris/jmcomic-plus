@@ -52,7 +52,7 @@ import com.par9uet.jm.ui.glass.GlassMenuItem
 import com.par9uet.jm.ui.glass.glassMenuAnchor
 import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
-import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.ui.viewModel.SearchViewModel
 import com.par9uet.jm.contentfilter.serializeExcludedTags
 import com.par9uet.jm.store.LocalSettingManager
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -93,16 +93,16 @@ private fun ComicSearchResultSkeleton(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ComicSearchResultScreen(
-    comicViewModel: ComicViewModel = koinActivityViewModel(),
+    searchViewModel: SearchViewModel = koinActivityViewModel(),
     comicDetailViewModel: ComicDetailViewModel = koinActivityViewModel(),
     localSettingManager: LocalSettingManager = getKoin().get(),
 ) {
     val mainNavController = LocalMainNavController.current
     val miscSettings by localSettingManager.misc.collectAsState()
-    val comicSearchLazyPagingItems = comicViewModel.searchComicPager.collectAsLazyPagingItems()
-    val comicSearchFilterState by comicViewModel.searchComicFilterState.collectAsState()
-    val searchComicIdState by comicViewModel.searchComicIdState.collectAsState()
-    val savedViewport by comicViewModel.searchViewportState.collectAsState()
+    val comicSearchLazyPagingItems = searchViewModel.searchComicPager.collectAsLazyPagingItems()
+    val comicSearchFilterState by searchViewModel.searchComicFilterState.collectAsState()
+    val searchComicIdState by searchViewModel.searchComicIdState.collectAsState()
+    val savedViewport by searchViewModel.searchViewportState.collectAsState()
     val sortMenuState = rememberGlassAnchoredMenuState()
     val sortMenuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
     val gridState = rememberLazyGridState(
@@ -154,7 +154,7 @@ fun ComicSearchResultScreen(
             )
         }.distinctUntilChanged().collect { (itemCount, index, offset) ->
             if (itemCount > 0 && !initialViewportRestorePending && !suppressViewportPersistence) {
-                comicViewModel.saveSearchViewport(index, offset, resetGeneration)
+                searchViewModel.saveSearchViewport(index, offset, resetGeneration)
             }
         }
     }
@@ -194,7 +194,7 @@ fun ComicSearchResultScreen(
     LaunchedEffect(searchComicIdState) {
         val comicId = searchComicIdState ?: return@LaunchedEffect
         comicDetailViewModel.reset(comicId)
-        comicViewModel.consumeSearchComicId()
+        searchViewModel.consumeSearchComicId()
         mainNavController.navigate("comicDetail/$comicId") {
             launchSingleTop = true
         }
@@ -239,7 +239,7 @@ fun ComicSearchResultScreen(
                         selected = order.value == comicSearchFilterState.order.value,
                         onClick = {
                             sortMenuState.dismiss()
-                            comicViewModel.changeSearchComicOrderFilter(order)
+                            searchViewModel.changeSearchComicOrderFilter(order)
                         },
                     )
                 }

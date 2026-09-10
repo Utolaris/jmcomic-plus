@@ -31,14 +31,17 @@ feature/<name>/
 
 - 启动后任务由 `startup/PostStartupCoordinator` 统一排序。
 - 下载业务通过 `DownloadWorkScheduler` 端口提交任务，不直接构造 Worker。
+  同一章节使用唯一 WorkManager 任务，暂停/删除通过端口取消排队任务。
 - `DownloadManager` 是下载任务管理的 L2 兼容入口，持有协程生命周期，按业务结果入队并发送提示；
   `download/molecule/DownloadTaskOperations` 组合 DAO 与文件操作，处理创建、重试、恢复和重新下载；
   `download/atom/DownloadFiles` 只清理已有缓存文件。业务层不依赖 Store、Worker 或 UI。
   排队端口仍由 L2 调用，以保留单篇创建先提示后入队、其他操作先入队后提示的现有顺序。
+  暂停、删除、清理和批量重下都在此入口串行化；批量章节到漫画组的查询归属 L3。
+  `DownloadExecutionControl` 只暴露停止并等待写入结束的能力，任务管理不再依赖下载执行器的具体类型。
 - `DownloadComicWorker` 只解析 WorkManager 参数并映射结果；`download/coordinator/DownloadComicCoordinator`
   负责下载顺序、进度、重试和取消，`DownloadFeedback` 适配通知、速度统计与批量提示；
   `download/molecule/DownloadContentOperations` 组合封面回退、逐页下载和完成提交。
-  `download/atom` 封装 Coil 请求与缓存文件读写，沿用原有缓存目录和配置格式。
+  `download/atom` 封装 Coil 请求与缓存文件读写；新缓存以漫画/章节 ID 区分目录，旧缓存沿保存路径读取，配置格式保持兼容。
   L2 直接操作下载 DAO，以集中维护进度和失败分支；L3 不反向依赖 Worker 或协调器。
   已有 `ReaderImagePipeline` 通过组合根注入 `DownloadPageDecoder` 窄端口，复用原解码链路；
   这是已有阅读器协调器的适配边界，下载 L3/L4 不直接依赖阅读器包。
@@ -47,6 +50,18 @@ feature/<name>/
 - PDF 导出归属 `download/export`，通用工具包不再反向依赖下载缓存。
 - 屏蔽规则和桌面入口切换分别归属 `contentfilter`、`launcher`，不再作为通用工具依赖业务模型。
 - 阅读器图片链路由 `ReaderImagePipeline`（L2）统一调度，来源加载在 L3，内存和磁盘缓存位于 L4。
+- 本地阅读由 `ComicReadViewModel` 调用 `reader/molecule/LoadLocalChapter`，在 IO 线程组合下载记录、
+  已完成章节和 `reader/atom/LocalChapterFiles`；目录查找、自然排序及旧 ZIP 解压均在文件适配器内。
+  ZIP 先解压到临时目录，成功后提交；ViewModel 以请求代次隔离迟到结果，收藏复用现有收藏用例。
+- `CacheCleanupViewModel` 持有扫描、选择、清理状态，决定何时停止下载以及清理阅读器缓存；
+  `cache/atom/CacheFiles` 只负责普通缓存目录的扫描与删除。阅读器目录必须经过原缓存代次/租约协议，
+  不能被“全部清理”的普通文件删除绕过。`CacheCleanupScreen` 仅渲染与提交事件。
+- `DownloadExportViewModel` 持有导出选择、文件选择器前的章节/模式快照、导出任务及文件统计请求代次；
+  `download/export/DownloadExportOperations` 负责文档授权、PDF 写入和文件统计，复用现有 PDF 格式与命名。
+  `DownloadComicDetailScreen` 仅保留展示、导航、对话框和系统文件选择器。
+- 首页、搜索、周推荐分别由 `HomeViewModel`、`SearchViewModel`、`WeekViewModel` 持有独立状态与任务。
+  搜索入口、编辑页和结果页仍使用同一个 Activity 范围的 `SearchViewModel`，保持条件与滚动恢复；
+  首页与工具栏共享 `HomeViewModel`。原 `ComicViewModel` 已移除，不保留转发型兼容外壳。
 - 更新入口拆为 `AboutScreen` 和 `CheckUpdateScreen`；`AppUpdateViewModel` 管理检查、弹窗、下载和安装决策，`update` 提供版本解析、GitHub 请求与系统安装适配器。
 - `BackupRestoreViewModel` 管理备份/恢复步骤及任务生命周期，`backup/BackupRestoreOperations` 组合设置快照、文档读写和下载排队；Screen 仅持有系统文件选择器和展示组件。
 - `FavoriteSyncController` 是唯一收藏同步任务入口，按登录会话代次隔离任务、进度与结果；`SyncFavorites` 负责远端分页、元数据补齐和受会话保护的本地提交。
@@ -86,5 +101,11 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 
 1. 下载协调器直接使用 DAO 和反馈适配器；进度与同组任务状态决定通知和终态分支，避免把这些判断拆散。
 2. 更新协调器直接使用下载及安装端口，备份协调器直接使用无副作用的校验/提取能力；这些结果直接决定流程分支，避免为它们添加仅转发调用的用例层。
+3. 缓存清理协调器通过组合根提供的窄回调协调下载和阅读器的资源生命周期，并直接调用缓存文件端口；
+   导出协调器直接调用 PDF 文件端口。这些是 L2 的跨功能协调及选定适配器例外，L4 不得反向调用协调器。
+
+新增回归约束覆盖：批量重下去重与停止顺序、本地加载 IO 线程、旧目录/ZIP 兼容和失败清理、
+清理期间的重复点击与阅读器租约保护、导出选择快照及过期统计、首页/搜索/周推荐独立注入与状态。
+`ArchitectureBoundaryTest` 禁止文件访问重新进入阅读 ViewModel 和清理/导出 Screen。
 
 每次只迁移一个可独立验证的边界，并为 L2 分支、L3 组合和 L4 契约分别补测试。

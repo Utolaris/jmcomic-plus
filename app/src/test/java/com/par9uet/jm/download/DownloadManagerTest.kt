@@ -25,6 +25,46 @@ import org.junit.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadManagerTest {
     @Test
+    fun `selected chapters are resolved once per group and stopped before redownload writes`() = runTest {
+        Dispatchers.setMain(StandardTestDispatcher(testScheduler))
+        val job = SupervisorJob()
+        val scope = CoroutineScope(job)
+        val dao = RecordingDownloadDao().apply {
+            tasks[1] = downloadTask(1, com.par9uet.jm.database.model.DownloadStatus.COMPLETE)
+            tasks[2] = downloadTask(2, com.par9uet.jm.database.model.DownloadStatus.COMPLETE)
+        }
+        val events = mutableListOf<String>()
+        val control = object : com.par9uet.jm.download.coordinator.DownloadExecutionControl {
+            override suspend fun <T> withStoppedDownloads(comicIds: Collection<Int>, block: suspend () -> T): T {
+                assertEquals(listOf(1, 2), comicIds.toList())
+                events += "stop"
+                return block()
+            }
+        }
+        val scheduler = object : DownloadWorkScheduler {
+            override suspend fun cancel(comicIds: Collection<Int>) {
+                assertTrue(dao.tasks.values.all { it.status == com.par9uet.jm.database.model.DownloadStatus.COMPLETE })
+                events += "cancel"
+            }
+            override fun enqueue(comicIds: Collection<Int>) {
+                assertEquals(listOf(1, 2), comicIds.toList())
+                assertTrue(dao.tasks.values.all { it.status == com.par9uet.jm.database.model.DownloadStatus.PENDING })
+                events += "enqueue"
+            }
+        }
+        try {
+            DownloadManager(DownloadTaskOperations(dao, DownloadFiles()), scope, ToastManager(), scheduler, control)
+                .redownloadDownloads(listOf(1, 2, 1, 404))
+            job.children.toList().joinAll()
+            runCurrent()
+            assertEquals(listOf("stop", "cancel", "enqueue"), events)
+        } finally {
+            scope.cancel()
+            Dispatchers.resetMain()
+        }
+    }
+
+    @Test
     fun `only persisted new tasks are enqueued once`() = runTest {
         Dispatchers.setMain(StandardTestDispatcher(testScheduler))
         val job = SupervisorJob()
@@ -33,13 +73,14 @@ class DownloadManagerTest {
             val dao = RecordingDownloadDao()
             val batches = mutableListOf<List<Int>>()
             val scheduler = object : DownloadWorkScheduler {
+                override suspend fun cancel(comicIds: Collection<Int>) {}
                 override fun enqueue(comicIds: Collection<Int>) {
                     assertTrue(comicIds.all { it in dao.tasks })
                     batches += comicIds.toList()
                 }
             }
             val manager = DownloadManager(
-                DownloadTaskOperations(dao, DownloadFiles()), scope, ToastManager(), scheduler,
+                DownloadTaskOperations(dao, DownloadFiles()), scope, ToastManager(), scheduler, testDownloadCoordinator(dao),
             )
             val comic = Comic.create(id = 1, name = "漫画", authorList = emptyList())
             manager.downloadComic(comic)
@@ -67,10 +108,11 @@ class DownloadManagerTest {
             val manager = DownloadManager(
                 DownloadTaskOperations(dao, DownloadFiles()), scope, ToastManager(),
                 object : DownloadWorkScheduler {
+                    override suspend fun cancel(comicIds: Collection<Int>) {}
                     override fun enqueue(comicIds: Collection<Int>) {
                         batches += comicIds.toList()
                     }
-                },
+                }, testDownloadCoordinator(dao),
             )
             manager.downloadComic(Comic.create(id = 1, name = "漫画", authorList = emptyList()))
             job.children.toList().joinAll()

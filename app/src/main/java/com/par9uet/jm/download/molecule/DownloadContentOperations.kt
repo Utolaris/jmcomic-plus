@@ -27,7 +27,7 @@ import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val DOWNLOAD_PAGE_TIMEOUT_MS = 180_000L
 
@@ -104,12 +104,8 @@ class DeviceDownloadContentOperations(
                                 __scrambleId = data.data.__scrambleId,
                                 __speed = data.data.__speed,
                             )
-                            val bitmap = try {
-                                withTimeout(DOWNLOAD_PAGE_TIMEOUT_MS) {
-                                    decoder.decode(imageState)
-                                }
-                            } catch (e: Exception) {
-                                throw IllegalStateException("第 ${index + 1} 页下载或解码超时", e)
+                            val bitmap = downloadPageWithinTimeout(DOWNLOAD_PAGE_TIMEOUT_MS) {
+                                decoder.decode(imageState)
                             }
                             val bytes = files.writePage(chapterPath, index, bitmap)
                             DownloadSpeedTracker.addBytes(
@@ -135,3 +131,8 @@ class DeviceDownloadContentOperations(
         }
     }
 }
+
+// Only this page's deadline becomes a retryable error. Parent cancellation still propagates.
+internal suspend fun <T : Any> downloadPageWithinTimeout(timeoutMillis: Long, decode: suspend () -> T): T =
+    withTimeoutOrNull(timeoutMillis) { decode() }
+        ?: throw IllegalStateException("页面下载或解码超时")

@@ -5,19 +5,17 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.par9uet.jm.cache.getComicChapterDownloadDir
-import com.par9uet.jm.cache.getDownloadDir
-import com.par9uet.jm.cache.listComicImageFiles
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.data.models.ComicPicImageState
-import com.par9uet.jm.database.model.DownloadComic
-import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.CollectComicResponse
+import com.par9uet.jm.favorites.data.FavoriteSession
+import com.par9uet.jm.favorites.usecase.CollectFavorite
+import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.reader.molecule.LoadLocalChapter
 import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.reader.ReaderPageKey
 import com.par9uet.jm.reader.readerPrefetchPlan
@@ -32,9 +30,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.io.File
-import java.io.FileOutputStream
-import java.util.zip.ZipInputStream
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
@@ -43,9 +38,12 @@ class ComicReadViewModel(
     private val comicRepository: ComicRepository,
     private val readerImagePipeline: ReaderImagePipeline,
     private val readerPreferences: ReaderPreferences,
-    private val downloadComicDao: DownloadComicDao,
+    private val loadLocalChapter: LoadLocalChapter,
     private val toastManager: ToastManager,
     private val readHistoryManager: ReadHistoryManager,
+    private val favoriteSession: FavoriteSession,
+    private val collectFavorite: CollectFavorite,
+    private val uncollectFavorites: UncollectFavorites,
 ) : ViewModel() {
     var isShowToolBar = mutableStateOf(false)
     var currentIndexState = mutableIntStateOf(0)
@@ -87,6 +85,7 @@ class ComicReadViewModel(
             }
             when (val data = comicRepository.getComicDetail(comicId)) {
                 is NetWorkResult.Error -> {
+                    readHistoryComicId.intValue = readHistoryManager.markRead(comicId, comicId)
                     _comicDetailState.update {
                         it.copy(
                             isError = true,
@@ -123,31 +122,50 @@ class ComicReadViewModel(
         updateCollectState(comicId, false)
     }
 
-    private fun updateCollectState(comicId: Int, targetCollect: Boolean) {
-        viewModelScope.launch {
-            when (val data: NetWorkResult<CollectComicResponse> = if (targetCollect) {
-                comicRepository.collectComic(comicId)
-            } else {
-                comicRepository.unCollectComic(comicId)
-            }) {
-                is NetWorkResult.Error -> {
-                    toastManager.showAsync(data.message)
-                }
+    private var imageLoadJob: Job? = null
+    private var imageLoadGeneration = 0L
+    private var favoriteActionRunning = false
 
-                is NetWorkResult.Success<CollectComicResponse> -> {
-                    toastManager.showAsync(if (targetCollect) "收藏成功" else "取消收藏成功")
-                    _comicDetailState.update {
-                        it.copy(
-                            data = it.data?.copy(isCollect = targetCollect)
-                        )
+    private fun updateCollectState(comicId: Int, targetCollect: Boolean) {
+        if (favoriteActionRunning) return
+        val comic = _comicDetailState.value.data?.takeIf { it.id == comicId } ?: return
+        if (comic.isCollect == targetCollect) return
+        val snapshot = favoriteSession.snapshot()
+        favoriteActionRunning = true
+        viewModelScope.launch {
+            try {
+                val result = if (targetCollect) {
+                    collectFavorite(snapshot, comic)
+                } else if (uncollectFavorites(snapshot, listOf(comicId)).succeeded > 0) {
+                    NetWorkResult.Success(Unit)
+                } else NetWorkResult.Error("取消收藏失败，请重试")
+                when (result) {
+                    is NetWorkResult.Error -> {
+                        toastManager.showAsync(result.message)
+                    }
+                    is NetWorkResult.Success -> {
+                        favoriteSession.withCurrentSession(snapshot) {
+                            toastManager.showAsync(if (targetCollect) "收藏成功" else "取消收藏成功")
+                            _comicDetailState.update {
+                                if (it.data?.id == comicId) it.copy(data = it.data.copy(isCollect = targetCollect)) else it
+                            }
+                        } ?: toastManager.showAsync("登录状态已变化，请重试")
                     }
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                toastManager.showAsync(error.message ?: "收藏操作失败，请重试")
+            } finally {
+                favoriteActionRunning = false
             }
         }
     }
 
     fun getComicPicList(comicId: Int, onSuccess: (() -> Unit)? = null) {
-        viewModelScope.launch {
+        imageLoadJob?.cancel()
+        val generation = ++imageLoadGeneration
+        imageLoadJob = viewModelScope.launch {
             _localChapterList.value = emptyList()
             _comicPicState.update {
                 it.copy(
@@ -157,7 +175,9 @@ class ComicReadViewModel(
                 )
             }
             resetReaderRequests()
-            when (val data = comicRepository.getComicPicList(comicId)) {
+            val data = comicRepository.getComicPicList(comicId)
+            if (generation != imageLoadGeneration) return@launch
+            when (data) {
                 is NetWorkResult.Error -> {
                     _comicPicState.update {
                         it.copy(
@@ -199,106 +219,35 @@ class ComicReadViewModel(
         }
     }
 
-    fun getLocalComicPicList(comicId: Int, context: Context, onSuccess: (() -> Unit)? = null) {
-        viewModelScope.launch {
-            _comicPicState.update {
-                it.copy(
-                    isLoading = true,
-                    isError = false,
-                    errorMsg = ""
-                )
-            }
+    fun getLocalComicPicList(comicId: Int, onSuccess: (() -> Unit)? = null) {
+        imageLoadJob?.cancel()
+        val generation = ++imageLoadGeneration
+        imageLoadJob = viewModelScope.launch {
+            _comicPicState.update { it.copy(isLoading = true, isError = false, errorMsg = "") }
             resetReaderRequests()
-            val downloadComic = downloadComicDao.getById(comicId)
-            val groupId = downloadComic?.groupId?.takeIf { it != 0 } ?: comicId
-            readHistoryComicId.intValue = readHistoryManager.markRead(groupId, comicId)
-            loadLocalChapterList(comicId, downloadComic)
-            val imageDir = ensureLocalImageDir(context, comicId, downloadComic)
-            val files = imageDir
-                ?.let(::listComicImageFiles)
-                .orEmpty()
-
-            if (files.isEmpty()) {
+            try {
+                val chapter = loadLocalChapter(comicId)
+                if (generation != imageLoadGeneration) return@launch
+                readHistoryComicId.intValue = readHistoryManager.markRead(chapter.groupId, comicId)
+                _localChapterList.value = chapter.chapters
+                check(chapter.imagePaths.isNotEmpty()) { "未找到本地缓存图片" }
                 _comicPicState.update {
                     it.copy(
+                        data = chapter.imagePaths.mapIndexed { index, path ->
+                            ComicPicImageState(index, comicId, path, Int.MAX_VALUE, "1")
+                        },
                         isLoading = false,
-                        isError = true,
-                        errorMsg = "未找到本地缓存图片"
                     )
                 }
-                return@launch
-            }
-
-            _comicPicState.update {
-                it.copy(
-                    data = files.mapIndexed { index, file ->
-                        ComicPicImageState(
-                            index = index,
-                            comicId = comicId,
-                            originSrc = file.absolutePath,
-                            __scrambleId = Int.MAX_VALUE,
-                            __speed = "1",
-                        )
-                    },
-                    isLoading = false
-                )
-            }
-            onSuccess?.invoke()
-        }
-    }
-
-    private suspend fun loadLocalChapterList(comicId: Int, currentComic: DownloadComic?) {
-        val groupId = currentComic?.groupId?.takeIf { it != 0 } ?: comicId
-        val chapters = downloadComicDao.getCompleteByGroupId(groupId)
-        _localChapterList.value = chapters.mapIndexed { index, item ->
-            ComicChapter(
-                id = item.id,
-                name = item.chapterName.ifBlank {
-                    if (chapters.size > 1) "第 ${index + 1} 章" else item.name
+                onSuccess?.invoke()
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                _comicPicState.update {
+                    it.copy(isLoading = false, isError = true, errorMsg = error.message ?: "本地缓存加载失败")
                 }
-            )
-        }
-    }
-
-    private fun ensureLocalImageDir(context: Context, comicId: Int, downloadComic: DownloadComic?): File? {
-        val zipPath = downloadComic?.zipPath.orEmpty()
-        val directDir = zipPath.takeIf { it.isNotBlank() }?.let(::File)
-        if (directDir?.isDirectory == true && listComicImageFiles(directDir).isNotEmpty()) {
-            return directDir
-        }
-
-        if (downloadComic != null) {
-            val namedDir = getComicChapterDownloadDir(context, downloadComic)
-            if (namedDir.exists() && listComicImageFiles(namedDir).isNotEmpty()) {
-                return namedDir
             }
         }
-
-        val dir = File(getDownloadDir(context), "$comicId")
-        if (dir.exists() && dir.listFiles()?.isNotEmpty() == true) {
-            return dir
-        }
-        if (zipPath.isBlank()) {
-            return dir.takeIf { it.exists() }
-        }
-        val zipFile = File(zipPath)
-        if (!zipFile.exists()) {
-            return dir.takeIf { it.exists() }
-        }
-        dir.mkdirs()
-        ZipInputStream(zipFile.inputStream()).use { zipIn ->
-            while (true) {
-                val entry = zipIn.nextEntry ?: break
-                if (!entry.isDirectory) {
-                    val output = File(dir, File(entry.name).name)
-                    FileOutputStream(output).use { out ->
-                        zipIn.copyTo(out)
-                    }
-                }
-                zipIn.closeEntry()
-            }
-        }
-        return dir
     }
 
     fun decodeIndex(index: Int, @Suppress("UNUSED_PARAMETER") context: Context) {

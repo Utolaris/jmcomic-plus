@@ -50,7 +50,8 @@ data class DownloadComicDetailState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadComicDetailViewModel(
-    private val downloadComicDao: DownloadComicDao
+    private val downloadComicDao: DownloadComicDao,
+    private val downloadManager: com.par9uet.jm.store.DownloadManager,
 ) : ViewModel() {
 
     private val _groupId = MutableStateFlow(0)
@@ -92,6 +93,8 @@ class DownloadComicDetailViewModel(
             SharingStarted.WhileSubscribed(5_000),
             DownloadComicDetailState(loading = true)
         )
+
+    fun retryDownload() = downloadManager.retryGroup(_groupId.value)
 
     fun load(id: Int) {
         viewModelScope.launch {

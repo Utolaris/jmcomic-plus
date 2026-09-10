@@ -1,13 +1,13 @@
 package com.par9uet.jm.ui.screens
 
-import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.ui.viewModel.HomeViewModel
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HomeCategoryTitleTest {
     private val categories = listOf(
-        ComicViewModel.HomeCategoryInfo("latest", "最新上架"),
-        ComicViewModel.HomeCategoryInfo("popular", "本周热门"),
+        HomeViewModel.HomeCategoryInfo("latest", "最新上架"),
+        HomeViewModel.HomeCategoryInfo("popular", "本周热门"),
     )
 
     @Test

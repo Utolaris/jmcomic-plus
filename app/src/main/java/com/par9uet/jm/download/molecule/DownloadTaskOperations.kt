@@ -17,6 +17,26 @@ class DownloadTaskOperations(
     private val downloadComicDao: DownloadComicDao,
     private val files: DownloadFiles,
 ) {
+    suspend fun allTaskIds(): List<Int> = downloadComicDao.getAll().map { it.id }
+
+    suspend fun groupTaskIds(groupId: Int): List<Int> = downloadComicDao.getByGroupId(groupId).map { it.id }
+
+    suspend fun groupIdsForTasks(ids: Collection<Int>): List<Int> = ids.mapNotNull { id ->
+        downloadComicDao.getById(id)?.let { it.groupId.takeIf { group -> group != 0 } ?: it.id }
+    }.distinct()
+
+    suspend fun pauseDownloads(ids: Collection<Int>) {
+        val activeIds = ids.filter { downloadComicDao.getById(it)?.status != DownloadStatus.COMPLETE }
+        downloadComicDao.updateStatusByIds(activeIds, DownloadStatus.PAUSED)
+    }
+
+    suspend fun deleteDownloads(ids: Collection<Int>) = downloadComicDao.deleteByIds(ids.toList())
+
+    suspend fun invalidateDownloads(ids: Collection<Int>) {
+        downloadComicDao.updateStatusByIds(ids.toList(), DownloadStatus.ERROR)
+        ids.forEach { downloadComicDao.updateProgress(com.par9uet.jm.database.model.UpdateComicProgress(it, 0f)) }
+    }
+
     suspend fun downloadComic(comic: Comic): DownloadTaskResult? {
         if (downloadComicDao.getExistingIds(listOf(comic.id)).isNotEmpty()) {
             return DownloadTaskResult(message = "该漫画已在缓存列表中")

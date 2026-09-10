@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.cancellation.CancellationException
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.coroutines.coroutineContext
@@ -43,7 +44,7 @@ class UserManager(
     private val userRepository: UserRepository,
     private val retrofit: ActiveSessionCookieStore,
     private val sessionReadinessHolder: SessionReadinessHolder,
-) {
+) : AuthenticatedRequestExecutor {
     private val _userState = MutableStateFlow(CommonUIState<User>())
     val userState = _userState.asStateFlow()
 
@@ -112,7 +113,7 @@ class UserManager(
         if (sessionReadinessHolder.awaitReady() != SessionReadiness.Authenticated) return null
         return boundRemoteGate.withLock {
             if (!isCurrentSession(accountId, generation)) return@withLock null
-            block()
+            withContext(BoundAuthenticatedRequest) { block() }
         }
     }
 
@@ -122,6 +123,42 @@ class UserManager(
         _userState.value = _userState.value.copy(data = runCatching { userStorage.get() }.getOrNull())
         publishSession()
         sessionReadinessHolder.set(readinessForCachedUser(_userState.value.data))
+        sessionReadinessHolder.requestExecutor = this
+    }
+
+    override suspend fun <T> execute(block: suspend () -> T): T {
+        val snapshot = currentSessionSnapshot()
+        if (snapshot.accountId <= 0) throw AuthenticatedSessionRequiredException()
+        fun isCurrent() = isCurrentSession(snapshot.accountId, snapshot.generation)
+        val result = withAuthenticationRecovery(
+            isCurrent = ::isCurrent,
+            recover = { recoverExpiredSession(snapshot.accountId, snapshot.generation) },
+        ) {
+            try {
+                // Wrapping in Success keeps a legitimate nullable SDK result distinct from a
+                // stale session. The same identity/generation owns both attempts.
+                withBoundRemoteSession(snapshot.accountId, snapshot.generation) {
+                    NetWorkResult.Success(block())
+                } ?: if (isCurrent()) {
+                    throw AuthenticatedSessionRequiredException()
+                } else {
+                    throw CancellationException("Authenticated request session changed")
+                }
+            } catch (error: AuthenticatedSessionRequiredException) {
+                NetWorkResult.Error(error.message.orEmpty(), kind = NetworkErrorKind.Authentication, cause = error)
+            }
+        }
+        coroutineContext.ensureActive()
+        // Invalid credentials clear the identity without advancing generation, just like the
+        // startup verifier. Deliver that error, but discard results across manual transitions.
+        val invalidatedHere = result is NetWorkResult.Error &&
+            result.authFailure == AuthFailure.InvalidCredentials &&
+            currentSessionSnapshot() == UserSessionSnapshot(0, snapshot.generation)
+        if (!isCurrent() && !invalidatedHere) throw CancellationException("Authenticated request session changed")
+        return when (result) {
+            is NetWorkResult.Success -> result.data
+            is NetWorkResult.Error -> throw SessionRecoveryException(result)
+        }
     }
 
     suspend fun clearUser() {
@@ -152,13 +189,22 @@ class UserManager(
         return withSessionTransition {
             if (!isCurrentSession(snapshot)) return@withSessionTransition null
             when (result) {
-                is NetWorkResult.Error -> result.copy(
-                    kind = when (result.authFailure) {
-                        AuthFailure.InvalidCredentials -> NetworkErrorKind.Authentication
-                        AuthFailure.TemporaryFailure -> NetworkErrorKind.Network
-                        else -> result.kind
-                    },
-                )
+                is NetWorkResult.Error -> {
+                    if (result.authFailure == AuthFailure.InvalidCredentials) {
+                        clearIdentityWhileLocked(result.message)
+                        sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
+                    }
+                    result.copy(
+                        message = if (result.authFailure == AuthFailure.InvalidCredentials) {
+                            "登录会话已失效，请重新登录"
+                        } else result.message,
+                        kind = when (result.authFailure) {
+                            AuthFailure.InvalidCredentials -> NetworkErrorKind.Authentication
+                            AuthFailure.TemporaryFailure -> NetworkErrorKind.Network
+                            else -> result.kind
+                        },
+                    )
+                }
                 is NetWorkResult.Success -> {
                     if (result.data.loginResponse.uid != snapshot.user.id) {
                         return@withSessionTransition NetWorkResult.Error(

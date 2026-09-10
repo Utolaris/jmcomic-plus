@@ -5,6 +5,7 @@ import com.par9uet.jm.retrofit.model.AuthFailure
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.ResponseWrapper
 import com.par9uet.jm.utils.logError
+import com.par9uet.jm.store.SessionRecoveryException
 import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -42,6 +43,8 @@ open class BaseRepository {
             NetWorkResult.Success(block())
         } catch (error: CancellationException) {
             throw error
+        } catch (error: SessionRecoveryException) {
+            error.error
         } catch (error: Exception) {
             logError(this@BaseRepository::class.java.simpleName, "$operation: ${error.message}")
             NetWorkResult.Error("$operation：${error.message ?: "未知错误"}")

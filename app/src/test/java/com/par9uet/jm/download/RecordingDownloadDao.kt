@@ -11,7 +11,7 @@ internal class RecordingDownloadDao : DownloadComicDao {
     override fun observeCompleteList(): Flow<List<DownloadComic>> = error("Unexpected DAO call")
     override fun observeActiveList(): Flow<List<DownloadComic>> = error("Unexpected DAO call")
     override fun observeErrorList(): Flow<List<DownloadComic>> = error("Unexpected DAO call")
-    override suspend fun getAll(): List<DownloadComic> = error("Unexpected DAO call")
+    override suspend fun getAll(): List<DownloadComic> = tasks.values.toList()
     override fun observeByGroupId(groupId: Int): Flow<List<DownloadComic>> = error("Unexpected DAO call")
     override fun observeCompleteByGroupId(groupId: Int): Flow<List<DownloadComic>> = error("Unexpected DAO call")
     override suspend fun getById(comicId: Int): DownloadComic? = tasks[comicId]
@@ -43,7 +43,7 @@ internal class RecordingDownloadDao : DownloadComicDao {
     }
     override suspend fun update(task: DownloadComic): Unit = error("Unexpected DAO call")
     override suspend fun delete(task: DownloadComic): Unit = error("Unexpected DAO call")
-    override suspend fun deleteByIds(ids: List<Int>): Unit = error("Unexpected DAO call")
+    override suspend fun deleteByIds(ids: List<Int>) { ids.forEach(tasks::remove) }
     override suspend fun updateStatusByIds(ids: List<Int>, status: DownloadStatus) {
         ids.forEach { id -> tasks[id] = tasks.getValue(id).copy(status = status) }
     }

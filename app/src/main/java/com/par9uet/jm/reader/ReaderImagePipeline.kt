@@ -173,7 +173,7 @@ class ReaderImagePipeline internal constructor(
 
     fun clearMemory() = bitmapCache.clear()
 
-    suspend fun clearDiskCache() = diskCache.clear()
+    suspend fun clearDiskCache() = withContext(Dispatchers.IO) { diskCache.clear() }
 
     fun close() {
         appContext.unregisterComponentCallbacks(bitmapCache)

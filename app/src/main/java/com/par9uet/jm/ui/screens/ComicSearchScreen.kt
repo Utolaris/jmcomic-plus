@@ -55,7 +55,7 @@ import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.ui.components.ComicSearchHistoryTag
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SearchExclusionEditor
-import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.ui.viewModel.SearchViewModel
 import com.par9uet.jm.contentfilter.normalizeSearchExcludedTags
 import com.par9uet.jm.contentfilter.parseSearchSyntax
 import com.par9uet.jm.contentfilter.searchContentWithoutExcludedTags
@@ -68,14 +68,14 @@ import org.koin.compose.viewmodel.koinActivityViewModel
 fun ComicSearchScreen(
     initialSearchContent: String = "",
     initialExcludedTags: List<String> = emptyList(),
-    comicViewModel: ComicViewModel = koinActivityViewModel(),
+    searchViewModel: SearchViewModel = koinActivityViewModel(),
     historySearchManager: HistorySearchManager = getKoin().get(),
     localSettingManager: LocalSettingManager = getKoin().get(),
 ) {
     val mainNavController = LocalMainNavController.current
     val focusRequester = remember { FocusRequester() }
     val pageLifecycleOwner = LocalLifecycleOwner.current
-    val searchComicFilterState by comicViewModel.searchComicFilterState.collectAsState()
+    val searchComicFilterState by searchViewModel.searchComicFilterState.collectAsState()
     // 从搜索结果页返回时，ViewModel 持有最新搜索参数；首次进入时 ViewModel 为空，回退到 URL 参数
     val effectiveSearchContent = searchComicFilterState.searchContent.ifBlank { initialSearchContent }
     val effectiveExcludedTags = searchComicFilterState.excludedTags.ifEmpty { initialExcludedTags }

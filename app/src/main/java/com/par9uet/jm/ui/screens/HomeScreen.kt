@@ -62,7 +62,7 @@ import com.par9uet.jm.ui.glass.glassMenuAnchor
 import com.par9uet.jm.ui.interaction.pullDownToAction
 import com.par9uet.jm.ui.interaction.PullDownActionState
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
-import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.ui.viewModel.HomeViewModel
 import com.par9uet.jm.contentfilter.filterBlockedTags
 import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koin.compose.getKoin
@@ -76,7 +76,7 @@ private const val TEXT_EXTRACT = "\u63d0\u53d6"
 private const val CATEGORY_LOADING_SKELETON_COUNT = 18
 
 internal fun resolveHomeCategoryTitle(
-    categories: List<ComicViewModel.HomeCategoryInfo>,
+    categories: List<HomeViewModel.HomeCategoryInfo>,
     selectedCategoryId: String?,
 ): String {
     return categories.firstOrNull { it.id == selectedCategoryId }?.title ?: "首页"
@@ -86,7 +86,7 @@ internal fun resolveHomeCategoryTitle(
 @Composable
 internal fun HomeMaterialCategoryTitleSelector(
     title: String,
-    categories: List<ComicViewModel.HomeCategoryInfo>,
+    categories: List<HomeViewModel.HomeCategoryInfo>,
     selectedCategoryId: String?,
     onCategorySelected: (String) -> Unit,
     modifier: Modifier = Modifier,
@@ -166,14 +166,14 @@ private fun HomeSkeleton(
 
 @Composable
 internal fun HomeScreen(
-    comicViewModel: ComicViewModel = koinActivityViewModel(),
+    homeViewModel: HomeViewModel = koinActivityViewModel(),
     localSettingManager: LocalSettingManager = getKoin().get(),
     topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
     pullDownState: PullDownActionState = rememberPullDownActionState(),
     onPullDownSearch: () -> Unit = {},
 ) {
-    val homeState by comicViewModel.homeState.collectAsState()
+    val homeState by homeViewModel.homeState.collectAsState()
     val preferenceRecommendEnabled by localSettingManager.preferenceRecommendEnabled.collectAsState()
     val blockedTags by localSettingManager.blockedTags.collectAsState()
     val homeExcludedTags by localSettingManager.homeExcludedTags.collectAsState()
@@ -193,7 +193,7 @@ internal fun HomeScreen(
     )
 
     LaunchedEffect(preferenceRecommendEnabled) {
-        comicViewModel.refreshHome()
+        homeViewModel.refreshHome()
     }
 
     val selectedCategoryId = homeState.selectedCategoryId
@@ -255,7 +255,7 @@ internal fun HomeScreen(
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        TextButton(onClick = { comicViewModel.refreshSelectedHomeCategory() }) {
+                        TextButton(onClick = { homeViewModel.refreshSelectedHomeCategory() }) {
                             Text("重试")
                         }
                     }

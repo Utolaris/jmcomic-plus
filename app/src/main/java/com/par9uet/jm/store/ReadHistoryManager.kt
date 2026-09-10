@@ -26,22 +26,26 @@ class ReadHistoryManager(
         return markRead(historyKey(comic, chapterId), chapterId)
     }
 
+    @Synchronized
     fun markRead(comicKey: Int, chapterId: Int): Int {
+        ensureLoaded()
         val current = _readHistoryState.value.toMutableMap()
         val old = current[comicKey]
         val readIds = (old?.readChapterIds.orEmpty() + chapterId).distinct()
         current[comicKey] = ComicReadHistory(
             lastChapterId = chapterId,
             readChapterIds = readIds,
-            lastPageIndex = old?.lastPageIndex ?: 0,
-            lastChapterPageCount = old?.lastChapterPageCount ?: 0,
+            lastPageIndex = old?.takeIf { it.lastChapterId == chapterId }?.lastPageIndex ?: 0,
+            lastChapterPageCount = old?.takeIf { it.lastChapterId == chapterId }?.lastChapterPageCount ?: 0,
         )
         _readHistoryState.update { current }
         readHistoryStorage.set(current)
         return comicKey
     }
 
+    @Synchronized
     fun saveReadProgress(comicKey: Int, chapterId: Int, pageIndex: Int, pageCount: Int) {
+        ensureLoaded()
         val current = _readHistoryState.value.toMutableMap()
         val old = current[comicKey]
         val readIds = (old?.readChapterIds.orEmpty() + chapterId).distinct()
@@ -84,9 +88,18 @@ class ReadHistoryManager(
         return entry.lastPageIndex.coerceIn(0, entry.lastChapterPageCount - 1)
     }
 
+    private var loaded = false
+
+    @Synchronized
+    private fun ensureLoaded() {
+        if (loaded) return
+        _readHistoryState.value = readHistoryStorage.get()
+        loaded = true
+    }
+
     suspend fun load() {
         log("加载阅读历史")
-        _readHistoryState.update { readHistoryStorage.get() }
+        ensureLoaded()
         log("阅读历史已加载")
     }
 

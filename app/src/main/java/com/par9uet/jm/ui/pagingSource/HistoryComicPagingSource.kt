@@ -22,8 +22,9 @@ class HistoryComicPagingSource(
 
             is NetWorkResult.Success<UserHistoryComicListResponse> -> {
                 val list = data.data.toComicList().filterBlockedTags(blockedTagList)
-                val total = data.data.total
-                val isLastPage = currentPage >= (total + params.loadSize - 1) / params.loadSize
+                // watch_list has no total and always uses the server page size. Paging may
+                // request a larger loadSize; tag filtering must not truncate pagination.
+                val isLastPage = data.data.list.size < PAGE_SIZE
                 LoadResult.Page(
                     data = list,
                     prevKey = if (currentPage == 1) null else currentPage - 1,
@@ -31,6 +32,10 @@ class HistoryComicPagingSource(
                 )
             }
         }
+    }
+
+    companion object {
+        const val PAGE_SIZE = 20
     }
 
     override fun getRefreshKey(state: PagingState<Int, Comic>): Int? = null

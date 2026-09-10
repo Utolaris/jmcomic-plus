@@ -78,6 +78,17 @@ class DownloadComicCoordinatorTest {
     }
 
     @Test
+    fun `pausing during retry backoff clears progress feedback without a running worker`() = runTest {
+        dao.tasks[1] = task(1)
+        failure = IllegalStateException("network")
+        assertEquals(DownloadOutcome.RETRY, coordinator.download(1, "batch", 2, 0))
+        coordinator.withStoppedDownloads(listOf(1)) {
+            dao.tasks[1] = dao.tasks.getValue(1).copy(status = DownloadStatus.PAUSED)
+        }
+        assertEquals(listOf("start", "cover", "pages", "stop", "cancel"), events)
+    }
+
+    @Test
     fun `last attempt marks error and reports failure`() = runTest {
         dao.tasks[1] = task(1)
         failure = IllegalStateException("network")
@@ -97,9 +108,10 @@ class DownloadComicCoordinatorTest {
                 coordinator.download(1, "batch", 2, attempt)
                 fail("Cancellation must propagate")
             } catch (actual: CancellationException) {
-                assertSame(cancelled, actual)
+                // coroutineScope can recover the stack trace into a copy of CancellationException.
+                assertEquals(cancelled.message, actual.message)
             }
-            assertEquals(listOf("start", "cover", "pages"), events)
+            assertEquals(listOf("start", "cover", "pages", "stop", "cancel"), events)
             assertEquals(DownloadStatus.DOWNLOADING, dao.tasks.getValue(1).status)
         }
     }

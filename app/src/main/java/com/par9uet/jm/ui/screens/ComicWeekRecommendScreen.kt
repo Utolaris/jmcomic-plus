@@ -30,7 +30,7 @@ import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
 import com.par9uet.jm.ui.components.adaptiveComicGridCells
-import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.ui.viewModel.WeekViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
 
 @Composable
@@ -47,11 +47,11 @@ private fun ComicWeekCategorySelect(
 
 @Composable
 fun ComicWeekRecommendScreen(
-    comicViewModel: ComicViewModel = koinActivityViewModel()
+    weekViewModel: WeekViewModel = koinActivityViewModel()
 ) {
-    val weekDataState by comicViewModel.weekDataState.collectAsState()
-    val weekFilterState by comicViewModel.weekFilterState.collectAsState()
-    val weekRecommendComicPagingItems = comicViewModel.weekComicPager.collectAsLazyPagingItems()
+    val weekDataState by weekViewModel.weekDataState.collectAsState()
+    val weekFilterState by weekViewModel.weekFilterState.collectAsState()
+    val weekRecommendComicPagingItems = weekViewModel.weekComicPager.collectAsLazyPagingItems()
     var showSelectDialog by remember { mutableStateOf(false) }
     val weekCategoryFilter by remember(weekFilterState) {
         derivedStateOf {
@@ -63,7 +63,7 @@ fun ComicWeekRecommendScreen(
         if (weekDataState.data != null) {
             return@LaunchedEffect
         }
-        comicViewModel.getWeekData()
+        weekViewModel.getWeekData()
     }
     CommonScaffold(
         title = "每周推荐",
@@ -77,7 +77,7 @@ fun ComicWeekRecommendScreen(
                     SelectOption(label = it.second, value = it.first)
                 },
                 onSelect = {
-                    comicViewModel.changeWeekCategoryFilter(it)
+                    weekViewModel.changeWeekCategoryFilter(it)
                     showSelectDialog = false
                 },
                 onDismissRequest = { showSelectDialog = false },
@@ -105,7 +105,7 @@ fun ComicWeekRecommendScreen(
                                 FilterItem(
                                     label = item.second,
                                     onClick = {
-                                        comicViewModel.changeWeekTypeFilter(item.first)
+                                        weekViewModel.changeWeekTypeFilter(item.first)
                                     },
                                     active = weekFilterState.typeId == item.first
                                 )

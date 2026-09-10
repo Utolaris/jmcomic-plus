@@ -8,9 +8,10 @@ import com.google.gson.GsonBuilder
 
 class SecureStorage(
     context: Context,
-    private val gson: Gson = GsonBuilder().create()
+    gson: Gson = GsonBuilder().create(),
+    private val cryptoManager: CryptoManager = CryptoManager(),
 ) {
-    private val cryptoManager = CryptoManager()
+    private val gson = gson.newBuilder().registerTypeAdapter(okhttp3.Cookie::class.java, CookieTypeAdapter()).create()
     val sharedPreferences: SharedPreferences by lazy {
         context.getSharedPreferences("jm-mobile-g-data", Context.MODE_PRIVATE)
     }
@@ -20,9 +21,7 @@ class SecureStorage(
 
     fun <T> set(key: String, t: T) {
         val json = gson.toJson(t)
-        sharedPreferences.edit {
-            putString(key, cryptoManager.encrypt(json))
-        }
+        writeEncrypted(sharedPreferences, key, json)
     }
 
     /** Stores small first-frame values separately from history and download metadata. */
@@ -32,9 +31,7 @@ class SecureStorage(
     }
 
     fun setStartupString(key: String, json: String) {
-        startupPreferences.edit {
-            putString(key, cryptoManager.encrypt(json))
-        }
+        writeEncrypted(startupPreferences, key, json)
     }
 
     fun <T> get(key: String, type: java.lang.reflect.Type): T? {
@@ -54,26 +51,22 @@ class SecureStorage(
         }
     }
 
-    fun getString(key: String): String? {
-        val json = sharedPreferences.getString(key, null)
-        return try {
-            json?.let {
-                cryptoManager.decrypt(it)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+    fun getString(key: String): String? = readEncrypted(sharedPreferences, key)
+
+    fun getStartupString(key: String): String? = readEncrypted(startupPreferences, key)
+
+    private fun writeEncrypted(preferences: SharedPreferences, key: String, json: String) {
+        // Encrypt before opening the editor. Failure preserves the last durable value and does
+        // not invalidate the current in-memory identity during a temporary Keystore outage.
+        val encrypted = runCatching { cryptoManager.encrypt(json) }.getOrNull() ?: return
+        preferences.edit { putString(key, encrypted) }
     }
 
-    fun getStartupString(key: String): String? {
-        val json = startupPreferences.getString(key, null)
-        return try {
-            json?.let { cryptoManager.decrypt(it) }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
-        }
+    private fun readEncrypted(preferences: SharedPreferences, key: String): String? {
+        val stored = preferences.getString(key, null) ?: return null
+        val json = cryptoManager.decrypt(stored) ?: return null
+        if (stored.startsWith("plain:")) writeEncrypted(preferences, key, json)
+        return json
     }
 
     fun <T> getStartup(key: String, type: java.lang.reflect.Type): T? {

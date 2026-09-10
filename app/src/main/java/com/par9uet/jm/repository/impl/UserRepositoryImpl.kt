@@ -115,7 +115,6 @@ class UserRepositoryImpl(
                     val albumMetas = client.getWatchHistory(page)
                     UserHistoryComicListResponse(
                         list = albumMetas.map { it.toHistoryListItem() },
-                        total = albumMetas.size
                     )
                 }
             )

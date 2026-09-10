@@ -99,7 +99,11 @@ class UserViewModel(
     ) { blockedTagList, _ -> blockedTagList }
         .flatMapLatest { blockedTagList ->
         Pager(
-            config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
+            config = PagingConfig(
+                pageSize = HistoryComicPagingSource.PAGE_SIZE,
+                prefetchDistance = 6,
+                initialLoadSize = HistoryComicPagingSource.PAGE_SIZE,
+            ),
             pagingSourceFactory = {
                 HistoryComicPagingSource(userRepository, blockedTagList)
             }

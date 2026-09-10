@@ -4,9 +4,12 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
 import com.par9uet.jm.download.molecule.DownloadTaskResult
+import com.par9uet.jm.download.coordinator.DownloadExecutionControl
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 internal interface BackupTaskScheduler {
     fun downloadComic(comic: Comic)
@@ -18,12 +21,17 @@ class DownloadManager(
     private val scope: CoroutineScope,
     private val toastManager: ToastManager,
     private val downloadWorkScheduler: DownloadWorkScheduler,
+    private val coordinator: DownloadExecutionControl,
 ) : BackupTaskScheduler {
+    private val mutations = Mutex()
+
     override fun downloadComic(comic: Comic) {
         scope.launch(Dispatchers.IO) {
-            val result = operations.downloadComic(comic) ?: return@launch
-            toastManager.showAsync(result.message)
-            enqueue(result)
+            mutations.withLock {
+                val result = operations.downloadComic(comic) ?: return@launch
+                toastManager.showAsync(result.message)
+                enqueue(result)
+            }
         }
     }
 
@@ -51,14 +59,62 @@ class DownloadManager(
     }
 
     fun redownloadGroup(groupId: Int) {
-        submit { operations.redownloadGroup(groupId) }
+        submit { redownloadGroupTasks(groupId) }
+    }
+
+    fun redownloadDownloads(comicIds: Collection<Int>) {
+        scope.launch(Dispatchers.IO) {
+            mutations.withLock {
+                operations.groupIdsForTasks(comicIds).forEach { groupId ->
+                    redownloadGroupTasks(groupId)?.let { result ->
+                        enqueue(result)
+                        toastManager.showAsync(result.message)
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun redownloadGroupTasks(groupId: Int): DownloadTaskResult? {
+        val ids = operations.groupTaskIds(groupId)
+        return coordinator.withStoppedDownloads(ids) {
+            downloadWorkScheduler.cancel(ids)
+            operations.redownloadGroup(groupId)
+        }
+    }
+
+    suspend fun pauseDownloads(ids: Collection<Int>) = mutations.withLock {
+        coordinator.withStoppedDownloads(ids) {
+            downloadWorkScheduler.cancel(ids)
+            operations.pauseDownloads(ids)
+        }
+    }
+
+    suspend fun deleteDownloads(ids: Collection<Int>) = mutations.withLock {
+        coordinator.withStoppedDownloads(ids) {
+            downloadWorkScheduler.cancel(ids)
+            operations.deleteDownloads(ids)
+        }
+    }
+
+    suspend fun clearDownloadedCache(deleteFiles: suspend () -> Unit) = mutations.withLock {
+        val ids = operations.allTaskIds()
+        coordinator.withStoppedDownloads(ids) {
+            downloadWorkScheduler.cancel(ids)
+            // If file removal fails, no missing cache remains advertised as readable.
+            operations.invalidateDownloads(ids)
+            deleteFiles()
+            operations.deleteDownloads(ids)
+        }
     }
 
     private fun submit(operation: suspend () -> DownloadTaskResult?) {
         scope.launch(Dispatchers.IO) {
-            val result = operation() ?: return@launch
-            enqueue(result)
-            toastManager.showAsync(result.message)
+            mutations.withLock {
+                val result = operation() ?: return@launch
+                enqueue(result)
+                toastManager.showAsync(result.message)
+            }
         }
     }
 

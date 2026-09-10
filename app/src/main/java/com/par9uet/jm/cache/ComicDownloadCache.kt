@@ -28,12 +28,11 @@ data class DownloadComicCacheChapter(
 )
 
 fun getComicDownloadRootDir(context: Context, comic: DownloadComic): File {
-    return getComicDownloadRootDir(context, comic.groupName.ifBlank { comic.name })
+    return tryCreateDir(File(getDownloadDir(context), getComicCacheRootName(comic)))
 }
 
-fun getComicDownloadRootDir(context: Context, comicName: String): File {
-    return tryCreateDir(File(getDownloadDir(context), safeCacheFileName(comicName)))
-}
+// Titles are display metadata, not file identity. Existing downloads retain their saved zipPath.
+fun getComicCacheRootName(comic: DownloadComic): String = "JM${comic.groupId.takeIf { it != 0 } ?: comic.id}"
 
 fun getComicChapterDownloadDir(context: Context, comic: DownloadComic): File {
     return tryCreateDir(File(getComicDownloadRootDir(context, comic), getChapterCacheName(comic)))
@@ -48,7 +47,7 @@ fun getComicConfigFile(context: Context, comic: DownloadComic): File {
 }
 
 fun getChapterCacheName(comic: DownloadComic): String {
-    return safeCacheFileName(comic.chapterName.ifBlank { "单篇" })
+    return "chapter-${comic.id}"
 }
 
 fun listComicImageFiles(dir: File): List<File> {

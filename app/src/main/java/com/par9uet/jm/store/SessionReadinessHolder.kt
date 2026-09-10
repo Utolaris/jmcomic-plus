@@ -28,6 +28,9 @@ enum class SessionReadiness {
 
 /** [UserManager] 与仓库层共享的会话就绪状态容器，避免仓库反向依赖 UserManager。 */
 class SessionReadinessHolder {
+    @Volatile
+    internal var requestExecutor: AuthenticatedRequestExecutor? = null
+
     private val _state = MutableStateFlow(SessionReadiness.Unknown)
     val state: StateFlow<SessionReadiness> = _state.asStateFlow()
 
@@ -59,7 +62,13 @@ class AuthenticatedSessionRequiredException(
 class AuthenticatedSessionGate(
     private val readinessHolder: SessionReadinessHolder,
 ) {
-    suspend fun <T> run(block: () -> T): T {
+    suspend fun <T> run(block: suspend () -> T): T {
+        val executor = readinessHolder.requestExecutor
+        if (executor != null && coroutineContext[BoundAuthenticatedRequest.Key] == null) {
+            // Capture the identity before waiting, so a login during restoration cannot make
+            // an old account's request start against the new client's cookies.
+            return executor.execute(block)
+        }
         if (readinessHolder.awaitReady() != SessionReadiness.Authenticated) {
             throw AuthenticatedSessionRequiredException()
         }

@@ -4,7 +4,6 @@ import com.par9uet.jm.data.models.Comic
 
 data class UserHistoryComicListResponse (
     val list: List<ListItem>,
-    val total: Int,
 ) {
     data class ListItem(
         val id: String,

@@ -63,7 +63,7 @@ import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.screens.resolveHomeCategoryTitle
 import com.par9uet.jm.ui.screens.UserCollectComicScreen
 import com.par9uet.jm.ui.screens.UserScreen
-import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.ui.viewModel.HomeViewModel
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
@@ -73,14 +73,14 @@ import org.koin.compose.viewmodel.koinActivityViewModel
 fun TabScreen(
     tabName: String,
     userManager: UserManager = getKoin().get(),
-    comicViewModel: ComicViewModel = koinActivityViewModel(),
+    homeViewModel: HomeViewModel = koinActivityViewModel(),
     favoritesViewModel: FavoritesViewModel = koinActivityViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
     val authState by userManager.authState.collectAsState()
     val isAuthenticated = authState == SessionReadiness.Authenticated
     val canShowAuthenticatedUi = authState != SessionReadiness.Unauthenticated
-    val homeState by comicViewModel.homeState.collectAsState()
+    val homeState by homeViewModel.homeState.collectAsState()
     val homeTitle = resolveHomeCategoryTitle(homeState.categories, homeState.selectedCategoryId)
     val onHomeSearch = { mainNavController.navigate("comicSearch") }
     val onHomeDownload = { mainNavController.navigate("download") }
@@ -264,7 +264,7 @@ fun TabScreen(
                         homeTitle = homeTitle,
                         homeCategories = homeState.categories,
                         selectedHomeCategoryId = homeState.selectedCategoryId,
-                        onHomeCategorySelected = comicViewModel::selectHomeCategory,
+                        onHomeCategorySelected = homeViewModel::selectHomeCategory,
                         favoritesViewModel = favoritesViewModel,
                         onHomeSearch = onHomeSearch,
                         onHomeDownload = onHomeDownload,
@@ -368,7 +368,7 @@ fun TabScreen(
                                                 selected = category.id == homeState.selectedCategoryId,
                                                 onClick = {
                                                     homeCategoryMenuState.dismiss()
-                                                    comicViewModel.selectHomeCategory(category.id)
+                                                    homeViewModel.selectHomeCategory(category.id)
                                                 },
                                             )
                                         }

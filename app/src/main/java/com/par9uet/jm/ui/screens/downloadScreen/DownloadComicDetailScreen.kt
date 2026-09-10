@@ -42,12 +42,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -55,27 +53,18 @@ import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.ChapterSingleSelectDialog
 import com.par9uet.jm.ui.components.ComicContentTag
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.viewModel.DownloadExportViewModel
+import com.par9uet.jm.download.export.PdfExportMode
 import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
-import com.par9uet.jm.download.export.CachedComicInfo
-import com.par9uet.jm.download.export.exportComicToPdf
-import com.par9uet.jm.download.export.exportComicsToMergedPdf
-import com.par9uet.jm.download.export.exportComicsToSeparatePdf
 import com.par9uet.jm.utils.formatBytes
-import com.par9uet.jm.download.export.getCachedComicInfo
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.getKoin
-import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -87,70 +76,22 @@ fun DownloadComicDetailScreen(
     viewModel: DownloadComicDetailViewModel = koinViewModel(),
     imageLoader: ImageLoader = getKoin().get(),
     remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
-    toastManager: ToastManager = getKoin().get(),
-    downloadManager: DownloadManager = getKoin().get()
+    exportViewModel: DownloadExportViewModel = koinViewModel(),
 ) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val mainNavController = LocalMainNavController.current
     val detailState by viewModel.detailState.collectAsState()
     val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
     val scrollState = rememberScrollState()
-    var cachedInfo by remember { mutableStateOf<CachedComicInfo?>(null) }
-    var exporting by remember { mutableStateOf(false) }
-    var selectedExportChapterIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    val exportState by exportViewModel.state.collectAsState()
+    val cachedInfo = exportState.summary
+    val exporting = exportState.exporting
+    val selectedExportChapterIds = exportState.selectedChapterIds
     var activeDialog by remember { mutableStateOf<DownloadDetailDialog?>(null) }
-    var exportMode by remember { mutableStateOf(PdfExportMode.Merge) }
 
     val exportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocumentTree()
     ) { uri: Uri? ->
-        val selectedItems = detailState.completeItems.filter { it.id in selectedExportChapterIds }
-        if (uri == null) {
-            toastManager.showAsync("未选择导出文件夹")
-            return@rememberLauncherForActivityResult
-        }
-        if (selectedItems.isEmpty()) {
-            toastManager.showAsync("未选择可导出的缓存章节")
-            return@rememberLauncherForActivityResult
-        }
-        val flags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(uri, flags)
-        }
-        exporting = true
-        scope.launch {
-            val result = runCatching {
-                withContext(Dispatchers.IO) {
-                    when (exportMode) {
-                        PdfExportMode.Merge -> {
-                            if (selectedItems.size > 1) {
-                                exportComicsToMergedPdf(context, selectedItems, uri)
-                            } else {
-                                exportComicToPdf(context, selectedItems.first(), uri)
-                            }
-                        }
-
-                        PdfExportMode.SplitByChapter -> {
-                            exportComicsToSeparatePdf(context, selectedItems, uri)
-                        }
-                    }
-                }
-            }
-            exporting = false
-            result
-                .onSuccess {
-                    toastManager.showAsync(
-                        if (exportMode == PdfExportMode.SplitByChapter) {
-                            "已导出 ${selectedItems.size} 个章节 PDF"
-                        } else {
-                            "PDF 导出成功"
-                        }
-                    )
-                }
-                .onFailure { toastManager.showAsync(it.message ?: "PDF 导出失败") }
-        }
+        exportViewModel.exportTo(uri?.toString())
     }
 
     LaunchedEffect(id) {
@@ -158,21 +99,7 @@ fun DownloadComicDetailScreen(
     }
 
     LaunchedEffect(detailState.completeItems, detailState.cachePath) {
-        cachedInfo = if (detailState.completeItems.isEmpty()) {
-            null
-        } else {
-            withContext(Dispatchers.IO) {
-                val infos = detailState.completeItems.map { getCachedComicInfo(context, it) }
-                val cacheRoot = detailState.cachePath.takeIf { it.isNotBlank() }?.let(::File)
-                val rootBytes = cacheRoot?.takeIf { it.isDirectory }?.let(::directorySize)
-                CachedComicInfo(
-                    imageCount = infos.sumOf { it.imageCount },
-                    totalBytes = rootBytes ?: infos.sumOf { it.totalBytes },
-                    imageDir = infos.mapNotNull { it.imageDir }.firstOrNull(),
-                    zipFile = infos.mapNotNull { it.zipFile }.firstOrNull()
-                )
-            }
-        }
+        exportViewModel.inspect(detailState.completeItems, detailState.cachePath)
     }
 
     when (activeDialog) {
@@ -194,19 +121,17 @@ fun DownloadComicDetailScreen(
                 title = "选择导出章节",
                 chapters = detailState.readableChapters,
                 selectedChapterIds = selectedExportChapterIds,
-                onSelectedChange = { selectedExportChapterIds = it },
+                onSelectedChange = exportViewModel::selectChapters,
                 onDismiss = { activeDialog = null },
                 confirmText = "合并导出",
                 onConfirm = {
-                    exportMode = PdfExportMode.Merge
                     activeDialog = null
-                    exportLauncher.launch(null)
+                    if (exportViewModel.prepareExport(detailState.completeItems, PdfExportMode.Merge)) exportLauncher.launch(null)
                 },
                 secondaryConfirmText = "分章导出",
                 onSecondaryConfirm = {
-                    exportMode = PdfExportMode.SplitByChapter
                     activeDialog = null
-                    exportLauncher.launch(null)
+                    if (exportViewModel.prepareExport(detailState.completeItems, PdfExportMode.SplitByChapter)) exportLauncher.launch(null)
                 }
             )
         }
@@ -232,7 +157,7 @@ fun DownloadComicDetailScreen(
                         isMultiChapter = detailState.isMultiChapter,
                         exporting = exporting,
                         onExport = {
-                            selectedExportChapterIds = detailState.completeItems.map { it.id }.toSet()
+                            exportViewModel.selectChapters(detailState.completeItems.map { it.id }.toSet())
                             activeDialog = DownloadDetailDialog.ExportChapter
                         },
                         onSelectChapter = {
@@ -380,7 +305,7 @@ fun DownloadComicDetailScreen(
                 if (detailState.hasError) {
                     FilledTonalButton(
                         modifier = Modifier.fillMaxWidth(),
-                        onClick = { downloadManager.retryGroup(viewModel.groupId.value) },
+                        onClick = { viewModel.retryDownload() },
                     ) {
                         Icon(
                             imageVector = Icons.Default.Refresh,
@@ -418,11 +343,6 @@ fun DownloadComicDetailScreen(
 private enum class DownloadDetailDialog {
     ReadChapter,
     ExportChapter
-}
-
-private enum class PdfExportMode {
-    Merge,
-    SplitByChapter
 }
 
 @Composable
@@ -486,7 +406,7 @@ private fun LocalCover(
 ) {
     if (coverPath.isNotBlank()) {
         AsyncImage(
-            model = File(coverPath),
+            model = coverPath,
             imageLoader = imageLoader,
             contentDescription = "${title}的封面",
             contentScale = ContentScale.Crop,
@@ -533,12 +453,6 @@ private fun CachedInfoItem(
 
 private fun formatTime(value: Long): String {
     return SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(value))
-}
-
-private fun directorySize(dir: File): Long {
-    return dir.walkBottomUp()
-        .filter { it.isFile }
-        .sumOf { it.length() }
 }
 
 private fun formatSpeed(bytesPerSec: Float): String {

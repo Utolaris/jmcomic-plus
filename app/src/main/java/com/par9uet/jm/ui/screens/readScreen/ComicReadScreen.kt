@@ -49,6 +49,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,6 +70,7 @@ import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.store.DownloadManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ReadHistoryManager
+import com.par9uet.jm.store.ReaderResumeManager
 import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.glass.GlassCaptureHost
@@ -85,7 +90,8 @@ fun ComicReadScreen(
     localSettingManager: LocalSettingManager = getKoin().get(),
     readHistoryManager: ReadHistoryManager = getKoin().get(),
     downloadManager: DownloadManager = getKoin().get(),
-    userManager: UserManager = getKoin().get()
+    userManager: UserManager = getKoin().get(),
+    readerResumeManager: ReaderResumeManager = getKoin().get()
 ) {
     val context = LocalContext.current
     val mainNavController = LocalMainNavController.current
@@ -165,42 +171,49 @@ fun ComicReadScreen(
         comicReadViewModel.showToolBar()
     }
 
-    LaunchedEffect(comicId) {
-        val onSuccess = {
-            if (loadedComicId != comicId) {
-                // 恢复上次阅读页数
-                val savedIndex = if (readHistoryComicId > 0) {
-                    readHistoryManager.lastReadPageIndex(readHistoryComicId, comicId, readHistory)
-                } else 0
-                currentIndexState = savedIndex
-                targetIndex = savedIndex
-                loadedComicId = comicId
-            } else {
-                targetIndex = currentIndexState.coerceAtLeast(0)
-            }
-            zoomState.reset()
-            comicReadViewModel.decodeIndex(targetIndex, context)
-        }
+    LaunchedEffect(comicId, localOnly) {
         if (localOnly) {
             comicReadViewModel.clearComicDetail()
-            comicReadViewModel.getLocalComicPicList(comicId, context, onSuccess)
+            comicReadViewModel.getLocalComicPicList(comicId)
         } else {
             comicReadViewModel.getComicDetail(comicId)
-            comicReadViewModel.getComicPicList(comicId, onSuccess)
+            comicReadViewModel.getComicPicList(comicId)
         }
     }
 
-    // 退出阅读时保存当前页数进度
-    DisposableEffect(comicId, size) {
-        onDispose {
-            if (size > 0 && readHistoryComicId > 0) {
-                readHistoryManager.saveReadProgress(
-                    readHistoryComicId,
-                    comicId,
-                    currentIndexState,
-                    size
-                )
+    // Metadata and pages arrive independently. Restore only once both the real history key and
+    // page count exist; a callback captured before metadata loaded otherwise always restored 0.
+    LaunchedEffect(comicId, size, readHistoryComicId, loading) {
+        if (!loading && size > 0 && readHistoryComicId > 0) {
+            if (loadedComicId != comicId) {
+                currentIndexState = readHistoryManager.lastReadPageIndex(readHistoryComicId, comicId)
+                    .coerceIn(0, size - 1)
+                loadedComicId = comicId
             }
+            targetIndex = currentIndexState.coerceIn(0, size - 1)
+            readerResumeManager.markReading(comicId, localOnly)
+            zoomState.reset()
+            comicReadViewModel.decodeIndex(targetIndex, context)
+        }
+    }
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val saveProgress by rememberUpdatedState {
+        if (size > 0 && readHistoryComicId > 0 && loadedComicId == comicId) {
+            readHistoryManager.saveReadProgress(readHistoryComicId, comicId, currentIndexState, size)
+            // Keep the resume mark fresh while the process stays alive in the background.
+            readerResumeManager.markReading(comicId, localOnly)
+        }
+    }
+    DisposableEffect(lifecycleOwner, comicId) {
+        val observer = LifecycleEventObserver { _, event ->
+            // Process death need not call onDispose. ON_STOP is the durable background checkpoint.
+            if (event == Lifecycle.Event.ON_STOP) saveProgress()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            saveProgress()
         }
     }
 
@@ -246,10 +259,11 @@ fun ComicReadScreen(
     // still fully covering the destination, the resulting inset change makes the underlying
     // page relayout invisibly. Restoring in onDispose (after the exit animation) instead let
     // the user watch the page jump when the navigation bar/dock reappeared.
-    val readerBackCallback = remember {
+    val readerBackCallback = remember(comicId, localOnly) {
         object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 controller?.show(WindowInsetsCompat.Type.systemBars())
+                readerResumeManager.clearIfChapter(comicId, localOnly)
                 isEnabled = false
                 mainNavController.popBackStack()
             }

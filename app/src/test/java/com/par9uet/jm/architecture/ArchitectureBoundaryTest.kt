@@ -9,6 +9,23 @@ class ArchitectureBoundaryTest {
     @Test
     fun `lower layers do not import the entry packages already removed from them`() {
         val violations = buildList {
+            addAll(forbiddenImports("ui/viewModel/ComicReadViewModel.kt", listOf(
+                "java.io.", "java.util.zip.", "com.par9uet.jm.database.", "com.par9uet.jm.cache.",
+            )))
+            listOf("CacheCleanupScreen.kt", "downloadScreen/DownloadComicDetailScreen.kt").forEach { screen ->
+                addAll(forbiddenImports("ui/screens/$screen", listOf(
+                    "java.io.", "kotlinx.coroutines.", "com.par9uet.jm.store.DownloadManager",
+                    "com.par9uet.jm.reader.ReaderImagePipeline", "com.par9uet.jm.database.",
+                    "com.par9uet.jm.download.export.export", "com.par9uet.jm.download.export.getCachedComicInfo",
+                    "com.par9uet.jm.cache.atom.",
+                )))
+            }
+            addAll(forbiddenImports("cache/atom", listOf(
+                "com.par9uet.jm.ui.", "com.par9uet.jm.store.", "com.par9uet.jm.reader.",
+            )))
+            addAll(forbiddenImports("store/DownloadManager.kt", listOf(
+                "com.par9uet.jm.download.coordinator.DownloadComicCoordinator",
+            )))
             addAll(forbiddenImports("store", listOf("com.par9uet.jm.ui.", "com.par9uet.jm.worker.")))
             addAll(forbiddenImports("favorites", listOf("com.par9uet.jm.ui.")))
             addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.")))

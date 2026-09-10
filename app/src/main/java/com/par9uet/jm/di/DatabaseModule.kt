@@ -28,6 +28,7 @@ import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.dsl.worker
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.module
+import org.koin.dsl.bind
 
 
 val databaseModule = module {
@@ -52,7 +53,7 @@ val databaseModule = module {
     single<DownloadWorkScheduler> { WorkManagerDownloadWorkScheduler(androidContext()) }
     single { DownloadFiles() }
     single { DownloadTaskOperations(get(), get()) }
-    single { DownloadManager(get(), get(), get(), get()) }
+    single { DownloadManager(get(), get(), get(), get(), get()) }
     single<DownloadContentStorage> { DownloadContentFiles(androidContext()) }
     single<DownloadCoverImages> { CoilDownloadCoverImages(androidContext(), get()) }
     single<DownloadPageDecoder> {
@@ -63,9 +64,13 @@ val databaseModule = module {
         DeviceDownloadContentOperations(get(), get(), get(), get(), get(), get())
     }
     single<DownloadFeedback> { DeviceDownloadFeedback(androidContext(), get(), get()) }
-    single { DownloadComicCoordinator(get(), get(), get(), get()) }
+    single { DownloadComicCoordinator(get(), get(), get(), get()) } bind com.par9uet.jm.download.coordinator.DownloadExecutionControl::class
     viewModel { DownloadViewModel(get(), get()) }
-    viewModel { DownloadComicDetailViewModel(get()) }
+    viewModel { DownloadComicDetailViewModel(get(), get()) }
+    single<com.par9uet.jm.download.export.DownloadExportOperations> {
+        com.par9uet.jm.download.export.DeviceDownloadExportOperations(androidContext())
+    }
+    viewModel { com.par9uet.jm.ui.viewModel.DownloadExportViewModel(get(), get()) }
 
     worker {
         DownloadComicWorker(

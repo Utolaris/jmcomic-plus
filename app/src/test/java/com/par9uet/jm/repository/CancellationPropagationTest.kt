@@ -22,6 +22,17 @@ class CancellationPropagationTest {
     private val subject = Subject()
 
     @Test
+    fun recoveryFailureKeepsItsNetworkClassificationAndMessage() = runBlocking {
+        val failure = NetWorkResult.Error(
+            "网络不可用",
+            authFailure = com.par9uet.jm.retrofit.model.AuthFailure.TemporaryFailure,
+            kind = com.par9uet.jm.retrofit.model.NetworkErrorKind.Network,
+        )
+        val result = subject.capture { throw com.par9uet.jm.store.SessionRecoveryException(failure) }
+        assertEquals(failure, result)
+    }
+
+    @Test
     fun cancellationExceptionPropagatesFromEmbeddedCall() = runBlocking {
         try {
             subject.capture { throw CancellationException("cancelled") }

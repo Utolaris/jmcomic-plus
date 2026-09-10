@@ -2,127 +2,72 @@ package com.par9uet.jm.storage
 
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
-import android.util.Base64
 import java.nio.charset.StandardCharsets
 import java.security.KeyStore
+import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class CryptoManager {
+class CryptoManager internal constructor(private val keyProvider: () -> SecretKey) {
+    constructor() : this(AndroidStorageKey::get)
+
     companion object {
         private const val ENCRYPTED_PREFIX = "enc:"
         private const val PLAIN_PREFIX = "plain:"
         private const val GCM_IV_SIZE_BYTES = 12
     }
 
-    private val keyAlias = "app_master_key"
-    private val keyStore: KeyStore? by lazy {
-        runCatching {
-            KeyStore.getInstance("AndroidKeyStore").apply {
-                load(null)
-            }
-        }.getOrNull()
-    }
-
-    private fun getSecretKey(): SecretKey? {
-        val store = keyStore ?: return null
-        val existingKey = runCatching {
-            store.getEntry(keyAlias, null) as? KeyStore.SecretKeyEntry
-        }.getOrNull()
-        if (existingKey != null) {
-            return existingKey.secretKey
-        }
-
-        return runCatching {
-            val keyGenerator = KeyGenerator.getInstance(
-                KeyProperties.KEY_ALGORITHM_AES,
-                "AndroidKeyStore"
-            )
-            val keySpec = KeyGenParameterSpec.Builder(
-                keyAlias,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
-            ).apply {
-                setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                setKeySize(256)
-                setUserAuthenticationRequired(false)
-            }.build()
-
-            keyGenerator.init(keySpec)
-            keyGenerator.generateKey()
-        }.getOrNull()
-    }
-
+    /** Failure propagates to storage, which keeps the previous value instead of writing plain. */
     fun encrypt(data: String): String {
-        val encryptedData = runCatching {
-            val key = getSecretKey() ?: return@runCatching null
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            cipher.init(Cipher.ENCRYPT_MODE, key)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, keyProvider())
+        val encrypted = cipher.doFinal(data.toByteArray(StandardCharsets.UTF_8))
+        return ENCRYPTED_PREFIX + Base64.getEncoder().encodeToString(cipher.iv + encrypted)
+    }
 
-            val encrypted = cipher.doFinal(data.toByteArray(StandardCharsets.UTF_8))
-            ENCRYPTED_PREFIX + Base64.encodeToString(cipher.iv + encrypted, Base64.NO_WRAP)
+    fun decrypt(data: String): String? = when {
+        // Read-only migration of explicitly marked legacy fallback data. Never write this form.
+        data.startsWith(PLAIN_PREFIX) -> runCatching {
+            String(Base64.getDecoder().decode(data.removePrefix(PLAIN_PREFIX)), StandardCharsets.UTF_8)
         }.getOrNull()
-        if (encryptedData != null) {
-            return encryptedData
-        }
-
-        return encodePlain(data)
+        data.startsWith(ENCRYPTED_PREFIX) -> decryptWithKeyStore(data.removePrefix(ENCRYPTED_PREFIX), true)
+        // Original encrypted format put the IV at the end and had no prefix. A decrypt failure
+        // must never reinterpret ciphertext as plaintext (e.g. when the key is unavailable).
+        else -> decryptWithKeyStore(data, false)
     }
 
-    private fun encodePlain(data: String): String {
-        return PLAIN_PREFIX + Base64.encodeToString(
-            data.toByteArray(StandardCharsets.UTF_8),
-            Base64.NO_WRAP
-        )
-    }
+    private fun decryptWithKeyStore(value: String, ivAtStart: Boolean): String? = runCatching {
+        val data = Base64.getDecoder().decode(value)
+        if (data.size <= GCM_IV_SIZE_BYTES) return@runCatching null
+        val iv = if (ivAtStart) data.copyOfRange(0, GCM_IV_SIZE_BYTES)
+            else data.copyOfRange(data.size - GCM_IV_SIZE_BYTES, data.size)
+        val encrypted = if (ivAtStart) data.copyOfRange(GCM_IV_SIZE_BYTES, data.size)
+            else data.copyOfRange(0, data.size - GCM_IV_SIZE_BYTES)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, keyProvider(), GCMParameterSpec(128, iv))
+        String(cipher.doFinal(encrypted), StandardCharsets.UTF_8)
+    }.getOrNull()
+}
 
-    fun decrypt(encryptedData: String): String? {
-        return when {
-            encryptedData.startsWith(PLAIN_PREFIX) -> decodePlain(
-                encryptedData.removePrefix(PLAIN_PREFIX)
-            )
+private object AndroidStorageKey {
+    private const val ALIAS = "app_master_key"
+    // Failed initialization is retried; a transient Keystore failure is not cached as null.
+    private val store by lazy { KeyStore.getInstance("AndroidKeyStore").apply { load(null) } }
 
-            encryptedData.startsWith(ENCRYPTED_PREFIX) -> decryptWithKeyStore(
-                encryptedData.removePrefix(ENCRYPTED_PREFIX),
-                ivAtStart = true
-            )
-
-            else -> decryptWithKeyStore(encryptedData, ivAtStart = false)
-                ?: decodePlain(encryptedData)
-        }
-    }
-
-    private fun decryptWithKeyStore(encryptedData: String, ivAtStart: Boolean): String? {
-        return runCatching {
-            val data = Base64.decode(encryptedData, Base64.NO_WRAP)
-            if (data.size <= GCM_IV_SIZE_BYTES) {
-                return@runCatching null
-            }
-
-            val iv = if (ivAtStart) {
-                data.copyOfRange(0, GCM_IV_SIZE_BYTES)
-            } else {
-                data.copyOfRange(data.size - GCM_IV_SIZE_BYTES, data.size)
-            }
-            val encryptedBytes = if (ivAtStart) {
-                data.copyOfRange(GCM_IV_SIZE_BYTES, data.size)
-            } else {
-                data.copyOfRange(0, data.size - GCM_IV_SIZE_BYTES)
-            }
-            val key = getSecretKey() ?: return@runCatching null
-            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-            val spec = GCMParameterSpec(128, iv)
-            cipher.init(Cipher.DECRYPT_MODE, key, spec)
-
-            String(cipher.doFinal(encryptedBytes), StandardCharsets.UTF_8)
-        }.getOrNull()
-    }
-
-    private fun decodePlain(data: String): String? {
-        return runCatching {
-            String(Base64.decode(data, Base64.NO_WRAP), StandardCharsets.UTF_8)
-        }.getOrNull()
+    @Synchronized
+    fun get(): SecretKey {
+        val entry = store.getEntry(ALIAS, null) as? KeyStore.SecretKeyEntry
+        if (entry != null) return entry.secretKey
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(KeyGenParameterSpec.Builder(
+            ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
+        ).setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setKeySize(256)
+            .setUserAuthenticationRequired(false)
+            .build())
+        return generator.generateKey()
     }
 }

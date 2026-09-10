@@ -3,6 +3,7 @@ package com.par9uet.jm.worker
 import android.content.Context
 import androidx.work.BackoffPolicy
 import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -10,6 +11,8 @@ import androidx.work.workDataOf
 import com.par9uet.jm.store.DownloadWorkScheduler
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 internal class WorkManagerDownloadWorkScheduler(
     private val context: Context,
@@ -39,9 +42,16 @@ internal class WorkManagerDownloadWorkScheduler(
                     TimeUnit.SECONDS,
                 )
                 .build()
-            workManager.enqueue(request)
+            workManager.enqueueUniqueWork(workName(comicId), ExistingWorkPolicy.KEEP, request)
         }
     }
+
+    override suspend fun cancel(comicIds: Collection<Int>) = withContext(Dispatchers.IO) {
+        val workManager = WorkManager.getInstance(context)
+        comicIds.distinct().forEach { workManager.cancelUniqueWork(workName(it)).result.get() }
+    }
+
+    private fun workName(comicId: Int) = "comic-download-$comicId"
 
     private companion object {
         const val DOWNLOAD_RETRY_BACKOFF_SECONDS = 30L

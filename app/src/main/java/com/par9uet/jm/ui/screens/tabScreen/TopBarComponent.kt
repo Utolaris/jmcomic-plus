@@ -11,14 +11,14 @@ import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.screens.HomeMaterialCategoryTitleSelector
 import com.par9uet.jm.ui.screens.HomeMaterialTopBarActions
-import com.par9uet.jm.ui.viewModel.ComicViewModel
+import com.par9uet.jm.ui.viewModel.HomeViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun HomeTopBarComponent(
     title: String,
-    categories: List<ComicViewModel.HomeCategoryInfo>,
+    categories: List<HomeViewModel.HomeCategoryInfo>,
     selectedCategoryId: String?,
     onCategorySelected: (String) -> Unit,
     onSearch: () -> Unit,
@@ -87,7 +87,7 @@ private fun SettingsTopBarComponent(tab: MainTab) {
 internal fun TopBarComponent(
     tab: MainTab,
     homeTitle: String = MainTab.Home.topBarTitle,
-    homeCategories: List<ComicViewModel.HomeCategoryInfo> = emptyList(),
+    homeCategories: List<HomeViewModel.HomeCategoryInfo> = emptyList(),
     selectedHomeCategoryId: String? = null,
     onHomeCategorySelected: (String) -> Unit = {},
     favoritesViewModel: FavoritesViewModel? = null,

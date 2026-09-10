@@ -41,7 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavHostController
+import com.par9uet.jm.ui.navigation.RetainedMainNavigation
 import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
@@ -49,6 +50,7 @@ import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.startup.PostStartupCoordinator
 import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.store.ReaderResumeManager
 import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.JmCoverImage
@@ -131,7 +133,10 @@ fun App(
             onUnlock = { isLocked = false }
         )
 
-        else -> MainAppContent(
+    }
+    RetainedMainNavigation(visible = !showOnboarding && !showAppLock) { mainNavController ->
+        MainAppContent(
+            mainNavController = mainNavController,
             clipboardAutoDetectEnabled = miscSettings.clipboardAutoDetectEnabled,
             localSettingManager = localSettingManager,
             toastManager = toastManager,
@@ -143,13 +148,13 @@ fun App(
 
 @Composable
 private fun MainAppContent(
+    mainNavController: NavHostController,
     clipboardAutoDetectEnabled: Boolean,
     localSettingManager: LocalSettingManager,
     toastManager: ToastManager,
     showNsfwDialog: Boolean,
     onNsfwDismissed: () -> Unit,
 ) {
-    val mainNavController = rememberNavController()
     val lifecycleOwner = LocalLifecycleOwner.current
     val clipboardManager = LocalClipboardManager.current
     val koin = getKoin()
@@ -157,6 +162,23 @@ private fun MainAppContent(
     var clipboardDetectedComicId by remember { mutableStateOf<Int?>(null) }
     var clipboardDetectedComic by remember { mutableStateOf<Comic?>(null) }
     var pendingNavComicId by remember { mutableStateOf(-1) }
+
+    // Process death while reading never runs onDispose. If Navigation could not restore the
+    // back stack (HyperOS cold start), fall back to the durable reader resume mark.
+    LaunchedEffect(Unit) {
+        withFrameNanos { }
+        kotlinx.coroutines.delay(300)
+        val route = mainNavController.currentDestination?.route
+        if (route != null && !route.startsWith("tab")) return@LaunchedEffect
+        val session = koin.get<ReaderResumeManager>().peekResumable() ?: return@LaunchedEffect
+        val target = if (session.localOnly) {
+            "localComicRead/${session.chapterId}"
+        } else {
+            "comicRead/${session.chapterId}"
+        }
+        runCatching { mainNavController.navigate(target) }
+            .onSuccess { toastManager.showAsync("已恢复上次阅读") }
+    }
 
     DisposableEffect(lifecycleOwner, clipboardAutoDetectEnabled) {
         if (!clipboardAutoDetectEnabled) {
