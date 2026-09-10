@@ -23,20 +23,26 @@ class ReadHistoryStorage(
     val state = _state.asStateFlow()
 
     fun set(history: Map<Int, ComicReadHistory>) {
-        _state.update { history }
-        secureStorage.set(STORAGE_KEY, history)
+        when (secureStorage.set(STORAGE_KEY, history)) {
+            is StorageWriteResult.Success -> _state.update { history }
+            is StorageWriteResult.TemporaryUnavailable -> Unit
+        }
     }
 
     fun get(): Map<Int, ComicReadHistory> {
-        if (_state.value == null) {
-            _state.update {
-                secureStorage.get(
-                    STORAGE_KEY,
-                    object : TypeToken<Map<Int, ComicReadHistory>>() {}.type
-                ) ?: emptyMap()
-            }
+        _state.value?.let { return it }
+        return when (
+            val result = secureStorage.get<Map<Int, ComicReadHistory>>(
+                STORAGE_KEY,
+                object : TypeToken<Map<Int, ComicReadHistory>>() {}.type
+            )
+        ) {
+            is StorageReadResult.Success -> result.value.also { _state.value = it }
+            is StorageReadResult.Missing,
+            is StorageReadResult.Corrupted,
+            -> emptyMap<Int, ComicReadHistory>().also { _state.value = it }
+            is StorageReadResult.TemporaryUnavailable -> emptyMap()
         }
-        return _state.value.orEmpty()
     }
 
     fun remove() {

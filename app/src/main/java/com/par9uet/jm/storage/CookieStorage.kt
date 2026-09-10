@@ -26,20 +26,28 @@ class SecureCookieStorage(
     override val state = _state.asStateFlow()
 
     override fun set(cookieStore: List<Cookie>) {
-        _state.update {
-            cookieStore
+        // Only publish in-memory after the durable write succeeds, so memory cannot diverge from disk.
+        when (secureStorage.set(STORAGE_KEY, cookieStore)) {
+            is StorageWriteResult.Success -> _state.update { cookieStore }
+            is StorageWriteResult.TemporaryUnavailable -> Unit
         }
-        secureStorage.set(STORAGE_KEY, this.state.value)
     }
 
     override fun get(): List<Cookie> {
-        if (_state.value == null) {
-            _state.update {
-                secureStorage.get(STORAGE_KEY, object : TypeToken<List<Cookie>>() {}.type)
-                    ?: listOf()
-            }
+        _state.value?.let { return it }
+        return when (
+            val result = secureStorage.get<List<Cookie>>(
+                STORAGE_KEY,
+                object : TypeToken<List<Cookie>>() {}.type,
+            )
+        ) {
+            is StorageReadResult.Success -> result.value.also { _state.value = it }
+            // Permanent failures may cache empty; temporary Keystore outage must retry.
+            is StorageReadResult.Missing,
+            is StorageReadResult.Corrupted,
+            -> emptyList<Cookie>().also { _state.value = it }
+            is StorageReadResult.TemporaryUnavailable -> emptyList()
         }
-        return _state.value ?: listOf()
     }
 
     override fun remove() {

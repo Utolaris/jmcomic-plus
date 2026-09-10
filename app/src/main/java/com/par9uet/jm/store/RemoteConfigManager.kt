@@ -6,6 +6,7 @@ import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.RemoteSettingResponse
 import com.par9uet.jm.storage.SecureStorage
+import com.par9uet.jm.storage.StorageReadResult
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -22,9 +23,17 @@ class SecureRemoteConfigStore(
     private val secureStorage: SecureStorage,
 ) : RemoteConfigStore {
     override fun <T> get(key: String, type: java.lang.reflect.Type): T? =
-        secureStorage.get(key, type)
+        when (val result = secureStorage.get<T>(key, type)) {
+            is StorageReadResult.Success -> result.value
+            is StorageReadResult.Missing,
+            is StorageReadResult.Corrupted,
+            is StorageReadResult.TemporaryUnavailable,
+            -> null
+        }
 
-    override fun <T> set(key: String, value: T) = secureStorage.set(key, value)
+    override fun <T> set(key: String, value: T) {
+        secureStorage.set(key, value)
+    }
 }
 
 /**

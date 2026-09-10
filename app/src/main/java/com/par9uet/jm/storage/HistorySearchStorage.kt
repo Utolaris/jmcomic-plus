@@ -16,20 +16,26 @@ class HistorySearchStorage(
     val state = _state.asStateFlow()
 
     fun set(list: List<String>) {
-        _state.update {
-            list
+        when (secureStorage.set(STORAGE_KEY, list)) {
+            is StorageWriteResult.Success -> _state.update { list }
+            is StorageWriteResult.TemporaryUnavailable -> Unit
         }
-        secureStorage.set(STORAGE_KEY, this.state.value)
     }
 
     fun get(): List<String> {
-        if (_state.value == null) {
-            _state.update {
-                secureStorage.get(STORAGE_KEY, object : TypeToken<List<String>>() {}.type)
-                    ?: listOf()
-            }
+        _state.value?.let { return it }
+        return when (
+            val result = secureStorage.get<List<String>>(
+                STORAGE_KEY,
+                object : TypeToken<List<String>>() {}.type,
+            )
+        ) {
+            is StorageReadResult.Success -> result.value.also { _state.value = it }
+            is StorageReadResult.Missing,
+            is StorageReadResult.Corrupted,
+            -> emptyList<String>().also { _state.value = it }
+            is StorageReadResult.TemporaryUnavailable -> emptyList()
         }
-        return _state.value ?: listOf()
     }
 
     fun remove() {

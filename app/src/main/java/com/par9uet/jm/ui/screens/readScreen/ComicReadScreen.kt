@@ -191,17 +191,18 @@ fun ComicReadScreen(
                 loadedComicId = comicId
             }
             targetIndex = currentIndexState.coerceIn(0, size - 1)
-            readerResumeManager.markReading(comicId, localOnly)
+            readerResumeManager.beginReading(comicId, localOnly)
             zoomState.reset()
             comicReadViewModel.decodeIndex(targetIndex, context)
         }
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
+    // Progress always saves; the resume mark is owned by beginReading/endReading so an
+    // explicit back cannot be undone by this dispose-time checkpoint.
     val saveProgress by rememberUpdatedState {
         if (size > 0 && readHistoryComicId > 0 && loadedComicId == comicId) {
             readHistoryManager.saveReadProgress(readHistoryComicId, comicId, currentIndexState, size)
-            // Keep the resume mark fresh while the process stays alive in the background.
             readerResumeManager.markReading(comicId, localOnly)
         }
     }
@@ -263,7 +264,8 @@ fun ComicReadScreen(
         object : androidx.activity.OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 controller?.show(WindowInsetsCompat.Type.systemBars())
-                readerResumeManager.clearIfChapter(comicId, localOnly)
+                // Latch exit BEFORE popBackStack so dispose-time markReading cannot revive it.
+                readerResumeManager.endReading(comicId, localOnly)
                 isEnabled = false
                 mainNavController.popBackStack()
             }

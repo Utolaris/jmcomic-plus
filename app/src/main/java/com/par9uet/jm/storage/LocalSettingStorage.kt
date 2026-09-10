@@ -34,18 +34,31 @@ class LocalSettingStorage(
 
     override fun load(): LocalSetting? {
         _state.value?.let { return it }
-        val savedJson = secureStorage.getStartupString(STORAGE_KEY)
-            ?: secureStorage.getString(STORAGE_KEY)?.also {
-                secureStorage.setStartupString(STORAGE_KEY, it)
+        val startup = secureStorage.getStartupString(STORAGE_KEY)
+        val savedJson = when (startup) {
+            is StorageReadResult.Success -> startup.value
+            is StorageReadResult.TemporaryUnavailable -> return null
+            is StorageReadResult.Missing,
+            is StorageReadResult.Corrupted,
+            -> when (val legacy = secureStorage.getString(STORAGE_KEY)) {
+                is StorageReadResult.Success -> legacy.value.also {
+                    secureStorage.setStartupString(STORAGE_KEY, it)
+                }
+                is StorageReadResult.TemporaryUnavailable -> return null
+                is StorageReadResult.Missing,
+                is StorageReadResult.Corrupted,
+                -> return null
             }
-        if (savedJson == null) return null
+        }
         val saved = secureStorage.decode<LocalSetting>(savedJson, GSON_TYPE) ?: return null
         return normalizePersisted(savedJson, saved).also { restored -> _state.update { restored } }
     }
 
     override fun persist(localSetting: LocalSetting) {
-        _state.update { localSetting }
-        secureStorage.setStartup(STORAGE_KEY, localSetting)
+        when (secureStorage.setStartup(STORAGE_KEY, localSetting)) {
+            is StorageWriteResult.Success -> _state.update { localSetting }
+            is StorageWriteResult.TemporaryUnavailable -> Unit
+        }
     }
 
     fun remove() {

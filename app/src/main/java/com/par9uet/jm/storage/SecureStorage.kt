@@ -6,37 +6,54 @@ import androidx.core.content.edit
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 
+/** Distinguishes “no value” from “value exists but cannot be read right now”. */
+sealed class StorageReadResult<out T> {
+    data class Success<T>(val value: T) : StorageReadResult<T>()
+    data object Missing : StorageReadResult<Nothing>()
+    data object TemporaryUnavailable : StorageReadResult<Nothing>()
+    data object Corrupted : StorageReadResult<Nothing>()
+}
+
+sealed class StorageWriteResult {
+    data object Success : StorageWriteResult()
+    data object TemporaryUnavailable : StorageWriteResult()
+}
+
 class SecureStorage(
-    context: Context,
+    private val sharedPreferences: SharedPreferences,
+    private val startupPreferences: SharedPreferences,
     gson: Gson = GsonBuilder().create(),
     private val cryptoManager: CryptoManager = CryptoManager(),
 ) {
-    private val gson = gson.newBuilder().registerTypeAdapter(okhttp3.Cookie::class.java, CookieTypeAdapter()).create()
-    val sharedPreferences: SharedPreferences by lazy {
-        context.getSharedPreferences("jm-mobile-g-data", Context.MODE_PRIVATE)
-    }
-    private val startupPreferences: SharedPreferences by lazy {
-        context.getSharedPreferences("jm-mobile-startup", Context.MODE_PRIVATE)
-    }
+    constructor(
+        context: Context,
+        gson: Gson = GsonBuilder().create(),
+        cryptoManager: CryptoManager = CryptoManager(),
+    ) : this(
+        sharedPreferences = context.getSharedPreferences("jm-mobile-g-data", Context.MODE_PRIVATE),
+        startupPreferences = context.getSharedPreferences("jm-mobile-startup", Context.MODE_PRIVATE),
+        gson = gson,
+        cryptoManager = cryptoManager,
+    )
 
-    fun <T> set(key: String, t: T) {
+    private val gson = gson.newBuilder().registerTypeAdapter(okhttp3.Cookie::class.java, CookieTypeAdapter()).create()
+
+    fun <T> set(key: String, t: T): StorageWriteResult {
         val json = gson.toJson(t)
-        writeEncrypted(sharedPreferences, key, json)
+        return writeEncrypted(sharedPreferences, key, json)
     }
 
     /** Stores small first-frame values separately from history and download metadata. */
-    fun <T> setStartup(key: String, t: T) {
+    fun <T> setStartup(key: String, t: T): StorageWriteResult {
         val json = gson.toJson(t)
-        setStartupString(key, json)
+        return setStartupString(key, json)
     }
 
-    fun setStartupString(key: String, json: String) {
+    fun setStartupString(key: String, json: String): StorageWriteResult =
         writeEncrypted(startupPreferences, key, json)
-    }
 
-    fun <T> get(key: String, type: java.lang.reflect.Type): T? {
-        return decode(getString(key), type)
-    }
+    fun <T> get(key: String, type: java.lang.reflect.Type): StorageReadResult<T> =
+        decodeResult(getString(key), type)
 
     /**
      * Decodes an already decrypted JSON value. This avoids reading and decrypting the same
@@ -51,27 +68,53 @@ class SecureStorage(
         }
     }
 
-    fun getString(key: String): String? = readEncrypted(sharedPreferences, key)
+    private fun <T> decodeResult(json: StorageReadResult<String>, type: java.lang.reflect.Type): StorageReadResult<T> {
+        return when (json) {
+            is StorageReadResult.Missing -> StorageReadResult.Missing
+            is StorageReadResult.TemporaryUnavailable -> StorageReadResult.TemporaryUnavailable
+            is StorageReadResult.Corrupted -> StorageReadResult.Corrupted
+            is StorageReadResult.Success -> {
+                try {
+                    val value = gson.fromJson<T>(json.value, type)
+                    if (value == null) StorageReadResult.Corrupted
+                    else StorageReadResult.Success(value)
+                } catch (_: Exception) {
+                    StorageReadResult.Corrupted
+                }
+            }
+        }
+    }
 
-    fun getStartupString(key: String): String? = readEncrypted(startupPreferences, key)
+    fun getString(key: String): StorageReadResult<String> = readEncrypted(sharedPreferences, key)
 
-    private fun writeEncrypted(preferences: SharedPreferences, key: String, json: String) {
+    fun getStartupString(key: String): StorageReadResult<String> = readEncrypted(startupPreferences, key)
+
+    private fun writeEncrypted(preferences: SharedPreferences, key: String, json: String): StorageWriteResult {
         // Encrypt before opening the editor. Failure preserves the last durable value and does
         // not invalidate the current in-memory identity during a temporary Keystore outage.
-        val encrypted = runCatching { cryptoManager.encrypt(json) }.getOrNull() ?: return
+        val encrypted = try {
+            cryptoManager.encrypt(json)
+        } catch (_: Exception) {
+            return StorageWriteResult.TemporaryUnavailable
+        }
         preferences.edit { putString(key, encrypted) }
+        return StorageWriteResult.Success
     }
 
-    private fun readEncrypted(preferences: SharedPreferences, key: String): String? {
-        val stored = preferences.getString(key, null) ?: return null
-        val json = cryptoManager.decrypt(stored) ?: return null
-        if (stored.startsWith("plain:")) writeEncrypted(preferences, key, json)
-        return json
+    private fun readEncrypted(preferences: SharedPreferences, key: String): StorageReadResult<String> {
+        val stored = preferences.getString(key, null) ?: return StorageReadResult.Missing
+        return when (val decrypted = cryptoManager.decrypt(stored)) {
+            is DecryptResult.Success -> {
+                if (stored.startsWith("plain:")) writeEncrypted(preferences, key, decrypted.value)
+                StorageReadResult.Success(decrypted.value)
+            }
+            is DecryptResult.TemporaryUnavailable -> StorageReadResult.TemporaryUnavailable
+            is DecryptResult.Corrupted -> StorageReadResult.Corrupted
+        }
     }
 
-    fun <T> getStartup(key: String, type: java.lang.reflect.Type): T? {
-        return decode(getStartupString(key), type)
-    }
+    fun <T> getStartup(key: String, type: java.lang.reflect.Type): StorageReadResult<T> =
+        decodeResult(getStartupString(key), type)
 
     fun remove(key: String) {
         sharedPreferences.edit {

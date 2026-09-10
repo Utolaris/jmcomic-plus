@@ -24,22 +24,33 @@ class SecureUserStorage(
     val state = _state.asStateFlow()
 
     override fun set(user: User) {
-        _state.update {
-            user
+        when (secureStorage.setStartup(STORAGE_KEY, user)) {
+            is StorageWriteResult.Success -> _state.update { user }
+            is StorageWriteResult.TemporaryUnavailable -> Unit
         }
-        secureStorage.setStartup(STORAGE_KEY, user)
     }
 
     override fun get(): User {
-        if (_state.value == null) {
-            _state.update {
-                secureStorage.getStartup<User>(STORAGE_KEY, object : TypeToken<User>() {}.type)
-                    ?: secureStorage.get<User>(STORAGE_KEY, object : TypeToken<User>() {}.type)
-                    ?.also { secureStorage.setStartup(STORAGE_KEY, it) }
-                    ?: User.create()
-            }
+        _state.value?.let { return it }
+        val startup = secureStorage.getStartup<User>(STORAGE_KEY, object : TypeToken<User>() {}.type)
+        when (startup) {
+            is StorageReadResult.Success -> return startup.value.also { _state.value = it }
+            is StorageReadResult.TemporaryUnavailable -> return User.create()
+            is StorageReadResult.Missing,
+            is StorageReadResult.Corrupted,
+            -> Unit
         }
-        return _state.value ?: User.create()
+        val legacy = secureStorage.get<User>(STORAGE_KEY, object : TypeToken<User>() {}.type)
+        return when (legacy) {
+            is StorageReadResult.Success -> legacy.value.also {
+                _state.value = it
+                secureStorage.setStartup(STORAGE_KEY, it)
+            }
+            is StorageReadResult.TemporaryUnavailable -> User.create()
+            is StorageReadResult.Missing,
+            is StorageReadResult.Corrupted,
+            -> User.create().also { _state.value = it }
+        }
     }
 
     override fun remove() {
