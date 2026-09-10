@@ -286,18 +286,19 @@ fun findCacheChildPathOrThrow(context: Context, parentPath: String, name: String
     }
     val parent = Uri.parse(parentPath)
     val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
-    return context.contentResolver.query(
+    val cursor = context.contentResolver.query(
         children,
         arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
         null, null, null,
-    )?.use { cursor ->
-        while (cursor.moveToNext()) {
-            if (cursor.getString(1) == name) {
-                return@use DocumentsContract.buildDocumentUriUsingTree(parent, cursor.getString(0)).toString()
+    ) ?: error("无法读取缓存目录")
+    return cursor.use {
+        while (it.moveToNext()) {
+            if (it.getString(1) == name) {
+                return@use DocumentsContract.buildDocumentUriUsingTree(parent, it.getString(0)).toString()
             }
         }
         null
-    } ?: error("无法读取缓存目录")
+    }
 }
 
 fun openCacheInputStream(context: Context, path: String) =

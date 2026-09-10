@@ -27,7 +27,7 @@ class SessionPersistenceTest {
             unavailable.set("$key-new", "new-secret")
             assertEquals(ciphertext, storedValues.getString(key, null))
             assertFalse(storedValues.contains("$key-new"))
-            assertEquals("previous", storage.get<String>(key, String::class.java))
+            assertEquals(StorageReadResult.Success("previous"), storage.get<String>(key, String::class.java))
         } finally {
             storage.remove(key)
             storage.remove("$key-new")
