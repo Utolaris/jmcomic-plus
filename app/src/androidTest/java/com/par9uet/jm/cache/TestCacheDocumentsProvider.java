@@ -37,7 +37,8 @@ public class TestCacheDocumentsProvider extends DocumentsProvider {
                 case Document.COLUMN_DOCUMENT_ID: value = id(file); break;
                 case Document.COLUMN_DISPLAY_NAME: value = file.getName(); break;
                 case Document.COLUMN_MIME_TYPE: value = file.isDirectory() ? Document.MIME_TYPE_DIR : "application/octet-stream"; break;
-                case Document.COLUMN_SIZE: value = file.length(); break;
+                // Exercise providers that omit COLUMN_SIZE for metadata files.
+                case Document.COLUMN_SIZE: value = "cover.webp".equals(file.getName()) ? null : file.length(); break;
                 case Document.COLUMN_FLAGS: value = Document.FLAG_SUPPORTS_WRITE | Document.FLAG_SUPPORTS_DELETE | Document.FLAG_DIR_SUPPORTS_CREATE; break;
             }
             row.add(value);

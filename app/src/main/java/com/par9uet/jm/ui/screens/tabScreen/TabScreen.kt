@@ -195,7 +195,7 @@ fun TabScreen(
             WindowInsets.statusBars.getTop(this).toDp()
         }
         val homeTopContentPadding = if (useNavigationRail) {
-            0.dp
+            12.dp
         } else {
             statusBarInset + AppGlassTopBarDefaults.ContentHeight + 12.dp
         }

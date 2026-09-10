@@ -119,6 +119,93 @@ fun cachePathExists(context: Context, path: String): Boolean = if (isDocumentCac
     }.getOrDefault(false)
 } else File(path).exists()
 
+enum class CachePathAccess {
+    MISSING,
+    READABLE,
+    INACCESSIBLE,
+}
+
+/**
+ * Probe a persisted cache path without collapsing a provider failure into "missing".
+ * A successful directory query also proves that its children can be enumerated.
+ */
+fun inspectCachePath(context: Context, path: String): CachePathAccess {
+    if (path.isBlank()) return CachePathAccess.MISSING
+    if (!isDocumentCachePath(path)) {
+        return inspectLocalCachePath(File(path), mutableSetOf())
+    }
+    return inspectDocumentCachePath(context, Uri.parse(path), mutableSetOf())
+}
+
+private fun inspectLocalCachePath(file: File, visited: MutableSet<String>): CachePathAccess {
+    if (!file.exists()) return CachePathAccess.MISSING
+    val key = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
+    if (!visited.add(key)) return CachePathAccess.READABLE
+    return runCatching {
+        if (!file.isDirectory) {
+            file.inputStream().use { it.read() }
+        } else {
+            val children = file.listFiles() ?: return@runCatching CachePathAccess.INACCESSIBLE
+            children.forEach { child ->
+                check(inspectLocalCachePath(child, visited) == CachePathAccess.READABLE) {
+                    "无法读取缓存路径"
+                }
+            }
+        }
+        CachePathAccess.READABLE
+    }.getOrElse { CachePathAccess.INACCESSIBLE }
+}
+
+private fun inspectDocumentCachePath(
+    context: Context,
+    uri: Uri,
+    visited: MutableSet<String>,
+): CachePathAccess {
+    return try {
+        val row = context.contentResolver.query(
+            uri,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_MIME_TYPE,
+            ),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) return CachePathAccess.MISSING
+            cursor.getString(0) to cursor.getString(1)
+        } ?: return CachePathAccess.INACCESSIBLE
+        val key = "${uri.authority}:${row.first}"
+        if (!visited.add(key)) return CachePathAccess.READABLE
+        if (row.second != DocumentsContract.Document.MIME_TYPE_DIR) {
+            context.contentResolver.openInputStream(uri)?.use { it.read() }
+                ?: return CachePathAccess.INACCESSIBLE
+            return CachePathAccess.READABLE
+        }
+        val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, row.first)
+        context.contentResolver.query(
+            children,
+            arrayOf(
+                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
+                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+            ),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            while (cursor.moveToNext()) {
+                val child = DocumentsContract.buildDocumentUriUsingTree(uri, cursor.getString(0))
+                check(inspectDocumentCachePath(context, child, visited) == CachePathAccess.READABLE) {
+                    "无法读取缓存路径"
+                }
+            }
+        } ?: return CachePathAccess.INACCESSIBLE
+        CachePathAccess.READABLE
+    } catch (_: Throwable) {
+        CachePathAccess.INACCESSIBLE
+    }
+}
+
 fun cachePathIsDirectory(context: Context, path: String): Boolean {
     if (!isDocumentCachePath(path)) return File(path).isDirectory
     return context.contentResolver.query(
@@ -140,11 +227,32 @@ fun cachePathLength(context: Context, path: String): Long = if (isDocumentCacheP
 
 /** Some SAF providers do not expose COLUMN_SIZE even for non-empty files. */
 fun cachePathHasContent(context: Context, path: String): Boolean {
-    if (path.isBlank()) return false
-    if (!isDocumentCachePath(path)) return File(path).isFile && File(path).length() > 0L
-    return runCatching {
-        context.contentResolver.openInputStream(Uri.parse(path))?.use { it.read() >= 0 } == true
-    }.getOrDefault(false)
+    return cachePathContentStatus(context, path) == CachePathContent.HAS_CONTENT
+}
+
+enum class CachePathContent {
+    EMPTY,
+    HAS_CONTENT,
+    UNREADABLE,
+}
+
+fun cachePathContentStatus(context: Context, path: String): CachePathContent {
+    if (path.isBlank()) return CachePathContent.UNREADABLE
+    if (!isDocumentCachePath(path)) {
+        val file = File(path)
+        if (!file.isFile) return CachePathContent.UNREADABLE
+        return when {
+            file.length() > 0L -> CachePathContent.HAS_CONTENT
+            else -> CachePathContent.EMPTY
+        }
+    }
+    return try {
+        val result = context.contentResolver.openInputStream(Uri.parse(path))
+            ?: return CachePathContent.UNREADABLE
+        result.use { if (it.read() >= 0) CachePathContent.HAS_CONTENT else CachePathContent.EMPTY }
+    } catch (_: Throwable) {
+        CachePathContent.UNREADABLE
+    }
 }
 
 fun cachePathSize(context: Context, path: String): Long {
@@ -209,25 +317,28 @@ fun getCacheParentPath(path: String): String? = runCatching {
 }.getOrNull()
 
 fun findCacheChildPath(context: Context, parentPath: String, name: String): String? {
+    return runCatching { findCacheChildPathOrThrow(context, parentPath, name) }.getOrNull()
+}
+
+/** Like [findCacheChildPath], but preserves provider/query failures for transactional callers. */
+fun findCacheChildPathOrThrow(context: Context, parentPath: String, name: String): String? {
     if (!isDocumentCachePath(parentPath)) {
         return File(parentPath, name).takeIf(File::exists)?.absolutePath
     }
-    return runCatching {
-        val parent = Uri.parse(parentPath)
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
-        context.contentResolver.query(
-            children,
-            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
-            null, null, null,
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                if (cursor.getString(1) == name) {
-                    return@use DocumentsContract.buildDocumentUriUsingTree(parent, cursor.getString(0)).toString()
-                }
+    val parent = Uri.parse(parentPath)
+    val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
+    return context.contentResolver.query(
+        children,
+        arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+        null, null, null,
+    )?.use { cursor ->
+        while (cursor.moveToNext()) {
+            if (cursor.getString(1) == name) {
+                return@use DocumentsContract.buildDocumentUriUsingTree(parent, cursor.getString(0)).toString()
             }
-            null
         }
-    }.getOrNull()
+        null
+    } ?: error("无法读取缓存目录")
 }
 
 fun openCacheInputStream(context: Context, path: String) =
@@ -241,6 +352,17 @@ fun writeDocumentComicCacheConfig(
 ) {
     val rootPath = getComicDownloadRootPath(context, comic)
     val coverPath = getComicCoverDownloadPath(context, comic)
+    writeDocumentComicCacheConfigAtPath(context, comic, chapters, rootPath, coverPath, gson)
+}
+
+fun writeDocumentComicCacheConfigAtPath(
+    context: Context,
+    comic: DownloadComic,
+    chapters: List<DownloadComic>,
+    rootPath: String,
+    coverPath: String,
+    gson: Gson = Gson(),
+) {
     val config = buildComicCacheConfig(comic, chapters, rootPath, coverPath) { path ->
         listComicImageEntries(context, path).map(CacheImageEntry::name)
     }

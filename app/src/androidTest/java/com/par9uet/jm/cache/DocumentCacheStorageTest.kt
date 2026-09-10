@@ -55,6 +55,8 @@ class DocumentCacheStorageTest {
             assertFalse(files.pageExists(chapter, 1))
             val saved = comic.copy(zipPath = chapter, coverPath = files.writeCover(comic, bitmap))
             files.writeConfig(saved, listOf(saved))
+            assertTrue(cachePathHasContent(context, saved.coverPath))
+            assertEquals(CachePathContent.HAS_CONTENT, cachePathContentStatus(context, saved.coverPath))
             assertEquals(listOf("2.webp", "10.webp"), listComicImageEntries(context, chapter).map { it.name })
             assertEquals(listComicImagePaths(context, chapter), DeviceLocalChapterFiles(context).images(comic.id, saved))
             assertEquals(2, getCachedComicInfo(context, saved).imageCount)
