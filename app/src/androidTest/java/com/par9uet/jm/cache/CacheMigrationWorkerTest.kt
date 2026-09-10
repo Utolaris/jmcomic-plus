@@ -106,15 +106,42 @@ class CacheMigrationWorkerTest {
     }
 
     @Test
-    fun `unreadable persisted source fails without changing db or active tree`() = runBlocking {
+    fun `saved path cleared by a re-download is skipped instead of failing`() = runBlocking {
         setDownloadTreeUri(context, "")
-        val missing = File(context.cacheDir, "missing/chapter")
+        val removed = File(context.cacheDir, "removed/chapter")
+        val removedCover = File(context.cacheDir, "removed/cover.webp")
         val original = DownloadComic(
             id = 4202,
+            name = "重新下载中",
+            authorList = emptyList(),
+            coverPath = removedCover.absolutePath,
+            zipPath = removed.absolutePath,
+            progress = 0f,
+            status = DownloadStatus.PENDING,
+            createTime = 1L,
+        )
+        database.downloadComicDao().insert(original)
+        val targetTree = createTreeDirectory("redownload-${UUID.randomUUID()}")
+
+        val result = createWorker(targetTree.toString()).doWork()
+
+        assertTrue(result is androidx.work.ListenableWorker.Result.Success)
+        val migrated = database.downloadComicDao().getById(original.id)!!
+        assertEquals("", migrated.zipPath)
+        assertEquals("", migrated.coverPath)
+        assertEquals(targetTree.toString(), getDownloadTreeUri(context)?.toString())
+    }
+
+    @Test
+    fun `unreachable source fails without changing db or active tree`() = runBlocking {
+        setDownloadTreeUri(context, "")
+        val unreachable = "content://jmcomic.debug.test.missing-documents/document/chapter"
+        val original = DownloadComic(
+            id = 4207,
             name = "不可读测试",
             authorList = emptyList(),
             coverPath = "",
-            zipPath = missing.absolutePath,
+            zipPath = unreachable,
             progress = 1f,
             status = DownloadStatus.COMPLETE,
             createTime = 1L,
@@ -127,8 +154,37 @@ class CacheMigrationWorkerTest {
         assertTrue(result is androidx.work.ListenableWorker.Result.Failure)
         assertEquals(original, database.downloadComicDao().getById(original.id))
         assertEquals(null, getDownloadTreeUri(context))
-        assertFalse(cachePathExists(context, targetTree.toString() + "/JM4202"))
-        assertFalse(missing.exists())
+        assertEquals(null, findCacheChildPath(context, targetRootDocument(targetTree), "JM4207"))
+    }
+
+    @Test
+    fun `paused chapter without a saved zip path is migrated`() = runBlocking {
+        setDownloadTreeUri(context, "")
+        val sourceRoot = File(getDownloadDir(context), "JM4206").apply { mkdirs() }
+        val partialChapter = File(sourceRoot, "chapter-4206").apply { mkdirs() }
+        val partialPage = File(partialChapter, "0.webp").apply { writeBytes(byteArrayOf(4, 5, 6)) }
+        val original = DownloadComic(
+            id = 4206,
+            name = "断点续传测试",
+            authorList = emptyList(),
+            coverPath = "",
+            zipPath = "",
+            progress = 0.6f,
+            status = DownloadStatus.PAUSED,
+            createTime = 1L,
+        )
+        database.downloadComicDao().insert(original)
+        val targetTree = createTreeDirectory("partial-${UUID.randomUUID()}")
+
+        val result = createWorker(targetTree.toString()).doWork()
+
+        assertTrue(result is androidx.work.ListenableWorker.Result.Success)
+        val migrated = database.downloadComicDao().getById(original.id)!!
+        assertTrue(isDocumentCachePath(migrated.zipPath))
+        assertEquals(listOf("0.webp"), listComicImageEntries(context, migrated.zipPath).map { it.name })
+        assertFalse(partialPage.exists())
+        assertFalse(partialChapter.exists())
+        assertFalse(sourceRoot.exists())
     }
 
     @Test
@@ -190,10 +246,7 @@ class CacheMigrationWorkerTest {
         )
         database.downloadComicDao().insert(original)
         val targetTree = createTreeDirectory("target-${UUID.randomUUID()}")
-        val targetRoot = DocumentsContract.buildDocumentUriUsingTree(
-            targetTree,
-            DocumentsContract.getTreeDocumentId(targetTree),
-        )
+        val targetRoot = android.net.Uri.parse(targetRootDocument(targetTree))
         val targetComic = requireNotNull(findOrCreateCacheDocument(
             context,
             targetRoot,
@@ -213,12 +266,26 @@ class CacheMigrationWorkerTest {
             "image/webp",
         ))
         openCacheOutputStream(context, stalePage.toString()).use { it.write(byteArrayOf(9, 9, 9)) }
+        val untouchedChapter = requireNotNull(findOrCreateCacheDocument(
+            context,
+            targetComic,
+            "chapter-9999",
+            DocumentsContract.Document.MIME_TYPE_DIR,
+        ))
+        val untouchedPage = requireNotNull(findOrCreateCacheDocument(
+            context,
+            untouchedChapter,
+            "1.webp",
+            "image/webp",
+        ))
+        openCacheOutputStream(context, untouchedPage.toString()).use { it.write(byteArrayOf(7, 7, 7)) }
 
         val result = createWorker(targetTree.toString()).doWork()
 
         assertTrue(result is androidx.work.ListenableWorker.Result.Success)
         val migrated = database.downloadComicDao().getById(original.id)!!
         assertEquals(listOf("0.webp"), listComicImageEntries(context, migrated.zipPath).map { it.name })
+        assertTrue(cachePathExists(context, untouchedPage.toString()))
     }
 
     private fun createWorker(targetTree: String): CacheMigrationWorker {
@@ -233,7 +300,7 @@ class CacheMigrationWorkerTest {
             Dispatchers.Default,
             ImmediateTaskExecutor,
             object : WorkerFactory() {
-                override fun createWorker(context: Context, workerClassName: String, workerParameters: WorkerParameters) = null
+                override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) = null
             },
             ProgressUpdater { _, _, _ -> completedFuture() },
             ForegroundUpdater { _, _, _ -> completedFuture() },
@@ -265,6 +332,9 @@ class CacheMigrationWorkerTest {
         val child = requireNotNull(findOrCreateCacheDocument(context, providerRoot, name, DocumentsContract.Document.MIME_TYPE_DIR))
         return DocumentsContract.buildTreeDocumentUri(PROVIDER_AUTHORITY, DocumentsContract.getDocumentId(child))
     }
+
+    private fun targetRootDocument(tree: android.net.Uri): String =
+        DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree)).toString()
 
     private fun createSafComic(id: Int): SafFixture {
         val sourceTree = createTreeDirectory("source-${UUID.randomUUID()}")

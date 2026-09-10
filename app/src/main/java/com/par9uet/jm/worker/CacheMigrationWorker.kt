@@ -21,6 +21,7 @@ import com.par9uet.jm.cache.cachePathSize
 import com.par9uet.jm.cache.deleteCachePath
 import com.par9uet.jm.cache.findOrCreateCacheDocument
 import com.par9uet.jm.cache.findCacheChildPathOrThrow
+import com.par9uet.jm.cache.findExistingComicChapterPath
 import com.par9uet.jm.cache.getDownloadDir
 import com.par9uet.jm.cache.getChapterCacheName
 import com.par9uet.jm.cache.isDocumentCachePath
@@ -84,28 +85,24 @@ class CacheMigrationWorker(
             updateProgress(0, "正在等待当前缓存任务结束")
 
             val records = downloadComicDao.getAll()
-            val sourcePaths = preflightSources(records)
+            // Resolve every source before touching the destination. A path the provider cannot
+            // answer for fails the migration; a path that is simply gone (a re-download already
+            // deleted the files, the user cleared the cache) is not data worth blocking on.
+            val groupCovers = records.groupBy(::groupIdOf)
+                .mapValues { (_, chapters) -> resolveGroupCover(chapters) }
+            val resolvedRoots = mutableMapOf<Int, String?>()
+            val chapterSources = records.associate { record ->
+                record.id to resolveChapterSource(record, resolvedRoots)
+            }
+            val sourcePaths = (
+                groupCovers.values.filterNotNull() + chapterSources.values.mapNotNull { it.path }
+                ).distinct()
+            val scannedRoots = chapterSources.values.mapNotNull { it.scannedRoot }.toSet()
             ensureTargetDoesNotOverlapSources(targetTreeUri, sourcePaths)
             val totalBytes = sourcePaths.sumOf { cachePathSize(appContext, it) }.coerceAtLeast(1L)
             var copiedBytes = 0L
             val copiedCoverGroups = mutableSetOf<Int>()
-            val preparedGroups = mutableSetOf<Int>()
             val targetRoots = mutableMapOf<Int, String>()
-            val usableCoverPaths = records.groupBy { it.groupId.takeIf { id -> id != 0 } ?: it.id }
-                .mapValues { (_, chapters) ->
-                    chapters.firstNotNullOfOrNull { chapter ->
-                        val path = chapter.coverPath
-                        if (path.isBlank()) {
-                            null
-                        } else {
-                            when (cachePathContentStatus(appContext, path)) {
-                                CachePathContent.HAS_CONTENT -> path
-                                CachePathContent.EMPTY -> error("缓存封面为空，无法迁移：$path")
-                                CachePathContent.UNREADABLE -> error("无法读取缓存封面，请检查目录授权：$path")
-                            }
-                        }
-                    }
-                }
 
             fun reportCopied(delta: Long) {
                 copiedBytes += delta
@@ -115,40 +112,27 @@ class CacheMigrationWorker(
 
             val migrated = records.map { record ->
                 currentCoroutineContext().ensureActive()
-                val groupId = record.groupId.takeIf { it != 0 } ?: record.id
-                val rootPath = if (preparedGroups.add(groupId)) {
-                    prepareDestinationComicRoot(record, targetTreeUri, sourcePaths)
-                } else {
-                    destinationComicRoot(record, targetTreeUri)
-                }
-                targetRoots[groupId] = rootPath
-                val sourceCoverPath = usableCoverPaths[groupId]
-                val coverPath = sourceCoverPath?.let {
+                val groupId = groupIdOf(record)
+                val rootPath = targetRoots.getOrPut(groupId) { destinationComicRoot(record, targetTreeUri) }
+                val coverSource = groupCovers[groupId]
+                val coverPath = coverSource?.let {
                     destinationFile(rootPath, "cover.webp", "image/webp")
                 }.orEmpty()
-                if (sourceCoverPath == null) {
-                    findCacheChildPathOrThrow(appContext, rootPath, "cover.webp")
-                        ?.takeIf { cachePathContentStatus(appContext, it) == CachePathContent.EMPTY }
-                        ?.let { deleteCachePath(appContext, it) }
+                if (coverSource != null && copiedCoverGroups.add(groupId)) {
+                    copyFile(coverSource, coverPath, ::reportCopied)
                 }
-                val isLegacyZip = record.zipPath.isNotBlank() && !cachePathIsDirectory(appContext, record.zipPath)
-                val chapterPath = if (isLegacyZip) destinationFile(rootPath, "${record.id}.zip", "application/zip")
-                    else destinationDirectory(rootPath, getChapterCacheName(record))
-                if (sourceCoverPath != null && copiedCoverGroups.add(groupId)) {
-                    copyFile(sourceCoverPath, coverPath, ::reportCopied)
-                }
-                if (record.zipPath.isNotBlank()) {
-                    check(record.zipPath != chapterPath) { "目标目录与原缓存目录相同" }
-                    if (isLegacyZip) copyFile(record.zipPath, chapterPath, ::reportCopied)
-                    else copyDirectory(record.zipPath, chapterPath, ::reportCopied)
-                }
-                record.copy(
-                    coverPath = coverPath,
-                    zipPath = if (record.zipPath.isBlank()) "" else chapterPath,
-                )
+                val sourceChapter = chapterSources.getValue(record.id)
+                val chapterPath = sourceChapter.path?.let { source ->
+                    val destination = prepareDestinationChapter(record, rootPath, sourceChapter.legacyZip)
+                    check(source != destination) { "目标目录与原缓存目录相同" }
+                    if (sourceChapter.legacyZip) copyFile(source, destination, ::reportCopied)
+                    else copyDirectory(source, destination, ::reportCopied)
+                    destination
+                }.orEmpty()
+                record.copy(coverPath = coverPath, zipPath = chapterPath)
             }
 
-            migrated.groupBy { it.groupId.takeIf { id -> id != 0 } ?: it.id }.forEach { (groupId, chapters) ->
+            migrated.groupBy(::groupIdOf).forEach { (groupId, chapters) ->
                 val rootPath = targetRoots[groupId] ?: error("未找到目标缓存目录")
                 val coverPath = chapters.firstOrNull { it.coverPath.isNotBlank() }?.coverPath.orEmpty()
                 writeDocumentComicCacheConfigAtPath(
@@ -170,7 +154,7 @@ class CacheMigrationWorker(
                 sourcePaths.filterNot(targetPaths::contains).sortedByDescending { it.length }.forEach { path ->
                     runCatching { deleteCachePath(appContext, path) }
                 }
-                removeSourceMetadata(records)
+                removeSourceMetadata(records, scannedRoots)
                 removeEmptyDefaultCacheDirectories()
             }
             updateProgress(100, "迁移完成")
@@ -182,29 +166,69 @@ class CacheMigrationWorker(
         }
     }
 
-    private fun preflightSources(records: List<DownloadComic>): List<String> {
-        val sourcePaths = records.flatMap { listOf(it.coverPath, it.zipPath) }
-            .filter(String::isNotBlank)
-            .distinct()
-        sourcePaths.forEach { path ->
+    /** A chapter cache that exists and will be copied, plus where it was found. */
+    private data class SourceChapter(
+        val path: String?,
+        val legacyZip: Boolean = false,
+        val scannedRoot: String? = null,
+    )
+
+    private fun groupIdOf(record: DownloadComic) = record.groupId.takeIf { it != 0 } ?: record.id
+
+    private fun resolveGroupCover(chapters: List<DownloadComic>): String? =
+        chapters.firstNotNullOfOrNull { chapter ->
+            val path = chapter.coverPath
+            if (path.isBlank()) return@firstNotNullOfOrNull null
             when (inspectCachePath(appContext, path)) {
-                CachePathAccess.READABLE -> Unit
-                CachePathAccess.MISSING -> error("缓存路径不存在，无法迁移：$path")
-                CachePathAccess.INACCESSIBLE -> error("无法读取缓存路径，请检查目录授权：$path")
-            }
-        }
-        records.asSequence()
-            .map { it.coverPath }
-            .filter(String::isNotBlank)
-            .distinct()
-            .forEach { path ->
-                when (cachePathContentStatus(appContext, path)) {
-                    CachePathContent.HAS_CONTENT -> Unit
-                    CachePathContent.EMPTY -> error("缓存封面为空，无法迁移：$path")
+                // The cover is optional metadata: a saved path that is gone, or an empty file,
+                // is not worth failing the migration for.
+                CachePathAccess.MISSING -> null
+                CachePathAccess.INACCESSIBLE -> error("无法读取缓存封面，请检查目录授权：$path")
+                CachePathAccess.READABLE -> when (cachePathContentStatus(appContext, path)) {
+                    CachePathContent.HAS_CONTENT -> path
+                    CachePathContent.EMPTY -> null
                     CachePathContent.UNREADABLE -> error("无法读取缓存封面，请检查目录授权：$path")
                 }
             }
-        return sourcePaths
+        }
+
+    private fun resolveChapterSource(record: DownloadComic, resolvedRoots: MutableMap<Int, String?>): SourceChapter {
+        val savedPath = record.zipPath
+        if (savedPath.isNotBlank()) {
+            when (inspectCachePath(appContext, savedPath)) {
+                CachePathAccess.READABLE -> return SourceChapter(
+                    path = savedPath,
+                    legacyZip = !cachePathIsDirectory(appContext, savedPath),
+                )
+                // A re-download deletes the files first and only then resets the row, so a saved
+                // path that no longer exists means there is nothing to copy rather than a failure.
+                CachePathAccess.MISSING -> Unit
+                CachePathAccess.INACCESSIBLE -> error("无法读取缓存路径，请检查目录授权：$savedPath")
+            }
+        }
+        // A running or paused download writes pages into the chapter directory before the row
+        // gets a saved zipPath, so the directory has to be found by name.
+        val sourceRoot = sourceRoot(record, resolvedRoots)
+        val partialPath = sourceRoot?.let { findExistingComicChapterPath(appContext, it, record) }
+        return SourceChapter(path = partialPath, scannedRoot = partialPath?.let { sourceRoot })
+    }
+
+    private fun sourceRoot(record: DownloadComic, cache: MutableMap<Int, String?>): String? {
+        val groupId = groupIdOf(record)
+        if (cache.containsKey(groupId)) return cache[groupId]
+        val root = resolveSourceRoot(record)
+        cache[groupId] = root
+        return root
+    }
+
+    private fun resolveSourceRoot(record: DownloadComic): String? {
+        val name = getComicCacheRootName(record)
+        val treeUri = getDownloadTreeUri(appContext) ?: return File(getDownloadDir(appContext), name).absolutePath
+        val root = DocumentsContract.buildDocumentUriUsingTree(
+            treeUri,
+            DocumentsContract.getTreeDocumentId(treeUri),
+        ).toString()
+        return findCacheChildPathOrThrow(appContext, root, name)
     }
 
     private fun ensureTargetDoesNotOverlapSources(targetTreeUri: String, sourcePaths: List<String>) {
@@ -275,32 +299,17 @@ class CacheMigrationWorker(
         return requireNotNull(findOrCreateCacheDocument(appContext, root, comicName, DocumentsContract.Document.MIME_TYPE_DIR)).toString()
     }
 
-    private fun prepareDestinationComicRoot(
+    /** Recreate only the chapter that is about to be copied, so unrelated target content survives. */
+    private fun prepareDestinationChapter(
         record: DownloadComic,
-        treeUri: String,
-        sourcePaths: List<String>,
+        rootPath: String,
+        legacyZip: Boolean,
     ): String {
-        if (treeUri.isBlank()) {
-            val root = File(getDownloadDir(appContext), getComicCacheRootName(record))
-            val rootPath = root.canonicalFile.toPath()
-            sourcePaths.filterNot(::isDocumentCachePath).forEach { sourcePath ->
-                val source = File(sourcePath).canonicalFile.toPath()
-                check(!rootPath.startsWith(source) && !source.startsWith(rootPath)) {
-                    "目标缓存目录与原缓存重叠，无法安全迁移"
-                }
-            }
-            if (root.exists()) check(root.deleteRecursively()) { "无法清理目标缓存目录" }
-            check(root.mkdirs() || root.isDirectory) { "无法创建目标缓存目录" }
-            return root.absolutePath
-        }
-        val tree = Uri.parse(treeUri)
-        val parent = DocumentsContract.buildDocumentUriUsingTree(
-            tree,
-            DocumentsContract.getTreeDocumentId(tree),
-        ).toString()
-        val existing = findCacheChildPathOrThrow(appContext, parent, getComicCacheRootName(record))
+        val name = if (legacyZip) "${record.id}.zip" else getChapterCacheName(record)
+        val existing = findCacheChildPathOrThrow(appContext, rootPath, name)
         if (existing != null) check(deleteCachePath(appContext, existing)) { "无法清理目标缓存目录" }
-        return destinationComicRoot(record, treeUri)
+        return if (legacyZip) destinationFile(rootPath, name, "application/zip")
+        else destinationDirectory(rootPath, name)
     }
 
     private fun destinationDirectory(parentPath: String, name: String): String {
@@ -368,11 +377,10 @@ class CacheMigrationWorker(
         }
     }
 
-    private fun removeSourceMetadata(records: List<DownloadComic>) {
-        val roots = records.flatMap { listOf(it.coverPath, it.zipPath) }
+    private fun removeSourceMetadata(records: List<DownloadComic>, extraRoots: Collection<String>) {
+        val roots = (records.flatMap { listOf(it.coverPath, it.zipPath) }
             .filter(String::isNotBlank)
-            .mapNotNull(::sourceComicRoot)
-            .distinct()
+            .mapNotNull(::sourceComicRoot) + extraRoots).distinct()
         roots.forEach(::removeMetadataFromRoot)
     }
 

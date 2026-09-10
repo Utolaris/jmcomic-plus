@@ -51,7 +51,18 @@ fun getComicChapterDownloadPath(context: Context, comic: DownloadComic): String 
  * chapter-id suffix was introduced.
  */
 fun findExistingComicChapterDownloadPath(context: Context, comic: DownloadComic): String? {
-    val root = getComicDownloadRootPath(context, comic)
+    return try {
+        findExistingComicChapterPath(context, getComicDownloadRootPath(context, comic), comic)
+    } catch (_: Exception) {
+        null
+    }
+}
+
+/**
+ * Locate a chapter directory that already holds images under [root] without creating anything.
+ * Returns null when nothing was written yet; provider failures propagate to the caller.
+ */
+fun findExistingComicChapterPath(context: Context, root: String, comic: DownloadComic): String? {
     val names = buildList {
         add(getChapterCacheName(comic))
         if (comic.chapterName.isNotBlank()) add(safeCacheFileName(comic.chapterName))
@@ -64,29 +75,29 @@ fun findExistingComicChapterDownloadPath(context: Context, comic: DownloadComic)
         }
     }.filter { it.isNotBlank() }.distinct()
     if (!isDocumentCachePath(root)) {
+        val rootDir = File(root)
+        if (!rootDir.isDirectory) return null
         return names.asSequence()
-            .map { File(root, it) }
+            .map { File(rootDir, it) }
             .firstOrNull { it.isDirectory && listComicImageFiles(it).isNotEmpty() }
             ?.absolutePath
     }
-    return runCatching {
-        val parent = Uri.parse(root)
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
-        context.contentResolver.query(
-            children,
-            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE),
-            null, null, null,
-        )?.use { cursor ->
+    val parent = Uri.parse(root)
+    val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
+    val candidates = context.contentResolver.query(
+        children,
+        arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME, DocumentsContract.Document.COLUMN_MIME_TYPE),
+        null, null, null,
+    )?.use { cursor ->
+        buildList<String> {
             while (cursor.moveToNext()) {
-                val name = cursor.getString(1)
-                if (cursor.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR && name in names) {
-                    val path = DocumentsContract.buildDocumentUriUsingTree(parent, cursor.getString(0)).toString()
-                    if (listComicImageEntries(context, path).isNotEmpty()) return@use path
+                if (cursor.getString(2) == DocumentsContract.Document.MIME_TYPE_DIR && cursor.getString(1) in names) {
+                    add(DocumentsContract.buildDocumentUriUsingTree(parent, cursor.getString(0)).toString())
                 }
             }
-            null
         }
-    }.getOrNull()
+    } ?: error("无法读取缓存目录")
+    return candidates.firstOrNull { listComicImageEntries(context, it).isNotEmpty() }
 }
 
 fun getOrCreateCacheFile(
@@ -126,82 +137,30 @@ enum class CachePathAccess {
 }
 
 /**
- * Probe a persisted cache path without collapsing a provider failure into "missing".
- * A successful directory query also proves that its children can be enumerated.
+ * Cheap probe that keeps "nothing is saved here" apart from "the provider cannot answer now".
+ * Copying re-reads every file, so this must not walk the tree or open file contents.
  */
 fun inspectCachePath(context: Context, path: String): CachePathAccess {
     if (path.isBlank()) return CachePathAccess.MISSING
     if (!isDocumentCachePath(path)) {
-        return inspectLocalCachePath(File(path), mutableSetOf())
-    }
-    return inspectDocumentCachePath(context, Uri.parse(path), mutableSetOf())
-}
-
-private fun inspectLocalCachePath(file: File, visited: MutableSet<String>): CachePathAccess {
-    if (!file.exists()) return CachePathAccess.MISSING
-    val key = runCatching { file.canonicalPath }.getOrDefault(file.absolutePath)
-    if (!visited.add(key)) return CachePathAccess.READABLE
-    return runCatching {
-        if (!file.isDirectory) {
-            file.inputStream().use { it.read() }
+        val file = File(path)
+        if (!file.exists()) return CachePathAccess.MISSING
+        return if (file.isDirectory && file.listFiles() == null) {
+            CachePathAccess.INACCESSIBLE
         } else {
-            val children = file.listFiles() ?: return@runCatching CachePathAccess.INACCESSIBLE
-            children.forEach { child ->
-                check(inspectLocalCachePath(child, visited) == CachePathAccess.READABLE) {
-                    "无法读取缓存路径"
-                }
-            }
+            CachePathAccess.READABLE
         }
-        CachePathAccess.READABLE
-    }.getOrElse { CachePathAccess.INACCESSIBLE }
-}
-
-private fun inspectDocumentCachePath(
-    context: Context,
-    uri: Uri,
-    visited: MutableSet<String>,
-): CachePathAccess {
+    }
     return try {
-        val row = context.contentResolver.query(
-            uri,
-            arrayOf(
-                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                DocumentsContract.Document.COLUMN_MIME_TYPE,
-            ),
-            null,
-            null,
-            null,
-        )?.use { cursor ->
-            if (!cursor.moveToFirst()) return CachePathAccess.MISSING
-            cursor.getString(0) to cursor.getString(1)
-        } ?: return CachePathAccess.INACCESSIBLE
-        val key = "${uri.authority}:${row.first}"
-        if (!visited.add(key)) return CachePathAccess.READABLE
-        if (row.second != DocumentsContract.Document.MIME_TYPE_DIR) {
-            context.contentResolver.openInputStream(uri)?.use { it.read() }
-                ?: return CachePathAccess.INACCESSIBLE
-            return CachePathAccess.READABLE
-        }
-        val children = DocumentsContract.buildChildDocumentsUriUsingTree(uri, row.first)
         context.contentResolver.query(
-            children,
-            arrayOf(
-                DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            ),
+            Uri.parse(path),
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
             null,
             null,
             null,
-        )?.use { cursor ->
-            while (cursor.moveToNext()) {
-                val child = DocumentsContract.buildDocumentUriUsingTree(uri, cursor.getString(0))
-                check(inspectDocumentCachePath(context, child, visited) == CachePathAccess.READABLE) {
-                    "无法读取缓存路径"
-                }
-            }
-        } ?: return CachePathAccess.INACCESSIBLE
-        CachePathAccess.READABLE
-    } catch (_: Throwable) {
+        )?.use { cursor -> if (cursor.moveToFirst()) CachePathAccess.READABLE else CachePathAccess.MISSING }
+            ?: CachePathAccess.INACCESSIBLE
+    } catch (_: Exception) {
         CachePathAccess.INACCESSIBLE
     }
 }
@@ -250,7 +209,7 @@ fun cachePathContentStatus(context: Context, path: String): CachePathContent {
         val result = context.contentResolver.openInputStream(Uri.parse(path))
             ?: return CachePathContent.UNREADABLE
         result.use { if (it.read() >= 0) CachePathContent.HAS_CONTENT else CachePathContent.EMPTY }
-    } catch (_: Throwable) {
+    } catch (_: Exception) {
         CachePathContent.UNREADABLE
     }
 }
