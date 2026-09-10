@@ -87,6 +87,30 @@ fun writeComicCacheConfig(
     getComicConfigFile(context, comic).writeText(gson.toJson(config), Charsets.UTF_8)
 }
 
+fun buildComicCacheConfig(
+    comic: DownloadComic,
+    chapters: List<DownloadComic>,
+    rootPath: String,
+    coverPath: String,
+    imageFiles: (String) -> List<String>,
+): DownloadComicCacheConfig = DownloadComicCacheConfig(
+    id = comic.groupId.takeIf { it != 0 } ?: comic.id,
+    title = comic.groupName.ifBlank { comic.name },
+    authors = comic.authorList,
+    tags = comic.tagList,
+    cachePath = rootPath,
+    coverPath = coverPath,
+    chapters = chapters.sortedBy { it.createTime }.map { chapter ->
+        DownloadComicCacheChapter(
+            id = chapter.id,
+            name = chapter.chapterName.ifBlank { if (chapters.size > 1) chapter.name else "单篇" },
+            path = chapter.zipPath,
+            status = chapter.status.persistedValue,
+            imageCount = imageFiles(chapter.zipPath).size,
+        )
+    },
+)
+
 fun safeCacheFileName(name: String): String {
     val cleaned = name
         .replace(Regex("""[\\/:*?"<>|]"""), "_")

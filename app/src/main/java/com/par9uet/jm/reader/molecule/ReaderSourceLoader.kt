@@ -73,7 +73,7 @@ internal class ReaderSourceLoader(
             metrics.request(ReaderRequestPriority.PREFETCH)
             val startedAt = SystemClock.elapsedRealtime()
             try {
-                if (page.localFile?.isFile == true) return@withContext
+                if (page.localFile?.isFile == true || page.originSrc.startsWith("content://")) return@withContext
                 sourceRequests.request(sourceInFlightKey(page.key), ReaderRequestPriority.PREFETCH) { handle ->
                     val source = loadSourceFile(
                         page = page,

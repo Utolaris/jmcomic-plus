@@ -62,7 +62,7 @@ private fun UserHistoryComicSkeleton() {
             contentPadding = PaddingValues(
                 start = 12.dp,
                 end = 12.dp,
-                top = 10.dp,
+                top = 12.dp,
                 bottom = 10.dp,
             ),
         ) {
@@ -138,7 +138,7 @@ fun UserHistoryComicScreen(
                 contentPadding = PaddingValues(
                     start = 12.dp,
                     end = 12.dp,
-                    top = topContentPadding,
+                    top = topContentPadding + 12.dp,
                     bottom = bottomContentPadding,
                 ),
             ) { comic ->

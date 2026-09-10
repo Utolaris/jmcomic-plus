@@ -7,6 +7,9 @@ import com.par9uet.jm.download.coordinator.DownloadFeedback
 import com.par9uet.jm.download.coordinator.DownloadOutcome
 import com.par9uet.jm.download.molecule.DownloadContentOperations
 import com.par9uet.jm.store.RemoteConfigPreferences
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -58,6 +61,65 @@ class DownloadComicCoordinatorTest {
         object : RemoteConfigPreferences { override val remoteImageHost = MutableStateFlow("cdn.example") },
         content, feedback,
     )
+
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    @Test
+    fun `migration waits for existing writer and blocks later writers until finished`() = runTest {
+        dao.tasks[1] = task(1)
+        dao.tasks[2] = task(2)
+        val firstWriting = CompletableDeferred<Unit>()
+        val finishFirst = CompletableDeferred<Unit>()
+        val migrationStarted = CompletableDeferred<Unit>()
+        val finishMigration = CompletableDeferred<Unit>()
+        val secondWriting = CompletableDeferred<Unit>()
+        val controlled = object : DownloadContentOperations {
+            override suspend fun downloadCover(downloadTask: DownloadComic, coverOwnerId: Int, remoteHost: String) = "/cover.webp"
+            override suspend fun complete(downloadTask: DownloadComic) {
+                dao.tasks[downloadTask.id] = dao.tasks.getValue(downloadTask.id).copy(status = DownloadStatus.COMPLETE)
+            }
+            override suspend fun downloadPages(downloadTask: DownloadComic, onProgress: suspend (Float) -> Unit) {
+                if (downloadTask.id == 1) {
+                    firstWriting.complete(Unit)
+                    finishFirst.await()
+                } else secondWriting.complete(Unit)
+                onProgress(1f)
+            }
+        }
+        val subject = DownloadComicCoordinator(dao,
+            object : RemoteConfigPreferences { override val remoteImageHost = MutableStateFlow("cdn.example") },
+            controlled, feedback)
+        val first = async { subject.download(1, "batch", 2, 0) }
+        firstWriting.await()
+        val migration = async {
+            subject.withIdleDownloads {
+                migrationStarted.complete(Unit)
+                finishMigration.await()
+            }
+        }
+        runCurrent()
+        assertFalse(migrationStarted.isCompleted)
+        val second = async { subject.download(2, "batch", 2, 0) }
+        runCurrent()
+        assertFalse(secondWriting.isCompleted)
+        finishFirst.complete(Unit)
+        migrationStarted.await()
+        assertFalse(secondWriting.isCompleted)
+        finishMigration.complete(Unit)
+        migration.await()
+        assertEquals(DownloadOutcome.SUCCESS, first.await())
+        assertEquals(DownloadOutcome.SUCCESS, second.await())
+        assertTrue(secondWriting.isCompleted)
+    }
+
+    @Test
+    fun `failed migration releases download gate`() = runTest {
+        try {
+            coordinator.withIdleDownloads { error("copy failed") }
+            fail("Migration should fail")
+        } catch (_: IllegalStateException) { }
+        dao.tasks[1] = task(1)
+        assertEquals(DownloadOutcome.SUCCESS, coordinator.download(1, "batch", 2, 0))
+    }
 
     @Test
     fun `successful flow completes before reporting and progress never regresses`() = runTest {

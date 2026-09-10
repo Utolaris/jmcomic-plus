@@ -262,6 +262,21 @@ class ReaderImagePipeline internal constructor(
         }
 
         val decodedFile = diskCache.decodedFile(page.key, profile)
+        if (page.originSrc.startsWith("content://")) {
+            val temporary = diskCache.createSourceTempFile()
+            try {
+                val uri = android.net.Uri.parse(page.originSrc)
+                requireNotNull(appContext.contentResolver.openInputStream(uri)).use { input ->
+                    temporary.outputStream().use { output -> input.copyTo(output) }
+                }
+                return@withContext decodeAndCache(
+                    cachePageKey = canonicalPageKey,
+                    decoded = withMeasuredDecode(handle) { decodeReaderRawFile(temporary, page, profile) },
+                    decodedFile = decodedFile,
+                    profile = profile,
+                )
+            } finally { diskCache.discardTemporary(temporary) }
+        }
         val localFile = page.localFile
         if (localFile?.isFile == true) {
             return@withContext decodeAndCache(

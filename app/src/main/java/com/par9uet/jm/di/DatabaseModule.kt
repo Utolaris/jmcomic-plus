@@ -24,6 +24,7 @@ import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
 import com.par9uet.jm.worker.DownloadComicWorker
 import com.par9uet.jm.worker.WorkManagerDownloadWorkScheduler
+import org.koin.android.ext.koin.androidApplication
 import org.koin.android.ext.koin.androidContext
 import org.koin.androidx.workmanager.dsl.worker
 import org.koin.core.module.dsl.viewModel
@@ -51,7 +52,7 @@ val databaseModule = module {
     single { get<AppDatabase>().favoriteSyncStateDao() }
     single { FavoriteStore(get(), get(), get(), get(), get(), get(), get()) }
     single<DownloadWorkScheduler> { WorkManagerDownloadWorkScheduler(androidContext()) }
-    single { DownloadFiles() }
+    single { DownloadFiles(androidContext()) }
     single { DownloadTaskOperations(get(), get()) }
     single { DownloadManager(get(), get(), get(), get(), get()) }
     single<DownloadContentStorage> { DownloadContentFiles(androidContext()) }
@@ -72,6 +73,8 @@ val databaseModule = module {
     }
     viewModel { com.par9uet.jm.ui.viewModel.DownloadExportViewModel(get(), get()) }
 
+    worker { com.par9uet.jm.worker.CacheMigrationWorker(get(), get(), get(), get(), get()) }
+    viewModel { com.par9uet.jm.ui.viewModel.CachePathViewModel(androidApplication()) }
     worker {
         DownloadComicWorker(
             get(), get(), get(),

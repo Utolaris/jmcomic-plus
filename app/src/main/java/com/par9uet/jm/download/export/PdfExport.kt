@@ -6,7 +6,8 @@ import android.graphics.BitmapFactory
 import android.graphics.pdf.PdfDocument
 import android.net.Uri
 import android.provider.DocumentsContract
-import com.par9uet.jm.cache.getComicChapterDownloadDir
+import com.par9uet.jm.cache.*
+import com.par9uet.jm.reader.atom.DeviceLocalChapterFiles
 import com.par9uet.jm.cache.getDownloadDir
 import com.par9uet.jm.cache.listComicImageFiles
 import com.par9uet.jm.database.model.DownloadComic
@@ -22,10 +23,10 @@ data class CachedComicInfo(
 )
 
 fun getCachedComicInfo(context: Context, comic: DownloadComic): CachedComicInfo {
-    val imageDir = getComicImageDir(context, comic)
-    val imageFiles = imageDir?.let(::listComicImageFiles).orEmpty()
+    val imageDir = comic.zipPath.takeUnless(::isDocumentCachePath)?.let(::File)?.takeIf(File::isDirectory)
+    val imageFiles = DeviceLocalChapterFiles(context).images(comic.id, comic)
     val zipFile = comic.zipPath.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isFile && it.exists() }
-    val totalBytes = imageFiles.sumOf { it.length() } + (zipFile?.length() ?: 0L)
+    val totalBytes = imageFiles.sumOf { cachePathLength(context, it) } + (zipFile?.length() ?: 0L)
     return CachedComicInfo(
         imageCount = imageFiles.size,
         totalBytes = totalBytes,
@@ -39,9 +40,7 @@ fun exportComicToPdf(
     comic: DownloadComic,
     treeUri: Uri
 ): String {
-    val imageDir = getComicImageDir(context, comic)
-        ?: throw IllegalStateException("未找到本地缓存图片")
-    val imageFiles = listComicImageFiles(imageDir)
+    val imageFiles = DeviceLocalChapterFiles(context).images(comic.id, comic)
     if (imageFiles.isEmpty()) {
         throw IllegalStateException("未找到可导出的缓存图片")
     }
@@ -56,7 +55,7 @@ fun exportComicsToMergedPdf(
     treeUri: Uri
 ): String {
     val imageFiles = comics.flatMap { comic ->
-        getComicImageDir(context, comic)?.let(::listComicImageFiles).orEmpty()
+        DeviceLocalChapterFiles(context).images(comic.id, comic)
     }
     if (imageFiles.isEmpty()) {
         throw IllegalStateException("未找到可导出的缓存图片")
@@ -85,7 +84,7 @@ private fun writeImagesToPdf(
     context: Context,
     treeUri: Uri,
     fileName: String,
-    imageFiles: List<File>
+    imageFiles: List<String>
 ): String {
     val parentDocumentId = DocumentsContract.getTreeDocumentId(treeUri)
     val parentUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, parentDocumentId)
@@ -103,7 +102,7 @@ private fun writeImagesToPdf(
         try {
             imageFiles.forEachIndexed { index, file ->
                 try {
-                    val bitmap = decodeBitmapForPdf(file.absolutePath)
+                    val bitmap = decodeBitmapForPdf(context, file)
                         ?: run {
                             failedPages.add(index + 1)
                             return@forEachIndexed
@@ -136,11 +135,11 @@ private fun writeImagesToPdf(
     return outputUri.toString()
 }
 
-private fun decodeBitmapForPdf(path: String): Bitmap? {
+private fun decodeBitmapForPdf(context: Context, path: String): Bitmap? {
     val boundsOptions = BitmapFactory.Options().apply {
         inJustDecodeBounds = true
     }
-    BitmapFactory.decodeFile(path, boundsOptions)
+    openCacheInputStream(context, path)?.use { BitmapFactory.decodeStream(it, null, boundsOptions) }
     val width = boundsOptions.outWidth
     val height = boundsOptions.outHeight
     if (width <= 0 || height <= 0) return null
@@ -150,7 +149,7 @@ private fun decodeBitmapForPdf(path: String): Bitmap? {
         inSampleSize = sampleSize
         inPreferredConfig = Bitmap.Config.RGB_565
     }
-    return BitmapFactory.decodeFile(path, options)
+    return openCacheInputStream(context, path)?.use { BitmapFactory.decodeStream(it, null, options) }
 }
 
 private fun calculateSampleSize(width: Int, height: Int): Int {
@@ -161,39 +160,6 @@ private fun calculateSampleSize(width: Int, height: Int): Int {
         maxDim /= 2
     }
     return sampleSize
-}
-
-private fun getComicImageDir(context: Context, comic: DownloadComic): File? {
-    val directDir = comic.zipPath.takeIf { it.isNotBlank() }?.let(::File)
-    if (directDir?.isDirectory == true && listComicImageFiles(directDir).isNotEmpty()) {
-        return directDir
-    }
-
-    val namedDir = getComicChapterDownloadDir(context, comic)
-    if (namedDir.exists() && listComicImageFiles(namedDir).isNotEmpty()) {
-        return namedDir
-    }
-
-    val dir = File(getDownloadDir(context), "${comic.id}")
-    if (dir.exists() && listComicImageFiles(dir).isNotEmpty()) {
-        return dir
-    }
-    val zipFile = directDir?.takeIf { it.isFile } ?: return dir.takeIf { it.exists() }
-    if (!zipFile.exists()) {
-        return dir.takeIf { it.exists() }
-    }
-    dir.mkdirs()
-    ZipInputStream(zipFile.inputStream()).use { zipIn ->
-        while (true) {
-            val entry = zipIn.nextEntry ?: break
-            if (!entry.isDirectory) {
-                val output = File(dir, File(entry.name).name)
-                FileOutputStream(output).use { out -> zipIn.copyTo(out) }
-            }
-            zipIn.closeEntry()
-        }
-    }
-    return dir.takeIf { it.exists() }
 }
 
 private fun safeFileName(name: String): String {

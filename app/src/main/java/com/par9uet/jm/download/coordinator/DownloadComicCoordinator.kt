@@ -58,6 +58,11 @@ class DownloadComicCoordinator(
             }
         }
 
+    suspend fun <T> withIdleDownloads(block: suspend () -> T): T = executionGate.withLock {
+        synchronized(running) { running.values.toList() }.joinAll()
+        block()
+    }
+
     suspend fun download(comicId: Int, batchId: String, batchTotal: Int, runAttemptCount: Int): DownloadOutcome = coroutineScope {
         val job = currentCoroutineContext().job
         val skipped = executionGate.withLock {

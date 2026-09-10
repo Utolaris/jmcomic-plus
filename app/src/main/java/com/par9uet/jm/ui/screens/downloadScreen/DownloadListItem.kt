@@ -47,7 +47,6 @@ import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.ui.viewModel.DownloadComicGroup
 import com.par9uet.jm.utils.shimmer
 import org.koin.compose.getKoin
-import java.io.File
 
 @Composable
 private fun GroupCoverImage(
@@ -58,7 +57,7 @@ private fun GroupCoverImage(
 ) {
     if (coverPath.isNotBlank()) {
         AsyncImage(
-            model = File(coverPath),
+            model = coverPath,
             imageLoader = imageLoader,
             contentDescription = "$title 的封面",
             contentScale = ContentScale.Crop,

@@ -149,6 +149,9 @@ class DownloadComicDetailViewModel(
 
 private fun resolveCachePath(coverPath: String?, zipPath: String?): String {
     val chapterPath = zipPath.orEmpty()
+    if (com.par9uet.jm.cache.isDocumentCachePath(chapterPath)) {
+        return com.par9uet.jm.cache.getCacheParentPath(chapterPath) ?: chapterPath
+    }
     if (chapterPath.isNotBlank()) {
         val file = File(chapterPath)
         if (file.isDirectory) {
@@ -158,7 +161,7 @@ private fun resolveCachePath(coverPath: String?, zipPath: String?): String {
     }
     val cover = coverPath.orEmpty()
     if (cover.isNotBlank()) {
-        return File(cover).parentFile?.absolutePath.orEmpty()
+        return com.par9uet.jm.cache.getCacheParentPath(cover).orEmpty()
     }
     return ""
 }

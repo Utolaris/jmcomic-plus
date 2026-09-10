@@ -1,7 +1,7 @@
 package com.par9uet.jm.reader.atom
 
 import android.content.Context
-import com.par9uet.jm.cache.getComicChapterDownloadDir
+import com.par9uet.jm.cache.*
 import com.par9uet.jm.cache.getDownloadDir
 import com.par9uet.jm.cache.listComicImageFiles
 import com.par9uet.jm.database.model.DownloadComic
@@ -15,12 +15,32 @@ fun interface LocalChapterFiles {
 /** Resolves saved paths, current directories and legacy ZIPs; callers run this on IO. */
 class DeviceLocalChapterFiles(
     private val downloadDirectory: File,
+    private val context: Context? = null,
     private val chapterDirectory: (DownloadComic) -> File,
 ) : LocalChapterFiles {
-    constructor(context: Context) : this(getDownloadDir(context), { getComicChapterDownloadDir(context, it) })
+    constructor(downloadDirectory: File, chapterDirectory: (DownloadComic) -> File) : this(downloadDirectory, null, chapterDirectory)
+
+    constructor(context: Context) : this(getDownloadDir(context), context, { getComicChapterDownloadDir(context, it) })
 
     @Synchronized
     override fun images(comicId: Int, task: DownloadComic?): List<String> {
+        if (context != null && task != null) {
+            val path = task.zipPath
+            if (isDocumentCachePath(path)) {
+                val images = listComicImagePaths(context, path)
+                if (images.isNotEmpty()) return images
+                if (cachePathIsDirectory(context, path)) return emptyList()
+                // A migrated legacy archive can still be extracted through its URI.
+                val localZip = File.createTempFile("legacy-", ".zip", downloadDirectory)
+                try {
+                    openCacheInputStream(context, path)?.use { input -> localZip.outputStream().use(input::copyTo) }
+                    return images(comicId, task.copy(zipPath = localZip.absolutePath))
+                } finally { localZip.delete() }
+            }
+            findExistingComicChapterDownloadPath(context, task)?.let {
+                listComicImagePaths(context, it).takeIf(List<String>::isNotEmpty)?.let { paths -> return paths }
+            }
+        }
         fun imagesIn(dir: File?) = dir?.takeIf { it.isDirectory }?.let(::listComicImageFiles).orEmpty()
         val savedPath = task?.zipPath?.takeIf { it.isNotBlank() }?.let(::File)
         imagesIn(savedPath).takeIf { it.isNotEmpty() }?.let { return it.map(File::getAbsolutePath) }

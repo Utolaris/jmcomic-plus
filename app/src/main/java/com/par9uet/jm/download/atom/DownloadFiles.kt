@@ -2,8 +2,14 @@ package com.par9uet.jm.download.atom
 
 import java.io.File
 
-class DownloadFiles {
+class DownloadFiles(private val context: android.content.Context? = null) {
     fun delete(zipPath: String, coverPath: String) {
+        if (context != null) {
+            listOf(zipPath, coverPath).filter(String::isNotBlank).forEach {
+                com.par9uet.jm.cache.deleteCachePath(context, it)
+            }
+            return
+        }
         runCatching {
             val zipFile = File(zipPath)
             if (zipFile.exists()) {

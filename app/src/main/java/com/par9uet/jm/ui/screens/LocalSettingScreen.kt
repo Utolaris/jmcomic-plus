@@ -1,5 +1,8 @@
 package com.par9uet.jm.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -129,9 +132,15 @@ private fun Modifier.settingsDialogWidth(): Modifier {
 @Composable
 fun LocalSettingScreen(
     settingsViewModel: com.par9uet.jm.ui.viewModel.SettingsViewModel = org.koin.compose.viewmodel.koinViewModel(),
+    cachePathViewModel: com.par9uet.jm.ui.viewModel.CachePathViewModel = org.koin.compose.viewmodel.koinViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
     val ui by settingsViewModel.uiState.collectAsState()
+    val cachePath by cachePathViewModel.state.collectAsState()
+    var showCachePathDialog by remember { mutableStateOf(false) }
+    val cacheFolderLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {
+        cachePathViewModel.selectDirectory(it)
+    }
     val favoriteSyncState by settingsViewModel.favoriteSyncState.collectAsState()
     var settingType by remember { mutableStateOf<SettingType>(SettingType.Api) }
     var isOpenSettingSelectDialog by remember { mutableStateOf(false) }
@@ -155,6 +164,30 @@ fun LocalSettingScreen(
                 settingsViewModel = settingsViewModel,
                 onDismiss = { isOpenSettingSelectDialog = false }
             )
+            GlassModal(
+                visible = showCachePathDialog,
+                onDismissRequest = { showCachePathDialog = false },
+                modifier = Modifier.settingsDialogWidth(),
+                surfaceId = "cache-path-dialog",
+            ) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text("缓存路径", style = MaterialTheme.typography.titleLarge)
+                    Text("选择新位置后会迁移已有漫画缓存。迁移完成前继续使用原路径，可切换到后台并通过通知查看进度。")
+                    if (cachePath.active) {
+                        LinearProgressIndicator(progress = { cachePath.progress / 100f }, modifier = Modifier.fillMaxWidth())
+                    }
+                    if (cachePath.message.isNotBlank()) Text(cachePath.message)
+                    TextButton(enabled = !cachePath.active, onClick = {
+                        cacheFolderLauncher.launch(null)
+                    }) { Text("自定义路径") }
+                    TextButton(enabled = !cachePath.active, onClick = cachePathViewModel::useDefaultDirectory) {
+                        Text("默认路径")
+                    }
+                    TextButton(onClick = { showCachePathDialog = false }) {
+                        Text(if (cachePath.active) "后台运行" else "关闭")
+                    }
+                }
+            }
             HomeExcludedTagsDialog(
                 visible = showHomeExcludedTagsDialog,
                 tags = ui.homeExcludedTags,
@@ -333,6 +366,14 @@ fun LocalSettingScreen(
                             // 通过窄的同步请求能力触发；Settings 不再依赖 FavoritesViewModel
                             settingsViewModel.requestFavoriteForceRefresh()
                         }
+                    }
+                    SettingsRow(
+                        Icons.Rounded.Download,
+                        "缓存路径",
+                        if (cachePath.active) "正在迁移 · ${cachePath.progress}%"
+                        else if (cachePath.treeUri.isBlank()) "默认路径" else "自定义路径"
+                    ) {
+                        showCachePathDialog = true
                     }
                     SettingsRow(Icons.Rounded.BugReport, "\u67e5\u770b\u65e5\u5fd7", "\u8c03\u8bd5\u548c\u9519\u8bef\u4fe1\u606f") {
                         mainNavController.navigate("logViewer")

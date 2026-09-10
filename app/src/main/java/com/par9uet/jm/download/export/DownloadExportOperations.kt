@@ -22,10 +22,10 @@ class DeviceDownloadExportOperations(private val context: Context) : DownloadExp
     override suspend fun inspect(chapters: List<DownloadComic>, cachePath: String): DownloadCacheSummary =
         withContext(Dispatchers.IO) {
             val infos = chapters.map { getCachedComicInfo(context, it) }
-            val root = cachePath.takeIf { it.isNotBlank() }?.let(::File)?.takeIf { it.isDirectory }
+            val rootBytes = cachePath.takeIf { it.isNotBlank() }?.let { com.par9uet.jm.cache.cachePathSize(context, it) }
             DownloadCacheSummary(
                 imageCount = infos.sumOf { it.imageCount },
-                totalBytes = root?.walkBottomUp()?.filter { it.isFile }?.sumOf { it.length() }
+                totalBytes = rootBytes
                     ?: infos.sumOf { it.totalBytes },
             )
         }
