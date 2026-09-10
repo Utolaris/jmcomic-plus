@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -32,6 +34,8 @@ import com.par9uet.jm.ui.components.BackIconButton
 import com.par9uet.jm.ui.glass.GlassCaptureHost
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.screens.SearchPageFocusEffect
+import com.par9uet.jm.ui.theme.LocalExtendedColors
+import com.par9uet.jm.ui.theme.extendedColorSchemeFor
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule
@@ -47,7 +51,7 @@ class NavigationInteractionTest {
         var shortClicks = 0
         compose.setContent {
             navController = rememberNavController()
-            MaterialTheme {
+            TestAppTheme {
                 CompositionLocalProvider(LocalMainNavController provides navController) {
                     NavHost(navController, startDestination = "tab/collect") {
                         composable("tab/{tabName}?", arguments = listOf(navArgument("tabName") {
@@ -101,7 +105,7 @@ class NavigationInteractionTest {
     private fun openSearchWithIme() {
         compose.setContent {
             navController = rememberNavController()
-            MaterialTheme {
+            TestAppTheme {
                 CompositionLocalProvider(LocalMainNavController provides navController) {
                     NavHost(navController, startDestination = "home") {
                         composable("home") { Text("首页") }
@@ -138,4 +142,18 @@ class NavigationInteractionTest {
 
     private fun imeVisible(): Boolean = ViewCompat.getRootWindowInsets(compose.activity.window.decorView)
         ?.isVisible(WindowInsetsCompat.Type.ime()) == true
+}
+
+/**
+ * Screens read the extended color scheme directly, and the real theme needs Koin, so the tests
+ * provide the same scheme around a plain [MaterialTheme].
+ */
+@Composable
+private fun TestAppTheme(content: @Composable () -> Unit) {
+    val colorScheme = lightColorScheme()
+    CompositionLocalProvider(
+        LocalExtendedColors provides extendedColorSchemeFor(colorScheme, isDark = false),
+    ) {
+        MaterialTheme(colorScheme = colorScheme, content = content)
+    }
 }

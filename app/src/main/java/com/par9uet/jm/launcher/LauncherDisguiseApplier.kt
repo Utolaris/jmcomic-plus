@@ -3,8 +3,20 @@ package com.par9uet.jm.launcher
 import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
+import com.par9uet.jm.BuildConfig
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.utils.log
+
+/** Generated into the namespace package, which is where the manifest declares the aliases. */
+private val ALIAS_CLASS_PACKAGE = BuildConfig::class.java.name.substringBeforeLast('.')
+
+/**
+ * The manifest resolves alias class names against the module namespace, which is not the
+ * application id on build types that append a suffix, so [Context.getPackageName] cannot name
+ * them. The class name has to come from a class in the namespace package instead.
+ */
+internal fun launcherAliasComponent(context: Context, disguise: LauncherDisguise): ComponentName =
+    ComponentName(context.packageName, "$ALIAS_CLASS_PACKAGE${disguise.aliasClassName}")
 
 interface LauncherIdentityApplier {
     fun apply(disguise: LauncherDisguise)
@@ -15,13 +27,9 @@ class LauncherDisguiseApplier(
 ) : LauncherIdentityApplier {
     override fun apply(disguise: LauncherDisguise) {
         val packageManager = context.packageManager
-        val componentClassPrefix = context.packageName
         LauncherDisguise.entries.forEach { item ->
             runCatching {
-                val componentName = ComponentName(
-                    context.packageName,
-                    "$componentClassPrefix${item.aliasClassName}"
-                )
+                val componentName = launcherAliasComponent(context, item)
                 val expectedEnabled = item == disguise
                 val currentEnabled = when (packageManager.getComponentEnabledSetting(componentName)) {
                     PackageManager.COMPONENT_ENABLED_STATE_ENABLED -> true
