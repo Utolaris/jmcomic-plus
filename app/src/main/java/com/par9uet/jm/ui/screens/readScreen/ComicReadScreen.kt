@@ -31,7 +31,7 @@ import androidx.compose.material.icons.automirrored.outlined.Message
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.BookmarkBorder
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material3.AlertDialog
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +74,7 @@ import com.par9uet.jm.store.ReaderResumeManager
 import com.par9uet.jm.store.SessionReadiness
 import com.par9uet.jm.store.UserManager
 import com.par9uet.jm.ui.glass.GlassCaptureHost
+import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
 import com.par9uet.jm.ui.screens.LocalMainNavController
@@ -471,86 +472,94 @@ private fun ChapterCachePickerDialog(
     val allChapterIds = remember(chapters) { chapters.map { it.id }.toSet() }
     val allSelected = chapters.isNotEmpty() && selectedChapterIds.containsAll(allChapterIds)
 
-    AlertDialog(
+    GlassModal(
+        visible = true,
         onDismissRequest = onDismiss,
-        title = { Text(text = "选择缓存章节") },
-        text = {
+        surfaceId = "chapter-cache-picker-glass",
+        modifier = Modifier.widthIn(max = 420.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(text = "选择缓存章节", style = MaterialTheme.typography.titleLarge)
             if (chapters.isEmpty()) {
                 Text(text = "暂无可选章节")
             } else {
-                Column {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                onSelectedChange(if (allSelected) emptySet() else allChapterIds)
-                            }
-                            .padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Checkbox(
-                            checked = allSelected,
-                            onCheckedChange = { checked ->
-                                onSelectedChange(if (checked) allChapterIds else emptySet())
-                            }
-                        )
-                        Text(text = if (allSelected) "取消全选" else "全选")
-                    }
-                    LazyColumn(modifier = Modifier.heightIn(max = 420.dp)) {
-                        itemsIndexed(chapters) { index, chapter ->
-                            val selected = chapter.id in selectedChapterIds
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onSelectedChange(
-                                            if (selected) {
-                                                selectedChapterIds - chapter.id
-                                            } else {
-                                                selectedChapterIds + chapter.id
-                                            }
-                                        )
-                                    }
-                                    .padding(vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Checkbox(
-                                    checked = selected,
-                                    onCheckedChange = { checked ->
-                                        onSelectedChange(
-                                            if (checked) {
-                                                selectedChapterIds + chapter.id
-                                            } else {
-                                                selectedChapterIds - chapter.id
-                                            }
-                                        )
-                                    }
-                                )
-                                Text(
-                                    text = chapter.name.ifBlank { "第 ${index + 1} 章" },
-                                    maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onSelectedChange(if (allSelected) emptySet() else allChapterIds)
+                        }
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(
+                        checked = allSelected,
+                        onCheckedChange = { checked ->
+                            onSelectedChange(if (checked) allChapterIds else emptySet())
+                        }
+                    )
+                    Text(text = if (allSelected) "取消全选" else "全选")
+                }
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    itemsIndexed(chapters) { index, chapter ->
+                        val selected = chapter.id in selectedChapterIds
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    onSelectedChange(
+                                        if (selected) {
+                                            selectedChapterIds - chapter.id
+                                        } else {
+                                            selectedChapterIds + chapter.id
+                                        }
+                                    )
+                                }
+                                .padding(vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Checkbox(
+                                checked = selected,
+                                onCheckedChange = { checked ->
+                                    onSelectedChange(
+                                        if (checked) {
+                                            selectedChapterIds + chapter.id
+                                        } else {
+                                            selectedChapterIds - chapter.id
+                                        }
+                                    )
+                                }
+                            )
+                            Text(
+                                text = chapter.name.ifBlank { "第 ${index + 1} 章" },
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
                         }
                     }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = onConfirm,
-                enabled = selectedChapterIds.isNotEmpty()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
             ) {
-                Text(text = "开始缓存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "取消")
+                TextButton(onClick = onDismiss) {
+                    Text(text = "取消")
+                }
+                Button(
+                    onClick = onConfirm,
+                    enabled = selectedChapterIds.isNotEmpty()
+                ) {
+                    Text(text = "开始缓存")
+                }
             }
         }
-    )
+    }
 }
 
 @Composable
@@ -661,16 +670,25 @@ private fun ChapterPickerDialog(
             listState.scrollToItem(currentIndex)
         }
     }
-    AlertDialog(
+    GlassModal(
+        visible = true,
         onDismissRequest = onDismiss,
-        title = { Text(text = title) },
-        text = {
+        surfaceId = "chapter-picker-glass",
+        modifier = Modifier.widthIn(max = 420.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(text = title, style = MaterialTheme.typography.titleLarge)
             if (chapters.isEmpty()) {
                 Text(text = "暂无可选章节")
             } else {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.heightIn(max = 420.dp)
+                    modifier = Modifier.heightIn(max = 360.dp)
                 ) {
                     itemsIndexed(chapters) { index, chapter ->
                         val selected = chapter.id == currentChapterId
@@ -708,11 +726,14 @@ private fun ChapterPickerDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(text = "取消")
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text(text = "取消")
+                }
             }
         }
-    )
+    }
 }

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.SnackbarDuration
@@ -55,6 +56,7 @@ import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.AppSnackbarHost
+import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.screens.AppLockScreen
 import com.par9uet.jm.ui.screens.AppScreen
 import com.par9uet.jm.ui.screens.NsfwWarningDialog
@@ -263,6 +265,7 @@ private fun MainAppContent(
 
         if (showNsfwDialog) {
             NsfwWarningDialog(
+                visible = showNsfwDialog,
                 onAccept = { dontShowAgain ->
                     if (dontShowAgain) localSettingManager.dismissNsfwWarning()
                     onNsfwDismissed()
@@ -273,6 +276,7 @@ private fun MainAppContent(
 
         clipboardDetectedComic?.let { comic ->
             ClipboardDetectedComicDialog(
+                visible = true,
                 comic = comic,
                 onDismiss = {
                     clipboardDetectedComic = null
@@ -290,6 +294,7 @@ private fun MainAppContent(
 
 @Composable
 private fun ClipboardDetectedComicDialog(
+    visible: Boolean,
     comic: Comic,
     onDismiss: () -> Unit,
     onNavigate: (Int) -> Unit,
@@ -297,10 +302,19 @@ private fun ClipboardDetectedComicDialog(
     imageLoader: ImageLoader = getKoin().get(),
 ) {
     val remoteHost by remoteConfigPreferences.remoteImageHost.collectAsState()
-    AlertDialog(
+    GlassModal(
+        visible = visible,
         onDismissRequest = onDismiss,
-        title = { Text("检测到漫画编码", fontWeight = FontWeight.Bold) },
-        text = {
+        surfaceId = "clipboard-comic-glass",
+        modifier = Modifier.widthIn(max = 420.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("检测到漫画编码", fontWeight = FontWeight.Bold)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -353,14 +367,15 @@ private fun ClipboardDetectedComicDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
-            TextButton(onClick = { onNavigate(comic.id) }) { Text("跳转详情") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+            ) {
+                TextButton(onClick = onDismiss) { Text("取消") }
+                TextButton(onClick = { onNavigate(comic.id) }) { Text("跳转详情") }
+            }
         }
-    )
+    }
 }
 
 private tailrec fun Context.findActivity(): MainActivity? {

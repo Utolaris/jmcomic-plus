@@ -5,12 +5,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Delete
@@ -24,7 +23,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -56,22 +54,20 @@ private fun UserHistoryComicSkeleton() {
         modifier = Modifier
             .fillMaxSize()
     ) {
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(10.dp)
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
-            maxItemsInEachRow = 3,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.Top)
+        LazyVerticalGrid(
+            modifier = Modifier.fillMaxSize(),
+            columns = adaptiveComicGridCells(0),
+            verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Top),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            contentPadding = PaddingValues(
+                start = 12.dp,
+                end = 12.dp,
+                top = 10.dp,
+                bottom = 10.dp,
+            ),
         ) {
-            for (i in 0 until 18) {
-                key(i) {
-                    ComicSkeleton(
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+            items(18) {
+                ComicSkeleton()
             }
         }
     }
@@ -136,7 +132,12 @@ fun UserHistoryComicScreen(
                 lazyPagingItems = historyComicLazyPagingItems,
                 key = { it.id },
                 columns = adaptiveComicGridCells(miscSettings.gridColumns.history),
+                // Match HomeScreen so cover width and gutters are identical across tabs.
+                verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.Top),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 contentPadding = PaddingValues(
+                    start = 12.dp,
+                    end = 12.dp,
                     top = topContentPadding,
                     bottom = bottomContentPadding,
                 ),
