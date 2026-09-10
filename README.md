@@ -11,6 +11,15 @@
 - [四层架构约束](ARCHITECTURE.md)
 - [ReaderImagePipeline 图片链路与组件说明](docs/reader-image-pipeline.md)
 
+## 一键安装到手机
+
+```bash
+./install-debug.sh           # 编译 debug APK 并装到已连接的真机（自动忽略模拟器）
+./install-debug.sh <序列号>   # 存在多台设备时指定其中一台
+```
+
+脚本执行前会打印目标设备；需要手动指定时，序列号可用 `adb devices -l` 查看。
+
 ## v1.4.0 更新内容
 
 - 全面更新界面与导航：统一玻璃质感顶栏、菜单、弹窗和底部导航，优化详情页、评论、下载、设置及页面切换动效。
