@@ -30,8 +30,8 @@ class SecureStorage(
         gson: Gson = GsonBuilder().create(),
         cryptoManager: CryptoManager = CryptoManager(),
     ) : this(
-        sharedPreferences = context.getSharedPreferences("jm-mobile-g-data", Context.MODE_PRIVATE),
-        startupPreferences = context.getSharedPreferences("jm-mobile-startup", Context.MODE_PRIVATE),
+        sharedPreferences = context.getSharedPreferences(DATA_PREFERENCES_NAME, Context.MODE_PRIVATE),
+        startupPreferences = context.getSharedPreferences(STARTUP_PREFERENCES_NAME, Context.MODE_PRIVATE),
         gson = gson,
         cryptoManager = cryptoManager,
     )
@@ -126,5 +126,11 @@ class SecureStorage(
         startupPreferences.edit {
             remove(key)
         }
+    }
+
+    companion object {
+        /** Names of the files that hold encoded values, for callers that inspect stored ciphertext. */
+        const val DATA_PREFERENCES_NAME = "jm-mobile-g-data"
+        const val STARTUP_PREFERENCES_NAME = "jm-mobile-startup"
     }
 }

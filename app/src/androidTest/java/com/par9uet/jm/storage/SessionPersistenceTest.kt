@@ -12,19 +12,21 @@ import java.util.Base64
 
 class SessionPersistenceTest {
     private val context get() = ApplicationProvider.getApplicationContext<Context>()
+    private val storedValues get() =
+        context.getSharedPreferences(SecureStorage.DATA_PREFERENCES_NAME, Context.MODE_PRIVATE)
 
     @Test fun temporaryEncryptionFailurePreservesExistingCiphertextAndNeverWritesPlain() {
         val storage = SecureStorage(context)
         val key = "encryption-failure-test"
         storage.set(key, "previous")
-        val ciphertext = storage.sharedPreferences.getString(key, null)
+        val ciphertext = storedValues.getString(key, null)
         assertTrue(ciphertext!!.startsWith("enc:"))
         try {
             val unavailable = SecureStorage(context, cryptoManager = CryptoManager { error("Keystore unavailable") })
             unavailable.set(key, "replacement-secret")
             unavailable.set("$key-new", "new-secret")
-            assertEquals(ciphertext, storage.sharedPreferences.getString(key, null))
-            assertFalse(storage.sharedPreferences.contains("$key-new"))
+            assertEquals(ciphertext, storedValues.getString(key, null))
+            assertFalse(storedValues.contains("$key-new"))
             assertEquals("previous", storage.get<String>(key, String::class.java))
         } finally {
             storage.remove(key)
@@ -36,10 +38,10 @@ class SessionPersistenceTest {
         val storage = SecureStorage(context)
         val cookies = listOf(Cookie.Builder().name("AVS").value("legacy-test").hostOnlyDomain("api.example").secure().httpOnly().build())
         val plain = "plain:" + Base64.getEncoder().encodeToString(Gson().toJson(cookies).toByteArray())
-        storage.sharedPreferences.edit().putString("cookie", plain).commit()
+        storedValues.edit().putString("cookie", plain).commit()
         try {
             assertEquals(cookies, SecureCookieStorage(storage).get())
-            assertTrue(storage.sharedPreferences.getString("cookie", "")!!.startsWith("enc:"))
+            assertTrue(storedValues.getString("cookie", "")!!.startsWith("enc:"))
             assertEquals(cookies, SecureCookieStorage(SecureStorage(context)).get())
             SecureCookieStorage(storage).remove()
             assertTrue(SecureCookieStorage(SecureStorage(context)).get().isEmpty())
