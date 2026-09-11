@@ -15,11 +15,18 @@ WorkManager 的参数解析依赖真实的 `WorkerParameters`。
 ./run-instrumented-tests.sh -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest -m scanReportsRealByteCountsAndZeroForMissingAreas
 ./run-instrumented-tests.sh -l                    # 同时把 logcat 抓到 build/instrumented-logcat.txt
 ./run-instrumented-tests.sh --no-build -c ...     # 已装过 APK，只重跑用例
+./run-instrumented-tests.sh --start-app -c ...    # 跑之前先把应用切到前台（UI 用例用）
+./run-instrumented-tests.sh --stall 120 -c ...    # 120s 没新输出就判定卡死并中止
+./run-instrumented-tests.sh --fresh               # 干净安装（应用数据、登录会话会丢）
 ./run-instrumented-tests.sh <序列号>              # 多台设备时指定（adb devices -l 查看）
 ```
 
-脚本做的是 `assembleDebug` + `assembleDebugAndroidTest` → 卸载旧包 → 安装两个 APK →
+脚本做的是 `assembleDebug` + `assembleDebugAndroidTest` → **覆盖安装**两个 APK →
 `adb shell am instrument`。`--no-build` 可以跳过 Gradle，改一行用例后重跑只要几秒。
+
+安装默认走 `adb install -r`，**保留应用数据**：登录会话、设置和下载记录都在应用私有目录里，
+先卸载再装会把这些全清掉，装完是个没登录的干净应用——依赖登录态的 UI 用例就再也跑不起来。
+只有覆盖失败（换过签名、版本降级）或显式 `--fresh` 才会卸载重装，脚本会先打印一行警告。
 
 ## 手工执行等价命令
 
@@ -47,6 +54,36 @@ adb shell am instrument -w -r \
 adb shell am instrument -w -r -e package com.par9uet.jm.cache \
   jmcomic.debug.test/androidx.test.runner.AndroidJUnitRunner
 ```
+
+## 结果怎么判定
+
+`adb shell am instrument` 的退出码**不能**当结果用：用例失败、筛选条件一条都没匹配到、
+甚至 runner 根本没起来，它都可能返回 0，于是失败被报成"通过"。脚本因此只看输出流：
+
+- 出现 `INSTRUMENTATION_FAILED` / `shortMsg=` / `FAILURES!!!` / `Failures: [1-9]` /
+  `Errors: [1-9]` / 单条用例的 `INSTRUMENTATION_STATUS_CODE: -1`（抛异常）或 `-2`（断言失败）→ 失败。
+- 一条用例都没跑到（`OK (0 tests)`，通常是 `-c` 类名或 `-m` 方法名写错）→ 失败。
+- 输出里没有 `INSTRUMENTATION_CODE: -1`（正常结束）→ 失败。
+
+原始输出整份留在 `build/instrumented-output.txt`，`-l` 抓的 logcat 在
+`build/instrumented-logcat.txt`。手工跑 `am instrument` 时按同样几条自己看一眼，
+别只看 `$?`；`-r` 的意义就在这些原始状态行里（`STATUS_CODE: 0` 通过、`-2` 失败、`-1` 异常、
+`-3`/`-4` 被忽略或假设不成立，后两者不算失败）。
+
+## 卡死：UI 用例必须占着前台
+
+Compose 的 `waitForIdle` / `onNode...` 要当前界面是 resumed 并且能出帧。别的窗口（聊天、
+通知栏、MIUI 的安全中心弹窗）一旦抢到前台，等待就永远不返回，`am instrument` 会一直挂着，
+看起来像"测试跑不完"，其实是环境问题。
+
+所以：
+
+- 跑 UI 用例加 `--start-app`，跑的过程中不要操作手机；通知栏和悬浮通知最容易被误触。
+- 脚本自带看门狗：默认 180s 没有新输出就判定卡死，`am force-stop` 收尾，并把**当时的前台窗口**
+  记到 `build/instrumented-output.txt`；用 `--stall <秒>` 调整。判定结果为失败。
+- 真机经验（MIUI）：`RetainedMainNavigationTest`、`NavigationInteractionTest` 这两个类
+  在设备被占用时会卡在宿主活动被切到后台之后的第一次等待上——它们是纯 Compose 宿主活动，
+  不需要登录，也不是被测应用本身的问题。手机空闲时才有机会跑过。
 
 `-w` 等待结果，`-r` 打印原始结果流（每个用例一行）。退出码非 0 表示有失败。
 想确认测试 APK 是否装上了：`adb shell pm list instrumentation`。
