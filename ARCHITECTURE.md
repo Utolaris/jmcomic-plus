@@ -85,8 +85,9 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   由 `worker/CacheMigrationWorker`（54 行）执行；Worker 只读入参、调用协调器并把结果映射成 WorkManager 终态，
   唯一构造 Worker、唯一解读 `WorkInfo` 的位置是 `worker/WorkManagerCacheMigrationScheduler`
   （`ui/viewModel/CachePathViewModel` 因此既不 import `worker.*` 也不 import `androidx.work.`）。
-  同名任务会留下历史记录且 `getWorkInfosForUniqueWork` 不保证顺序，所以状态按
-  "未结束的 → 本次入队的 id → 列表末尾"挑当前那次，避免把更早的结果当成本次结果。
+  同名任务会留下历史记录且 `getWorkInfosForUniqueWork` 不保证顺序，所以状态只从
+  "未结束的那条"或"入队时记下的任务 id"（存在 `cache/Config` 的偏好里，跨进程重启仍在）
+  认领当前那次，认不出来就不显示结果——不按列表顺序猜，避免把更早的结果当成本次结果。
   `cache/migration/CacheMigrationCoordinator`（L2）持有迁移顺序与失败分支——
   先解析全部来源再动目标、全部文件落地后才写索引并切换目录、提交段整体 `NonCancellable`；
   `cache/migration/CacheMigrationOperations`（L3）组合 `cache/*` 文档原子与下载 DAO，

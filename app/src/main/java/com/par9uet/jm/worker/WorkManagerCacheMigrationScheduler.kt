@@ -6,9 +6,11 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.par9uet.jm.cache.getCacheMigrationRequestId
 import com.par9uet.jm.cache.migration.CacheMigrationScheduler
 import com.par9uet.jm.cache.migration.CacheMigrationWork
 import com.par9uet.jm.cache.migration.CacheMigrationWorkState
+import com.par9uet.jm.cache.setCacheMigrationRequestId
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -22,33 +24,33 @@ internal class WorkManagerCacheMigrationScheduler(
 ) : CacheMigrationScheduler {
     private val workManager = WorkManager.getInstance(context)
 
-    /** 本进程最后一次入队的那次；用来在同名任务的历史记录里认出"这次"。 */
-    private var lastEnqueuedId: UUID? = null
-
     override fun enqueue(targetTreeUri: String) {
         val request = OneTimeWorkRequestBuilder<CacheMigrationWorker>()
             .setInputData(workDataOf(CacheMigrationWork.TARGET_TREE_URI to targetTreeUri))
             .build()
-        lastEnqueuedId = request.id
+        // 记到磁盘，进程重启之后还要靠它认出"这次"的结果。
+        setCacheMigrationRequestId(context, request.id.toString())
         workManager.enqueueUniqueWork(CacheMigrationWork.UNIQUE_WORK_NAME, ExistingWorkPolicy.KEEP, request)
     }
 
     override fun observe(): Flow<CacheMigrationWorkState> =
         workManager.getWorkInfosForUniqueWorkFlow(CacheMigrationWork.UNIQUE_WORK_NAME)
-            .map { works -> currentMigrationState(works, lastEnqueuedId) }
+            .map { works -> currentMigrationState(works, lastRequestId()) }
+
+    private fun lastRequestId(): UUID? = getCacheMigrationRequestId(context)
+        ?.let { id -> runCatching { UUID.fromString(id) }.getOrNull() }
 }
 
 /**
  * 从同名任务的全部历史记录里挑出"当前这次"。
  *
  * WorkManager 只保证这一组，不保证顺序（`getWorkInfosForUniqueWork` 的查询没有 ORDER BY），
- * 所以先看有没有未结束的（唯一任务名 + KEEP，至多一条），再按本次入队的 id 认领，
- * 最后才退回列表末尾——冷启动时唯一可用的线索，宁可给出最近一次的结果也不要按列表顺序乱挑。
+ * 所以绝不按列表顺序挑：先看有没有未结束的（唯一任务名 + KEEP，至多一条），再按入队时记下的
+ * id 认领；认不出来就什么都不显示——宁可没有结果，也不把更早的结果当成本次的结果。
  */
-internal fun currentMigrationState(works: List<WorkInfo>, lastEnqueuedId: UUID?): CacheMigrationWorkState {
+internal fun currentMigrationState(works: List<WorkInfo>, lastRequestId: UUID?): CacheMigrationWorkState {
     val work = works.firstOrNull { !it.state.isFinished }
-        ?: works.firstOrNull { it.id == lastEnqueuedId }
-        ?: works.lastOrNull()
+        ?: works.firstOrNull { it.id == lastRequestId }
         ?: return CacheMigrationWorkState.Idle
     return when (work.state) {
         WorkInfo.State.SUCCEEDED -> CacheMigrationWorkState.Succeeded
