@@ -49,6 +49,25 @@ class ArchitectureBoundaryTest {
                 "com.par9uet.jm.store.", "com.par9uet.jm.download.molecule.",
                 "com.par9uet.jm.download.atom.", "coil.", "java.io.",
             )))
+            addAll(
+                forbiddenImports(
+                    "worker/CacheMigrationWorker.kt",
+                    listOf(
+                        "com.par9uet.jm.database.", "com.par9uet.jm.repository.", "com.par9uet.jm.reader.",
+                        "com.par9uet.jm.store.", "com.par9uet.jm.download.", "com.par9uet.jm.cache.",
+                        "coil.", "java.io.", "android.provider.", "com.par9uet.jm.MainActivity",
+                        "com.par9uet.jm.R",
+                    ),
+                    except = listOf("com.par9uet.jm.cache.migration."),
+                )
+            )
+            addAll(forbiddenImports("cache/migration", listOf(
+                "com.par9uet.jm.ui.", "com.par9uet.jm.worker.", "com.par9uet.jm.store.",
+                "com.par9uet.jm.reader.", "com.par9uet.jm.download.",
+            )))
+            addAll(forbiddenImports("ui/viewModel/CachePathViewModel.kt", listOf(
+                "com.par9uet.jm.worker.",
+            )))
             listOf("AboutScreen.kt", "CheckUpdateScreen.kt", "BackupRestoreScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
                     "okhttp3.", "com.google.gson.", "java.io.File", "androidx.core.content.FileProvider",
@@ -89,7 +108,11 @@ class ArchitectureBoundaryTest {
         )
     }
 
-    private fun forbiddenImports(packagePath: String, prefixes: List<String>): List<String> {
+    private fun forbiddenImports(
+        packagePath: String,
+        prefixes: List<String>,
+        except: List<String> = emptyList(),
+    ): List<String> {
         val sourceRoot = sourceRoot()
         val packageRoot = sourceRoot.resolve(packagePath)
         if (!Files.exists(packageRoot)) return emptyList()
@@ -100,7 +123,10 @@ class ArchitectureBoundaryTest {
                     .forEach { path ->
                         Files.readAllLines(path).forEachIndexed { index, line ->
                             val imported = line.removePrefix("import ")
-                            if (line.startsWith("import ") && prefixes.any(imported::startsWith)) {
+                            if (line.startsWith("import ") &&
+                                prefixes.any(imported::startsWith) &&
+                                except.none(imported::startsWith)
+                            ) {
                                 add("${sourceRoot.relativize(path)}:${index + 1}: $line")
                             }
                         }

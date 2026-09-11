@@ -5,13 +5,11 @@ import android.net.Uri
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.ExistingWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
-import androidx.work.workDataOf
 import com.par9uet.jm.cache.getDownloadTreeUri
-import com.par9uet.jm.worker.*
+import com.par9uet.jm.cache.migration.CacheMigrationScheduler
+import com.par9uet.jm.cache.migration.CacheMigrationWork
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -23,7 +21,10 @@ data class CachePathUiState(
     val message: String = "",
 )
 
-class CachePathViewModel(application: Application) : AndroidViewModel(application) {
+class CachePathViewModel(
+    application: Application,
+    private val scheduler: CacheMigrationScheduler,
+) : AndroidViewModel(application) {
     private val context: Application get() = getApplication()
     private val workManager = WorkManager.getInstance(context)
     private val mutableState = MutableStateFlow(CachePathUiState(treeUri = getDownloadTreeUri(context)?.toString().orEmpty()))
@@ -31,16 +32,16 @@ class CachePathViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         viewModelScope.launch {
-            workManager.getWorkInfosForUniqueWorkFlow(CACHE_MIGRATION_WORK_NAME).collect { works ->
+            workManager.getWorkInfosForUniqueWorkFlow(CacheMigrationWork.UNIQUE_WORK_NAME).collect { works ->
                 val work = works.firstOrNull { !it.state.isFinished } ?: works.firstOrNull()
                 val active = work != null && !work.state.isFinished
                 mutableState.value = CachePathUiState(
                     treeUri = getDownloadTreeUri(context)?.toString().orEmpty(),
                     active = active,
-                    progress = work?.progress?.getInt(CACHE_MIGRATION_PROGRESS, 0) ?: 0,
+                    progress = work?.progress?.getInt(CacheMigrationWork.PROGRESS, 0) ?: 0,
                     message = when {
-                        active -> work?.progress?.getString(CACHE_MIGRATION_STAGE) ?: "正在等待当前缓存任务结束"
-                        work?.state == WorkInfo.State.FAILED -> work.outputData.getString(CACHE_MIGRATION_ERROR) ?: "缓存迁移失败"
+                        active -> work?.progress?.getString(CacheMigrationWork.STAGE) ?: "正在等待当前缓存任务结束"
+                        work?.state == WorkInfo.State.FAILED -> work.outputData.getString(CacheMigrationWork.ERROR) ?: "缓存迁移失败"
                         work?.state == WorkInfo.State.SUCCEEDED -> "迁移完成"
                         else -> ""
                     },
@@ -66,9 +67,6 @@ class CachePathViewModel(application: Application) : AndroidViewModel(applicatio
     private fun startMigration(targetUri: String) {
         if (state.value.active || targetUri == state.value.treeUri) return
         mutableState.value = mutableState.value.copy(active = true, progress = 0, message = "正在准备缓存迁移")
-        val request = OneTimeWorkRequestBuilder<CacheMigrationWorker>()
-            .setInputData(workDataOf(CACHE_MIGRATION_TARGET_URI to targetUri))
-            .build()
-        workManager.enqueueUniqueWork(CACHE_MIGRATION_WORK_NAME, ExistingWorkPolicy.KEEP, request)
+        scheduler.enqueue(targetUri)
     }
 }

@@ -2,6 +2,7 @@ package com.par9uet.jm.utils
 
 import android.annotation.SuppressLint
 import android.Manifest
+import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -108,6 +109,32 @@ fun cancelProgressNotification(context: Context, notificationId: Int) {
     runCatching {
         NotificationManagerCompat.from(context).cancel(notificationId)
     }
+}
+
+const val CACHE_MIGRATION_NOTIFICATION_ID = 19_940
+
+/**
+ * 缓存目录迁移的前台通知。放在这里和其余通知构造待在一起，Worker 只负责把进度交出来，
+ * 不需要知道通知怎么拼、也不需要反向引用 MainActivity。
+ */
+fun cacheMigrationNotification(context: Context, percent: Int, stage: String): Notification {
+    val openApp = PendingIntent.getActivity(
+        context,
+        CACHE_MIGRATION_NOTIFICATION_ID,
+        Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        },
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+    )
+    return NotificationCompat.Builder(context, DOWNLOAD_NOTIFICATION_CHANNEL_ID)
+        .setSmallIcon(R.drawable.ic_download_notification)
+        .setContentTitle("正在迁移漫画缓存")
+        .setContentText(stage)
+        .setContentIntent(openApp)
+        .setOnlyAlertOnce(true)
+        .setOngoing(true)
+        .setProgress(100, percent.coerceIn(0, 100), false)
+        .build()
 }
 
 private fun canPostNotification(context: Context): Boolean {

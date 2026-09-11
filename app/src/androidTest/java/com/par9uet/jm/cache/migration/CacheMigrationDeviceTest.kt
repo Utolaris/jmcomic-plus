@@ -1,4 +1,4 @@
-package com.par9uet.jm.cache
+package com.par9uet.jm.cache.migration
 
 import android.content.Context
 import android.content.ContextWrapper
@@ -7,29 +7,23 @@ import android.provider.DocumentsContract
 import androidx.room.Room
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import androidx.work.Data
-import androidx.work.ForegroundUpdater
-import androidx.work.ProgressUpdater
-import androidx.work.WorkerFactory
-import androidx.work.WorkerParameters
-import androidx.work.impl.utils.futures.SettableFuture
-import androidx.work.impl.utils.taskexecutor.SerialExecutor
-import androidx.work.impl.utils.taskexecutor.TaskExecutor
+import com.par9uet.jm.cache.cachePathExists
+import com.par9uet.jm.cache.cachePathHasContent
+import com.par9uet.jm.cache.findCacheChildPath
+import com.par9uet.jm.cache.findOrCreateCacheDocument
+import com.par9uet.jm.cache.getDownloadDir
+import com.par9uet.jm.cache.getDownloadTreeUri
+import com.par9uet.jm.cache.isDocumentCachePath
+import com.par9uet.jm.cache.listComicImageEntries
+import com.par9uet.jm.cache.listComicImagePaths
+import com.par9uet.jm.cache.openCacheOutputStream
+import com.par9uet.jm.cache.setDownloadTreeUri
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.database.model.DownloadComic
 import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.download.atom.DownloadContentFiles
-import com.par9uet.jm.download.coordinator.DownloadComicCoordinator
-import com.par9uet.jm.download.coordinator.DownloadFeedback
-import com.par9uet.jm.download.molecule.DownloadContentOperations
-import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.worker.CACHE_MIGRATION_TARGET_URI
-import com.par9uet.jm.worker.CacheMigrationWorker
 import java.io.File
 import java.util.UUID
-import java.util.concurrent.Executor
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -39,8 +33,12 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 
+/**
+ * L3/L4 组合的真机行为：真实 Room + 真实 DocumentsContract 读写。迁移的决策分支
+ * 已经由 JVM 的 [CacheMigrationCoordinatorTest] 覆盖，这里只验证文件与索引真的搬对了。
+ */
 @RunWith(AndroidJUnit4::class)
-class CacheMigrationWorkerTest {
+class CacheMigrationDeviceTest {
     private lateinit var base: Context
     private lateinit var context: Context
     private lateinit var database: AppDatabase
@@ -87,11 +85,9 @@ class CacheMigrationWorkerTest {
         database.downloadComicDao().insert(original)
         val targetTree = createTreeDirectory("target-${UUID.randomUUID()}")
 
-        val result = createWorker(targetTree.toString()).doWork()
+        val outcome = migrate(targetTree.toString())
 
-        if (result !is androidx.work.ListenableWorker.Result.Success) {
-            throw AssertionError("migration failed: ${result.outputData.keyValueMap}")
-        }
+        assertEquals(CacheMigrationOutcome.Success, outcome)
         val migrated = database.downloadComicDao().getById(original.id)!!
         assertTrue(isDocumentCachePath(migrated.coverPath))
         assertTrue(isDocumentCachePath(migrated.zipPath))
@@ -121,9 +117,9 @@ class CacheMigrationWorkerTest {
         database.downloadComicDao().insert(original)
         val targetTree = createTreeDirectory("redownload-${UUID.randomUUID()}")
 
-        val result = createWorker(targetTree.toString()).doWork()
+        val outcome = migrate(targetTree.toString())
 
-        assertTrue(result is androidx.work.ListenableWorker.Result.Success)
+        assertEquals(CacheMigrationOutcome.Success, outcome)
         val migrated = database.downloadComicDao().getById(original.id)!!
         assertEquals("", migrated.zipPath)
         assertEquals("", migrated.coverPath)
@@ -147,9 +143,9 @@ class CacheMigrationWorkerTest {
         database.downloadComicDao().insert(original)
         val targetTree = createTreeDirectory("failed-${UUID.randomUUID()}")
 
-        val result = createWorker(targetTree.toString()).doWork()
+        val outcome = migrate(targetTree.toString())
 
-        assertTrue(result is androidx.work.ListenableWorker.Result.Failure)
+        assertEquals(CacheMigrationOutcome.Failure("无法读取缓存路径，请检查目录授权：$unreachable"), outcome)
         assertEquals(original, database.downloadComicDao().getById(original.id))
         assertEquals(null, getDownloadTreeUri(context))
         assertEquals(null, findCacheChildPath(context, targetRootDocument(targetTree), "JM4207"))
@@ -174,9 +170,9 @@ class CacheMigrationWorkerTest {
         database.downloadComicDao().insert(original)
         val targetTree = createTreeDirectory("partial-${UUID.randomUUID()}")
 
-        val result = createWorker(targetTree.toString()).doWork()
+        val outcome = migrate(targetTree.toString())
 
-        assertTrue(result is androidx.work.ListenableWorker.Result.Success)
+        assertEquals(CacheMigrationOutcome.Success, outcome)
         val migrated = database.downloadComicDao().getById(original.id)!!
         assertTrue(isDocumentCachePath(migrated.zipPath))
         assertEquals(listOf("0.webp"), listComicImageEntries(context, migrated.zipPath).map { it.name })
@@ -190,9 +186,9 @@ class CacheMigrationWorkerTest {
         val fixture = createSafComic(4203)
         database.downloadComicDao().insert(fixture.comic)
 
-        val result = createWorker("").doWork()
+        val outcome = migrate("")
 
-        assertTrue(result is androidx.work.ListenableWorker.Result.Success)
+        assertEquals(CacheMigrationOutcome.Success, outcome)
         val migrated = database.downloadComicDao().getById(fixture.comic.id)!!
         assertFalse(isDocumentCachePath(migrated.coverPath))
         assertFalse(isDocumentCachePath(migrated.zipPath))
@@ -211,9 +207,9 @@ class CacheMigrationWorkerTest {
         database.downloadComicDao().insert(fixture.comic)
         val targetTree = createTreeDirectory("target-${UUID.randomUUID()}")
 
-        val result = createWorker(targetTree.toString()).doWork()
+        val outcome = migrate(targetTree.toString())
 
-        assertTrue(result is androidx.work.ListenableWorker.Result.Success)
+        assertEquals(CacheMigrationOutcome.Success, outcome)
         val migrated = database.downloadComicDao().getById(fixture.comic.id)!!
         assertTrue(isDocumentCachePath(migrated.coverPath))
         assertTrue(isDocumentCachePath(migrated.zipPath))
@@ -278,50 +274,27 @@ class CacheMigrationWorkerTest {
         ))
         openCacheOutputStream(context, untouchedPage.toString()).use { it.write(byteArrayOf(7, 7, 7)) }
 
-        val result = createWorker(targetTree.toString()).doWork()
+        val outcome = migrate(targetTree.toString())
 
-        assertTrue(result is androidx.work.ListenableWorker.Result.Success)
+        assertEquals(CacheMigrationOutcome.Success, outcome)
         val migrated = database.downloadComicDao().getById(original.id)!!
         assertEquals(listOf("0.webp"), listComicImageEntries(context, migrated.zipPath).map { it.name })
         assertTrue(cachePathExists(context, untouchedPage.toString()))
     }
 
-    private fun createWorker(targetTree: String): CacheMigrationWorker {
-        val params = WorkerParameters(
-            UUID.randomUUID(),
-            Data.Builder().putString(CACHE_MIGRATION_TARGET_URI, targetTree).build(),
-            emptyList(),
-            WorkerParameters.RuntimeExtras(),
-            0,
-            0,
-            Executor { it.run() },
-            Dispatchers.Default,
-            ImmediateTaskExecutor,
-            object : WorkerFactory() {
-                override fun createWorker(appContext: Context, workerClassName: String, workerParameters: WorkerParameters) = null
-            },
-            ProgressUpdater { _, _, _ -> completedFuture() },
-            ForegroundUpdater { _, _, _ -> completedFuture() },
-        )
-        val coordinator = DownloadComicCoordinator(
-            database.downloadComicDao(),
-            object : RemoteConfigPreferences {
-                override val remoteImageHost = MutableStateFlow("")
-            },
-            object : DownloadContentOperations {
-                override suspend fun downloadCover(downloadTask: DownloadComic, coverOwnerId: Int, remoteHost: String) = error("unexpected")
-                override suspend fun downloadPages(downloadTask: DownloadComic, onProgress: suspend (Float) -> Unit) = error("unexpected")
-                override suspend fun complete(downloadTask: DownloadComic) = error("unexpected")
-            },
-            object : DownloadFeedback {
-                override fun start(groupId: Int) = Unit
-                override fun stop(groupId: Int) = Unit
-                override fun showProgress(downloadTask: DownloadComic, progress: Float) = Unit
-                override fun cancel(groupId: Int) = Unit
-                override fun report(batchId: String, batchTotal: Int, comicId: Int, success: Boolean) = Unit
+    private suspend fun migrate(targetTree: String): CacheMigrationOutcome {
+        val coordinator = CacheMigrationCoordinator(
+            DeviceCacheMigrationOperations(context, database.downloadComicDao(), database),
+            object : CacheMigrationDownloadGate {
+                override suspend fun <T> withIdleDownloads(block: suspend () -> T): T = block()
             },
         )
-        return CacheMigrationWorker(context, params, database.downloadComicDao(), coordinator, database)
+        return coordinator.migrate(targetTree, RecordingFeedback)
+    }
+
+    private object RecordingFeedback : CacheMigrationFeedback {
+        override suspend fun stage(percent: Int, stage: String) = Unit
+        override suspend fun progress(percent: Int, stage: String) = Unit
     }
 
     private fun createTreeDirectory(name: String): android.net.Uri {
@@ -358,20 +331,6 @@ class CacheMigrationWorkerTest {
             bitmap.recycle()
         }
     }
-
-    private object ImmediateTaskExecutor : TaskExecutor {
-        private val executor = Executor { it.run() }
-        private val serial = object : SerialExecutor {
-            override fun execute(command: Runnable) = command.run()
-            override fun hasPendingTasks() = false
-        }
-
-        override fun getMainThreadExecutor() = executor
-        override fun getSerialTaskExecutor() = serial
-    }
-
-    private fun completedFuture(): com.google.common.util.concurrent.ListenableFuture<Void> =
-        SettableFuture.create<Void>().apply { set(null) }
 
     private object DeviceLocalChapterFilesForTest {
         fun images(context: Context, task: DownloadComic): List<String> =

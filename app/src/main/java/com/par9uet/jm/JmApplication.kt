@@ -2,6 +2,7 @@ package com.par9uet.jm
 
 import android.app.Application
 import com.par9uet.jm.di.appModule
+import com.par9uet.jm.di.cacheModule
 import com.par9uet.jm.di.coilModule
 import com.par9uet.jm.di.comicModule
 import com.par9uet.jm.di.databaseModule
@@ -20,6 +21,7 @@ private val moduleList = listOf(
     userModule,
     databaseModule,
     favoriteModule,
+    cacheModule,
 )
 
 class JmApplication : Application() {
