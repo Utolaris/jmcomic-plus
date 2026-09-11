@@ -114,33 +114,54 @@ $(printf '%s\n' "$devices" | sed 's/^/    /')"
 
 # 覆盖安装优先。`install -r` 会保留应用数据——登录会话、设置、下载记录都在里面，
 # 而"先卸载再装"会把这些全清掉，装完是个没登录的干净应用（UI 用例因此跑不起来）。
-# 只有覆盖失败（签名不一致、版本降级）才卸载重装，并明确提示数据没了。
+#
+# 失败一律报错退出，不替用户做丢数据的决定：安装失败可能是临时的（设备掉线、空间不足），
+# 也可能是签名不一致/版本降级。只有后者才需要卸载，而那是 `--fresh` 的活。
 install_apk() {
   local serial="$1" package="$2" apk="$3"
-  if adb -s "$serial" install -r -t "$apk"; then return 0; fi
-  echo "==> 覆盖安装 $package 失败（签名不一致或版本降级），改成卸载后重装：应用数据会全部丢失。"
-  adb -s "$serial" uninstall "$package" >/dev/null 2>&1 || true
-  adb -s "$serial" install -r -t "$apk"
+  if adb -s "$serial" install -r -t "$apk"; then
+    return 0
+  fi
+  die "覆盖安装 $package 失败（上面是 adb 的报错，安装参数：install -r -t $(basename "$apk")）。
+签名不一致或版本降级时，用 --fresh 重新跑：它会先卸载再装，应用数据与登录会话会全部丢失。"
 }
 
 build_and_install() {
   local serial="$1"
   echo "==> 编译 debug APK 与 androidTest APK..."
-  ( cd "$PROJECT_DIR" && ./gradlew $GRADLE_FLAGS assembleDebug assembleDebugAndroidTest --console=plain )
+  # 注意：这个函数是在 `[ ... ] || build_and_install ...` 里调的，bash 在 `||` 列表里会
+  # 关掉 errexit，所以失败必须自己判——否则编译失败会拿着上一次的 APK 接着装、接着测，
+  # 结果看着全绿，测的却是旧包。
+  if ! ( cd "$PROJECT_DIR" && ./gradlew $GRADLE_FLAGS assembleDebug assembleDebugAndroidTest --console=plain ); then
+    die "编译失败，已中止（不会拿上一次的 APK 去装）。"
+  fi
 
   local app_apk test_apk
-  app_apk="$(ls -t "$APK_DIR"/debug/*.apk | head -1)"
-  test_apk="$(ls -t "$APK_DIR"/androidTest/debug/*.apk | head -1)"
+  app_apk="$(ls -t "$APK_DIR"/debug/*.apk 2>/dev/null | head -1 || true)"
+  test_apk="$(ls -t "$APK_DIR"/androidTest/debug/*.apk 2>/dev/null | head -1 || true)"
+  [ -n "$app_apk" ] && [ -n "$test_apk" ] ||
+    die "在 $APK_DIR 下找不到两个 APK，先跑一次 assembleDebug assembleDebugAndroidTest。"
 
   echo "==> 安装 $(basename "$app_apk") 与 $(basename "$test_apk")..."
   if [ "$FRESH_INSTALL" -eq 1 ]; then
-    echo "==> --fresh：先卸载 $APPLICATION_ID，应用数据（含登录会话）会全部丢失。"
+    echo "==> --fresh：先卸载 ${APPLICATION_ID}，应用数据（含登录会话）会全部丢失。"
     adb -s "$serial" uninstall "$APPLICATION_ID" >/dev/null 2>&1 || true
     adb -s "$serial" install -r -t "$app_apk"
   else
     install_apk "$serial" "$APPLICATION_ID" "$app_apk"
   fi
   install_apk "$serial" "$TEST_PACKAGE" "$test_apk"
+}
+
+# 当前前台窗口，读不到就返回空。末尾的 `|| true` 是必须的：脚本开着 pipefail + set -e，
+# 没匹配到 mCurrentFocus 时 grep 的非零退出会顺着管道把调用者（尤其是看门狗）一起带走。
+current_focus() {
+  adb -s "$1" shell dumpsys window 2>/dev/null \
+    | grep mCurrentFocus \
+    | head -1 \
+    | tr -d '\r' \
+    | sed 's/^ *//;s/^mCurrentFocus=//' \
+    || true
 }
 
 # 盯着 instrumentation 的输出：长时间没有新内容就判定卡死，主动中止并把当时的前台窗口记下来。
@@ -163,7 +184,7 @@ start_stall_watchdog() {
       continue
     fi
     [ $((now - last_change)) -ge "$stall_seconds" ] || continue
-    foreground="$(adb -s "$serial" shell dumpsys window 2>/dev/null | grep mCurrentFocus | head -1 | tr -d '\r' | sed 's/^ *//')"
+    foreground="$(current_focus "$serial")"
     {
       printf '\n==> 卡死判定：%ss 没有新的 instrumentation 输出，脚本主动中止。\n' "$stall_seconds"
       printf '==> 卡死时的前台窗口：%s\n' "${foreground:-未知}"
@@ -176,13 +197,24 @@ start_stall_watchdog() {
   done
 }
 
-# 从输出里取用例数。汇总行和运行期间的 numtests 都会出现，取最大值。
-# 取不到就返回空——那说明输出格式不认识，此时不拿它当失败依据。
+# 从输出里取用例数。优先汇总行（OK (N tests) / Tests run: N）和运行期间的 numtests；
+# 都没有时才退而数"每通过一条打一行"的 STATUS_CODE: 0。全都取不到就返回空——
+# 空表示数不出来，调用方按失败处理，不能当成"跑了 0 条"也不能当成通过。
 instrumentation_case_count() {
-  { grep -oE 'OK \([0-9]+ tests?\)' "$1" || true
-    grep -oE 'Tests run: [0-9]+' "$1" || true
-    grep -oE 'numtests=[0-9]+' "$1" || true
-  } 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1
+  local summary traces
+  summary="$({ grep -oE 'OK \([0-9]+ tests?\)' "$1" || true
+              grep -oE 'Tests run: [0-9]+' "$1" || true
+              grep -oE 'numtests=[0-9]+' "$1" || true
+            } 2>/dev/null | grep -oE '[0-9]+' | sort -n | tail -1 || true)"
+  if [ -n "$summary" ]; then
+    printf '%s' "$summary"
+    return 0
+  fi
+  traces="$(grep -c 'INSTRUMENTATION_STATUS_CODE: 0' "$1" 2>/dev/null || true)"
+  if [ "${traces:-0}" -gt 0 ]; then
+    printf '%s' "$traces"
+  fi
+  return 0
 }
 
 # 判定一次插桩结果：成功时返回 0 并打印用例数（可能为空），失败时打印原因并返回 1。
@@ -226,9 +258,17 @@ assess_instrumentation() {
   fi
 
   cases="$(instrumentation_case_count "$output" || true)"
-  if [ -z "$reasons" ] && [ -n "$cases" ] && [ "$cases" -eq 0 ]; then
-    reasons="
-  - 一条用例都没跑到（检查 -c 的类名、-m 的方法名是否写对，-p 的包名下是否有用例）"
+  if [ -z "$reasons" ]; then
+    case "$cases" in
+      '')
+        # 数不出用例数就不能算通过：正常的 AndroidJUnitRunner 一定会留下 OK (N tests)、
+        # numtests=N 或每用例一行 STATUS_CODE: 0，什么都没有说明这次输出不可信。
+        reasons="
+  - 数不出用例数，也没看到任何用例通过的记录，无法确认这次跑了什么" ;;
+      0)
+        reasons="
+  - 一条用例都没跑到（检查 -c 的类名、-m 的方法名是否写对，-p 的包名下是否有用例）" ;;
+    esac
   fi
 
   if [ -n "$reasons" ]; then
@@ -302,7 +342,7 @@ main() {
     # UI 用例要应用在前台：先自己拉起来，避免一上来就被别的应用压在后台。
     adb -s "$serial" shell monkey -p "$APPLICATION_ID" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
     sleep 2
-    echo "==> 当前前台：$(adb -s "$serial" shell dumpsys window 2>/dev/null | grep mCurrentFocus | head -1 | tr -d '\r' | sed 's/^ *//')"
+    echo "==> 当前前台：$(current_focus "$serial")"
   fi
   local stall_file="$output_file.stall"
   rm -f "$stall_file"
@@ -338,7 +378,7 @@ main() {
   if [ -n "$verdict" ]; then
     echo "==> 插桩测试通过（$verdict 条用例）"
   else
-    echo "==> 插桩测试通过（用例数未知，没有解析到汇总行）"
+    echo "==> 插桩测试通过"
   fi
   return 0
 }

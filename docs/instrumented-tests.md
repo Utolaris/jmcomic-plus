@@ -26,7 +26,8 @@ WorkManager 的参数解析依赖真实的 `WorkerParameters`。
 
 安装默认走 `adb install -r`，**保留应用数据**：登录会话、设置和下载记录都在应用私有目录里，
 先卸载再装会把这些全清掉，装完是个没登录的干净应用——依赖登录态的 UI 用例就再也跑不起来。
-只有覆盖失败（换过签名、版本降级）或显式 `--fresh` 才会卸载重装，脚本会先打印一行警告。
+覆盖安装**失败时脚本直接报错退出**（临时故障、空间不足、签名不一致都可能是原因），
+不会替你做丢数据的决定；确认是签名不一致或版本降级后，再用 `--fresh` 卸载重装。
 
 ## 手工执行等价命令
 
@@ -64,6 +65,8 @@ adb shell am instrument -w -r -e package com.par9uet.jm.cache \
   `Errors: [1-9]` / 单条用例的 `INSTRUMENTATION_STATUS_CODE: -1`（抛异常）或 `-2`（断言失败）→ 失败。
 - 一条用例都没跑到（`OK (0 tests)`，通常是 `-c` 类名或 `-m` 方法名写错）→ 失败。
 - 输出里没有 `INSTRUMENTATION_CODE: -1`（正常结束）→ 失败。
+- **数不出用例数**（没有汇总行，也没有任何一条 `STATUS_CODE: 0`）→ 失败。正常的
+  AndroidJUnitRunner 一定会留下这些痕迹，什么都没有就说明这次输出不可信，不能算通过。
 
 原始输出整份留在 `build/instrumented-output.txt`，`-l` 抓的 logcat 在
 `build/instrumented-logcat.txt`。手工跑 `am instrument` 时按同样几条自己看一眼，
@@ -85,7 +88,9 @@ Compose 的 `waitForIdle` / `onNode...` 要当前界面是 resumed 并且能出�
   在设备被占用时会卡在宿主活动被切到后台之后的第一次等待上——它们是纯 Compose 宿主活动，
   不需要登录，也不是被测应用本身的问题。手机空闲时才有机会跑过。
 
-`-w` 等待结果，`-r` 打印原始结果流（每个用例一行）。退出码非 0 表示有失败。
+`-w` 等待结果，`-r` 打印原始结果流（每个用例一行）。**别拿退出码当结论**：用例失败、
+筛选条件一条都没匹配到、甚至 runner 没起来，`adb shell am instrument` 都可能返回 0；
+按上面「结果怎么判定」里的几条看输出。
 想确认测试 APK 是否装上了：`adb shell pm list instrumentation`。
 
 ## 测试集
