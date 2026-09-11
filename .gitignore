@@ -16,3 +16,6 @@
 local.properties
 release-key
 .debug-screenshot.png
+
+# Agent workspace: session memory, not project source
+.workbuddy/

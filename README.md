@@ -10,6 +10,19 @@
 
 - [四层架构约束](ARCHITECTURE.md)
 - [ReaderImagePipeline 图片链路与组件说明](docs/reader-image-pipeline.md)
+- [真机插桩测试与 adb 调试](docs/instrumented-tests.md)
+
+## 真机跑插桩测试
+
+```bash
+./run-instrumented-tests.sh                                  # 全量
+./run-instrumented-tests.sh -p com.par9uet.jm.worker         # 只跑一个包
+./run-instrumented-tests.sh -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest
+./run-instrumented-tests.sh --no-build -c <类名>             # 已装包时跳过编译
+```
+
+脚本会编译安装 debug 与 androidTest 两个 APK，再用 `adb shell am instrument` 驱动；
+只连一台设备时可省略序列号。完整用法见 [docs/instrumented-tests.md](docs/instrumented-tests.md)。
 
 ## 一键安装到手机
 
