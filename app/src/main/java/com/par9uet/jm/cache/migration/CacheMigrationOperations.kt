@@ -25,8 +25,9 @@ data class CacheMigrationCopy(
 
 /**
  * L3: combines the cache document atoms with the download rows that point at them. It knows how to
- * read, resolve and move one comic's files, but holds no migration order, reports no progress and
- * never switches the active tree — [CacheMigrationCoordinator] decides when that may happen.
+ * read, resolve and move one comic's files; it holds no migration order, reports no progress and
+ * decides nothing about *when* a step may run — it performs the step it is asked for, so the index
+ * write and the tree switch happen when [CacheMigrationCoordinator] calls for them.
  */
 interface CacheMigrationOperations {
     fun sourceTreeUri(): String

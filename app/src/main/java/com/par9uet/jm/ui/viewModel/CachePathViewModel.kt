@@ -5,11 +5,9 @@ import android.net.Uri
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import androidx.work.WorkInfo
-import androidx.work.WorkManager
 import com.par9uet.jm.cache.getDownloadTreeUri
 import com.par9uet.jm.cache.migration.CacheMigrationScheduler
-import com.par9uet.jm.cache.migration.CacheMigrationWork
+import com.par9uet.jm.cache.migration.CacheMigrationWorkState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -26,28 +24,28 @@ class CachePathViewModel(
     private val scheduler: CacheMigrationScheduler,
 ) : AndroidViewModel(application) {
     private val context: Application get() = getApplication()
-    private val workManager = WorkManager.getInstance(context)
     private val mutableState = MutableStateFlow(CachePathUiState(treeUri = getDownloadTreeUri(context)?.toString().orEmpty()))
     val state = mutableState.asStateFlow()
 
     init {
         viewModelScope.launch {
-            workManager.getWorkInfosForUniqueWorkFlow(CacheMigrationWork.UNIQUE_WORK_NAME).collect { works ->
-                val work = works.firstOrNull { !it.state.isFinished } ?: works.firstOrNull()
-                val active = work != null && !work.state.isFinished
-                mutableState.value = CachePathUiState(
-                    treeUri = getDownloadTreeUri(context)?.toString().orEmpty(),
-                    active = active,
-                    progress = work?.progress?.getInt(CacheMigrationWork.PROGRESS, 0) ?: 0,
-                    message = when {
-                        active -> work?.progress?.getString(CacheMigrationWork.STAGE) ?: "正在等待当前缓存任务结束"
-                        work?.state == WorkInfo.State.FAILED -> work.outputData.getString(CacheMigrationWork.ERROR) ?: "缓存迁移失败"
-                        work?.state == WorkInfo.State.SUCCEEDED -> "迁移完成"
-                        else -> ""
-                    },
-                )
+            scheduler.observe().collect { work ->
+                mutableState.value = work.toUiState(getDownloadTreeUri(context)?.toString().orEmpty())
             }
         }
+    }
+
+    private fun CacheMigrationWorkState.toUiState(treeUri: String): CachePathUiState = when (this) {
+        is CacheMigrationWorkState.Running -> CachePathUiState(
+            treeUri = treeUri,
+            active = true,
+            progress = progress,
+            message = stage ?: "正在等待当前缓存任务结束",
+        )
+
+        is CacheMigrationWorkState.Failed -> CachePathUiState(treeUri = treeUri, message = message ?: "缓存迁移失败")
+        CacheMigrationWorkState.Succeeded -> CachePathUiState(treeUri = treeUri, message = "迁移完成")
+        CacheMigrationWorkState.Idle -> CachePathUiState(treeUri = treeUri)
     }
 
     fun selectDirectory(uri: Uri?) {

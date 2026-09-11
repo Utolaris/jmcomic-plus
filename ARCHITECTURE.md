@@ -5,7 +5,7 @@
 
 > 本文描述的是**当前代码的真实状态**，不是目标状态。文中出现的每个类名、路径和数字都应能在
 > `app/src/main/java/com/par9uet/jm` 下找到；与代码不符的措辞视为文档缺陷，应直接修正。
-> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 328 个 Kotlin 文件 / 42,218 行。
+> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 329 个 Kotlin 文件 / 42,280 行。
 
 ## 层级
 
@@ -58,7 +58,8 @@ cache/                       部分迁移
 ├── migration/                    L2 + L3
 │   ├── CacheMigrationCoordinator.kt         L2 迁移顺序、失败分支、提交
 │   ├── CacheMigrationWork.kt                L2 与 Worker 共用的 WorkManager 键与任务名
-│   ├── CacheMigrationScheduler.kt           L2 入队端口（实现见 worker/）
+│   ├── CacheMigrationWorkState.kt           L2 迁移状态契约
+│   ├── CacheMigrationScheduler.kt           L2 入队 + 观察端口（实现见 worker/）
 │   ├── CacheMigrationNotifications.kt       L2 前台通知适配
 │   ├── CacheMigrationOperations.kt          L3 操作端口与值类型
 │   └── DeviceCacheMigrationOperations.kt    L3 文档读写与 DAO 组合
@@ -80,9 +81,12 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   `enqueueUniqueWork(..., ExistingWorkPolicy.KEEP, ...)`，暂停/删除走
   `cancelUniqueWork`；批量下载通过 `batchId` / `batchTotal` 入参传递批次信息。
   `DownloadComicWorker`（26 行）只解析参数并调用 `DownloadComicCoordinator` 映射结果。
-- 缓存目录迁移由 `CachePathViewModel` 通过 `cache/migration/CacheMigrationScheduler` 端口提交，
+- 缓存目录迁移的入队与状态观察都走 `cache/migration/CacheMigrationScheduler` 端口，
   由 `worker/CacheMigrationWorker`（54 行）执行；Worker 只读入参、调用协调器并把结果映射成 WorkManager 终态，
-  唯一构造 Worker 的位置是 `worker/WorkManagerCacheMigrationScheduler`。
+  唯一构造 Worker、唯一解读 `WorkInfo` 的位置是 `worker/WorkManagerCacheMigrationScheduler`
+  （`ui/viewModel/CachePathViewModel` 因此既不 import `worker.*` 也不 import `androidx.work.`）。
+  同名任务会留下历史记录且 `getWorkInfosForUniqueWork` 不保证顺序，所以状态按
+  "未结束的 → 本次入队的 id → 列表末尾"挑当前那次，避免把更早的结果当成本次结果。
   `cache/migration/CacheMigrationCoordinator`（L2）持有迁移顺序与失败分支——
   先解析全部来源再动目标、全部文件落地后才写索引并切换目录、提交段整体 `NonCancellable`；
   `cache/migration/CacheMigrationOperations`（L3）组合 `cache/*` 文档原子与下载 DAO，
@@ -154,7 +158,7 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   | `reader/molecule` | `reader.coordinator.`、`ui.`、`worker.`、`store.` |
   | `worker/DownloadComicWorker.kt` | `database.`、`repository.`、`reader.`、`store.`、`download.molecule.`、`download.atom.`、`coil.`、`java.io.` |
   | `worker/CacheMigrationWorker.kt` | `database.`、`repository.`、`reader.`、`store.`、`download.`、`cache.`（`cache.migration.` 除外）、`coil.`、`java.io.`、`android.provider.`、`MainActivity`、`R` |
-  | `ui/viewModel/CachePathViewModel.kt` | `worker.` |
+  | `ui/viewModel/CachePathViewModel.kt` | `worker.`、`androidx.work.` |
   | `cache/migration` | `ui.`、`worker.`、`store.`、`reader.`、`download.` |
   | `utils` | `cache.`、`data.` |
 
@@ -224,12 +228,12 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 
 | 模块 | 行数 | Ce | Ca | I | 判断 |
 | --- | --- | --- | --- | --- | --- |
-| `worker` | 164 | 3 | 1 | 0.75 | 已拆：两个 Worker 都只解析参数，扇出落在各自的 L2 协调器与端口实现 |
+| `worker` | 203 | 3 | 1 | 0.75 | 已拆：两个 Worker 都只解析参数，扇出落在各自的 L2 协调器与端口实现 |
 | `di` | 521 | 27 | 1 | 0.96 | 组合根，合法，不动 |
 | `ui/screens` | 16,072 | 21 | 3 | 0.88 | 表现层，扇出集中在 `store`/`data` |
 | `ui/viewModel` | 3,030 | 28 | 3 | 0.90 | 扇出最高，但多为契约与偏好 |
 | `store` | 3,142 | 16 | 19 | 0.46 | **全局枢纽**，Ca 与 Ce 双高 |
-| `cache/migration` | 577 | 23 | 3 | 0.88 | 扇出集中在 `cache` 域内文档原子与下载 DAO，属 L3 组合，不必再拆 |
+| `cache/migration` | 602 | 23 | 3 | 0.88 | 扇出集中在 `cache` 域内文档原子与下载 DAO，属 L3 组合，不必再拆 |
 | `reader`（根） | 2,504 | 7 | 0 | 1.00 | 无外部依赖方，自洽 |
 | `data` | 1,007 | 6 | 21 | 0.22 | 稳定契约，不要动 |
 | `utils` | 545 | 2 | 20 | 0.09 | 稳定，不要动 |

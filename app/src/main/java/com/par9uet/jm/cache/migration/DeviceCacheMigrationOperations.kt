@@ -300,8 +300,8 @@ class DeviceCacheMigrationOperations(
     private suspend fun copyWithProgress(input: InputStream, output: OutputStream, onBytes: suspend (Long) -> Unit) {
         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
         while (true) {
-            // WorkManager cancels this coroutine when the user stops the migration; a stopped copy
-            // must never reach the commit below, so the check stays inside the byte loop.
+            // WorkManager cancels this coroutine when the migration is stopped; the check stays
+            // inside the byte loop because the coordinator's commit only runs once the copy returns.
             currentCoroutineContext().ensureActive()
             val read = input.read(buffer)
             if (read <= 0) break

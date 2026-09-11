@@ -66,7 +66,7 @@ class ArchitectureBoundaryTest {
                 "com.par9uet.jm.reader.", "com.par9uet.jm.download.",
             )))
             addAll(forbiddenImports("ui/viewModel/CachePathViewModel.kt", listOf(
-                "com.par9uet.jm.worker.",
+                "com.par9uet.jm.worker.", "androidx.work.",
             )))
             listOf("AboutScreen.kt", "CheckUpdateScreen.kt", "BackupRestoreScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(

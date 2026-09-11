@@ -29,16 +29,16 @@ interface CacheMigrationFeedback {
 }
 
 /**
- * L2: owns the migration order and its failure branches. Sources are resolved in full before the
- * destination is touched, the copied tree is only indexed and swapped after every file landed, and
- * the whole commit runs non-cancellable so a stopped worker can never leave a half-switched tree.
+ * L2: owns the migration order and its failure branches. Every source is resolved before the
+ * destination is touched, and the cache index plus the active tree are only swapped after every
+ * file landed. That commit runs non-cancellable, so stopping the worker cannot cut it in half —
+ * it does not make it atomic: a failure or a process death inside the commit can still leave the
+ * new tree active with only part of the rows rewritten.
  */
 class CacheMigrationCoordinator(
     private val operations: CacheMigrationOperations,
     private val downloads: CacheMigrationDownloadGate,
 ) {
-    private var lastReportedPercent = -1
-
     suspend fun migrate(targetTreeUri: String, feedback: CacheMigrationFeedback): CacheMigrationOutcome {
         feedback.stage(0, WAITING_STAGE)
         return downloads.withIdleDownloads { run(targetTreeUri, feedback) }
@@ -56,7 +56,6 @@ class CacheMigrationCoordinator(
 
             try {
                 feedback.stage(0, WAITING_STAGE)
-                lastReportedPercent = -1
 
                 val records = operations.records()
                 // Resolve every source before touching the destination, so a provider that cannot
@@ -65,6 +64,7 @@ class CacheMigrationCoordinator(
                 operations.ensureTargetDoesNotOverlapSources(targetTreeUri, sources.paths)
                 val totalBytes = sources.paths.sumOf(operations::size).coerceAtLeast(1L)
                 var copiedBytes = 0L
+                var lastReportedPercent = -1
 
                 val copy = operations.copy(sources, records, targetTreeUri) { delta ->
                     copiedBytes += delta
