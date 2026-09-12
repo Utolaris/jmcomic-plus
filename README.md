@@ -23,6 +23,8 @@
 脚本会编译安装 debug 与 androidTest 两个 APK，再用 `adb shell am instrument` 驱动；
 只连一台设备时可省略序列号。完整用法见 [docs/instrumented-tests.md](docs/instrumented-tests.md)。
 
+**HyperOS / MIUI**：需允许「后台弹出界面」（`appops 10021`），否则测试 Activity 会被压回桌面，UI 用例表现为卡死。脚本会自动 `allow`；手工跑 `am instrument` 时先执行文档里的两条 `adb` 命令。
+
 ## 一键安装到手机
 
 ```bash
