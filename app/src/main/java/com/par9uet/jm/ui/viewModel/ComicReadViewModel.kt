@@ -1,5 +1,4 @@
 package com.par9uet.jm.ui.viewModel
-import com.par9uet.jm.data.comic.mapper.toComic
 import com.par9uet.jm.reader.readerPageKey
 import com.par9uet.jm.reader.toReaderPage
 
@@ -11,12 +10,11 @@ import androidx.lifecycle.viewModelScope
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.data.models.ComicPicImageState
+import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.favorites.model.FavoriteSession
 import com.par9uet.jm.favorites.usecase.CollectFavorite
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.reader.molecule.LoadLocalChapter
 import com.par9uet.jm.reader.ReaderImagePipeline
@@ -47,6 +45,7 @@ class ComicReadViewModel(
     private val favoriteSession: FavoriteSession,
     private val collectFavorite: CollectFavorite,
     private val uncollectFavorites: UncollectFavorites,
+    private val downloadManager: DownloadManager,
 ) : ViewModel() {
     var isShowToolBar = mutableStateOf(false)
     var currentIndexState = mutableIntStateOf(0)
@@ -97,8 +96,8 @@ class ComicReadViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<ComicDetailResponse> -> {
-                    val comic = data.data.toComic()
+                is NetWorkResult.Success -> {
+                    val comic = data.data
                     readHistoryComicId.intValue = readHistoryManager.markRead(comic, comicId)
                     _comicDetailState.update {
                         it.copy(
@@ -190,14 +189,14 @@ class ComicReadViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<ComicPicListResponse> -> {
-                    val pages = data.data.list.mapIndexed { index, item ->
+                is NetWorkResult.Success -> {
+                    val pages = data.data.urls.mapIndexed { index, item ->
                         ComicPicImageState(
                             index,
                             comicId,
                             item,
-                            data.data.__scrambleId,
-                            data.data.__speed,
+                            data.data.scrambleId,
+                            data.data.speed,
                             imageFetcher = {
                                 comicRepository.downloadImageBytes(comicId, index)
                             }
@@ -428,6 +427,14 @@ class ComicReadViewModel(
         directionStreak = 0
         lastDirectionAtMillis = 0L
         pageVelocity = 0f
+    }
+
+    fun downloadComic(comic: Comic) {
+        downloadManager.downloadComic(comic)
+    }
+
+    fun downloadChapters(comic: Comic, chapters: List<ComicChapter>) {
+        downloadManager.downloadChapters(comic, chapters)
     }
 
     fun triggerToolBar() {

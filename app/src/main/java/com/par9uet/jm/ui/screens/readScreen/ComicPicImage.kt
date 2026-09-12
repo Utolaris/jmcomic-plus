@@ -1,4 +1,4 @@
-package com.par9uet.jm.ui.components
+package com.par9uet.jm.ui.screens.readScreen
 import com.par9uet.jm.reader.readerPageKey
 import com.par9uet.jm.reader.toReaderPage
 

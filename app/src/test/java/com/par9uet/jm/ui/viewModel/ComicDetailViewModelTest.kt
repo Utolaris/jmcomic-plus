@@ -3,8 +3,15 @@ package com.par9uet.jm.ui.viewModel
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.data.models.TagFilterLogic
+import com.par9uet.jm.download.DownloadWorkScheduler
+import com.par9uet.jm.download.RecordingDownloadDao
+import com.par9uet.jm.download.atom.DownloadFiles
+import com.par9uet.jm.download.coordinator.DownloadManager
+import com.par9uet.jm.download.molecule.DownloadTaskOperations
+import com.par9uet.jm.download.testDownloadCoordinator
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.model.FavoriteLocalQuery
@@ -17,25 +24,25 @@ import com.par9uet.jm.favorites.usecase.CollectFavorite
 import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.CollectComicResponse
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.ComicListResponse
-import com.par9uet.jm.retrofit.model.ComicPicListResponse
-import com.par9uet.jm.retrofit.model.CommentComicResponse
-import com.par9uet.jm.retrofit.model.CommentListResponse
-import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
+import com.par9uet.jm.data.models.ActionResult
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.ComicPageList
+import com.par9uet.jm.data.models.ComicSearchPage
+import com.par9uet.jm.data.models.CommentPage
+import com.par9uet.jm.data.models.HomeComicSwiperItem
+import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
-import com.par9uet.jm.retrofit.model.WeekResponse
 import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -65,6 +72,37 @@ class ComicDetailViewModelTest {
     @After
     fun tearDown() {
         Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `downloadComic delegates to DownloadManager and queues the comic task`() = runTest(scheduler) {
+        val environment = environment()
+        val target = comic(isCollected = false)
+
+        environment.viewModel.downloadComic(target)
+        environment.downloadJob.children.toList().joinAll()
+        runCurrent()
+
+        assertEquals(setOf(COMIC_ID), environment.downloadDao.tasks.keys)
+        assertEquals(listOf(listOf(COMIC_ID)), environment.enqueuedBatches)
+    }
+
+    @Test
+    fun `downloadChapters delegates to DownloadManager and queues only selected chapters`() = runTest(scheduler) {
+        val environment = environment()
+        val target = comic(isCollected = false)
+        val chapters = listOf(
+            ComicChapter(id = 101, name = "1"),
+            ComicChapter(id = 102, name = "2"),
+        )
+
+        environment.viewModel.downloadChapters(target, chapters)
+        environment.downloadJob.children.toList().joinAll()
+        runCurrent()
+
+        assertEquals(setOf(101, 102), environment.downloadDao.tasks.keys)
+        assertEquals(listOf(listOf(101, 102)), environment.enqueuedBatches)
+        assertEquals(COMIC_ID, environment.downloadDao.tasks.getValue(101).groupId)
     }
 
     @Test
@@ -211,7 +249,22 @@ class ComicDetailViewModelTest {
         val session = FakeFavoriteSession()
         val remote = FakeFavoriteRemoteMutation()
         val sync = RecordingSyncRequester()
-        return TestEnvironment(
+        val downloadDao = RecordingDownloadDao()
+        val downloadJob = SupervisorJob()
+        val enqueuedBatches = mutableListOf<List<Int>>()
+        val downloadManager = DownloadManager(
+            DownloadTaskOperations(downloadDao, DownloadFiles()),
+            kotlinx.coroutines.CoroutineScope(downloadJob),
+            toastManager,
+            object : DownloadWorkScheduler {
+                override suspend fun cancel(comicIds: Collection<Int>) = Unit
+                override fun enqueue(comicIds: Collection<Int>) {
+                    enqueuedBatches += comicIds.toList()
+                }
+            },
+            testDownloadCoordinator(downloadDao),
+        )
+        val environment = TestEnvironment(
             viewModel = ComicDetailViewModel(
                 comicRepository = repository,
                 toastManager = toastManager,
@@ -221,13 +274,18 @@ class ComicDetailViewModelTest {
                 uncollectFavorites = UncollectFavorites(remote, local, session),
                 moveFavorites = MoveFavorites(remote, local, session),
                 syncRequester = sync,
+                downloadManager = downloadManager,
             ),
             toastManager = toastManager,
             local = local,
             session = session,
             remote = remote,
             sync = sync,
+            downloadDao = downloadDao,
+            downloadJob = downloadJob,
+            enqueuedBatches = enqueuedBatches,
         )
+        return environment
     }
 
     private data class TestEnvironment(
@@ -237,6 +295,9 @@ class ComicDetailViewModelTest {
         val session: FakeFavoriteSession,
         val remote: FakeFavoriteRemoteMutation,
         val sync: RecordingSyncRequester,
+        val downloadDao: RecordingDownloadDao,
+        val downloadJob: kotlinx.coroutines.CompletableJob,
+        val enqueuedBatches: MutableList<List<Int>>,
     )
 
     private data class SyncRequest(val kind: FavoriteSyncRequestKind, val folderId: Int)
@@ -378,20 +439,20 @@ class ComicDetailViewModelTest {
     }
 
     private class StubComicRepository : ComicRepository {
-        override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
+        override suspend fun getComicDetail(id: Int): NetWorkResult<Comic> =
             NetWorkResult.Error("detail not needed")
 
-        override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> = unused()
-        override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> = unused()
-        override suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> = unused()
-        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> = unused()
-        override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPicListResponse> = unused()
+        override suspend fun collectComic(id: Int): NetWorkResult<Unit> = unused()
+        override suspend fun unCollectComic(id: Int): NetWorkResult<Unit> = unused()
+        override suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<Comic>> = unused()
+        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeComicSwiperItem>> = unused()
+        override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPageList> = unused()
         override suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray? = null
-        override suspend fun getComicList(page: Int, order: ComicSearchOrderFilter, searchContent: String): NetWorkResult<ComicListResponse> = unused()
-        override suspend fun getWeekData(): NetWorkResult<WeekResponse> = unused()
-        override suspend fun getWeekRecommendComicList(page: Int, categoryId: String, typeId: String): NetWorkResult<WeekRecommendComicResponse> = unused()
-        override suspend fun getCommentList(page: Int, comicId: Int): NetWorkResult<CommentListResponse> = unused()
-        override suspend fun comment(content: String, comicId: Int, commentId: Int?): NetWorkResult<CommentComicResponse> = unused()
+        override suspend fun getComicList(page: Int, order: ComicSearchOrderFilter, searchContent: String): NetWorkResult<ComicSearchPage> = unused()
+        override suspend fun getWeekData(): NetWorkResult<WeekData> = unused()
+        override suspend fun getWeekRecommendComicList(page: Int, categoryId: String, typeId: String): NetWorkResult<ComicPage> = unused()
+        override suspend fun getCommentList(page: Int, comicId: Int): NetWorkResult<CommentPage> = unused()
+        override suspend fun comment(content: String, comicId: Int, commentId: Int?): NetWorkResult<ActionResult> = unused()
         override suspend fun getComicIdsByTag(tagName: String, maxPages: Int): Set<Int> = emptySet()
 
         private fun <T> unused(): NetWorkResult<T> = NetWorkResult.Error("unused")

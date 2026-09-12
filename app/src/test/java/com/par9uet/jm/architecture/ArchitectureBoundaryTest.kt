@@ -31,9 +31,12 @@ class ArchitectureBoundaryTest {
                 "com.par9uet.jm.repository.", "com.par9uet.jm.data.",
                 "com.par9uet.jm.session.", "com.par9uet.jm.retrofit.",
             )))
+            // session 不得依赖 data 的数据源层（data/comic、wire mapper）；但 data/models 是
+            // 零出度的共享领域契约，会话仓库要对外返回 ComicPage / CommentPage / ActionResult，
+            // 因此只对 data.models 开一个精确例外。
             addAll(forbiddenImports("session", listOf(
                 "com.par9uet.jm.data.", "com.par9uet.jm.repository.",
-            )))
+            ), except = listOf("com.par9uet.jm.data.models.")))
             addAll(forbiddenImports("favorites/data", listOf(
                 "com.par9uet.jm.repository.",
             )))
@@ -42,6 +45,31 @@ class ArchitectureBoundaryTest {
             addAll(forbiddenQualifiedUsages("ui", listOf("com.par9uet.jm.favorites.data.")))
             // Screens must not touch cache file atoms; CacheCleanupViewModel is the L2 exception.
             addAll(forbiddenImports("ui/screens", listOf("com.par9uet.jm.cache.atom.")))
+            // 支撑层不得反向依赖具体页面：导航基础设施与通用组件只允许依赖 ui/navigation、
+            // ui/theme、ui/glass 同层设施，LocalMainNavController 因此归 ui/navigation。
+            addAll(forbiddenImports("ui/components", listOf("com.par9uet.jm.ui.screens.")))
+            addAll(forbiddenImports("ui/glass", listOf("com.par9uet.jm.ui.screens.")))
+            addAll(forbiddenQualifiedUsages("ui/components", listOf("com.par9uet.jm.ui.screens.")))
+            addAll(forbiddenQualifiedUsages("ui/glass", listOf("com.par9uet.jm.ui.screens.")))
+            // 表现层不得认识 wire DTO：`retrofit/model` 的映射在 repository/impl 内完成，
+            // 仓库对外只返回 data/models 的领域类型。App.kt 是根包入口，单独钉一条。
+            addAll(forbiddenImports("ui", listOf("com.par9uet.jm.retrofit.model.")))
+            addAll(forbiddenQualifiedUsages("ui", listOf("com.par9uet.jm.retrofit.model.")))
+            addAll(forbiddenImports("App.kt", listOf("com.par9uet.jm.retrofit.model.")))
+            addAll(forbiddenQualifiedUsages("App.kt", listOf("com.par9uet.jm.retrofit.model.")))
+            // ui/components 是通用支撑层：只接收参数、只消费 ui/* 的环境值（CompositionLocal）。
+            // 不得依赖持久化、数据层、会话、缓存或任何具体领域的 L2/L4——取数由调用方或
+            // 组合根负责（见 ARCHITECTURE.md「已采用的边界」）。
+            addAll(forbiddenImports("ui/components", listOf(
+                "com.par9uet.jm.storage.", "com.par9uet.jm.repository.", "com.par9uet.jm.database.",
+                "com.par9uet.jm.session.", "com.par9uet.jm.cache.", "com.par9uet.jm.download.",
+                "com.par9uet.jm.backup.", "com.par9uet.jm.update.", "com.par9uet.jm.network.",
+                "com.par9uet.jm.reader.", "com.par9uet.jm.favorites.", "com.par9uet.jm.ui.viewModel.",
+            )))
+            addAll(forbiddenQualifiedUsages("ui/components", listOf(
+                "com.par9uet.jm.storage.", "com.par9uet.jm.repository.", "com.par9uet.jm.session.",
+                "com.par9uet.jm.cache.", "com.par9uet.jm.ui.viewModel.",
+            )))
             listOf(
                 "data", "retrofit", "network", "session", "favorites/data",
             ).forEach { pkg ->
@@ -59,7 +87,7 @@ class ArchitectureBoundaryTest {
             )))
             addAll(forbiddenQualifiedUsages("session", listOf(
                 "com.par9uet.jm.data.", "com.par9uet.jm.repository.",
-            )))
+            ), except = listOf("com.par9uet.jm.data.models.")))
             listOf("CacheCleanupScreen.kt", "downloadScreen/DownloadComicDetailScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
                     "java.io.", "kotlinx.coroutines.", "com.par9uet.jm.download.coordinator.DownloadManager",
@@ -68,6 +96,25 @@ class ArchitectureBoundaryTest {
                     "com.par9uet.jm.cache.atom.",
                 )))
             }
+            // 2026-09-13 表现层第三步：详情/阅读下载与提取编码取数下沉 L2。
+            // qualified 同步扫，防止默认参数或全限定写法绕过 import 统计。
+            listOf(
+                "ComicDetailScreen.kt",
+                "readScreen/ComicReadScreen.kt",
+            ).forEach { screen ->
+                addAll(forbiddenImports("ui/screens/$screen", listOf(
+                    "com.par9uet.jm.download.coordinator.DownloadManager",
+                )))
+                addAll(forbiddenQualifiedUsages("ui/screens/$screen", listOf(
+                    "com.par9uet.jm.download.coordinator.DownloadManager",
+                )))
+            }
+            addAll(forbiddenImports("ui/screens/ExtractCodeScreen.kt", listOf(
+                "com.par9uet.jm.repository.",
+            )))
+            addAll(forbiddenQualifiedUsages("ui/screens/ExtractCodeScreen.kt", listOf(
+                "com.par9uet.jm.repository.",
+            )))
             addAll(forbiddenImports("cache/atom", listOf(
                 "com.par9uet.jm.ui.", "com.par9uet.jm.store.", "com.par9uet.jm.reader.",
             )))
@@ -166,6 +213,7 @@ class ArchitectureBoundaryTest {
     private fun forbiddenQualifiedUsages(
         packagePath: String,
         prefixes: List<String>,
+        except: List<String> = emptyList(),
     ): List<String> {
         val sourceRoot = sourceRoot()
         val packageRoot = sourceRoot.resolve(packagePath)
@@ -179,7 +227,9 @@ class ArchitectureBoundaryTest {
                             val trimmed = line.trim()
                             val isComment = trimmed.startsWith("//") ||
                                 trimmed.startsWith("*") || trimmed.startsWith("/*")
-                            if (!isComment && prefixes.any(line::contains)) {
+                            if (!isComment && prefixes.any(line::contains) &&
+                                except.none(line::contains)
+                            ) {
                                 add("${sourceRoot.relativize(path)}:${index + 1}: $line")
                             }
                         }

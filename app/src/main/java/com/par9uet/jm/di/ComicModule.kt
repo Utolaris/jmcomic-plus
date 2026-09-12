@@ -14,6 +14,7 @@ import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.session.AuthenticatedSessionGate
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
+import com.par9uet.jm.ui.viewModel.ExtractCodeViewModel
 import com.par9uet.jm.ui.viewModel.HomeViewModel
 import com.par9uet.jm.ui.viewModel.SearchViewModel
 import com.par9uet.jm.ui.viewModel.WeekViewModel
@@ -45,6 +46,7 @@ val comicModule = module {
     viewModel { HomeViewModel(get(), get()) }
     viewModel { SearchViewModel(get(), get()) }
     viewModel { WeekViewModel(get(), get()) }
-    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get(), get(), get()) }
-    viewModel { ComicReadViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { ComicDetailViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { ComicReadViewModel(get(), get(), get(), get(), get(), get(), get(), get(), get(), get()) }
+    viewModel { ExtractCodeViewModel(get(), get()) }
 }

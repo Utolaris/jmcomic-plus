@@ -5,20 +5,24 @@
 
 > 本文描述的是**当前代码的真实状态**，不是目标状态。文中出现的每个类名、路径和数字都应能在
 > `app/src/main/java/com/par9uet/jm` 下找到；与代码不符的措辞视为文档缺陷，应直接修正。
-> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 **337** 个 Kotlin 文件 / **42,732** 行
+> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 **351** 个 Kotlin 文件 / **43,037** 行
 > （`find app/src/main/java -name '*.kt' | wc -l` + `wc -l` 口径）。
 > 本轮迁移（store 清空 + 依赖环消除）后的全量核对：2026-09-12；
-> 工具链与 hygiene 对齐后的再次核对：2026-09-12（Java 21 / OpenJDK 21 构建，详见文末）。
+> 工具链与 hygiene 对齐后的再次核对：2026-09-12（Java 21 / OpenJDK 21 构建，详见文末）；
+> 表现层解耦（`ui/components` 收窄 + 仓库返回领域类型 + `ui/screens` 领域直连下沉）后的核对：2026-09-13。
+>
+> 模块耦合表可用 `python3 scripts/check-coupling.py` 复现（细分口径，见该脚本头部说明）；
+> 该口径与下方「耦合热点」表的粗口径不同，两者不可直接对比。
 
 ## 层级
 
 | 层 | 职责 | 主要落点 |
 | --- | --- | --- |
-| L1 Entry | 只接收事件并交给 L2，不做业务判断 | `ui/screens`（32 个 `*Screen.kt`）、`ui/navigation`、`MainActivity`、`App`、`worker/DownloadComicWorker`（26 行）、`worker/CacheMigrationWorker`（54 行） |
-| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（14 个，加上 `favorites/presentation/FavoritesViewModel` 共 15 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`（含 `DownloadManager`）、`cache/migration` 的协调器与通知适配、`favorites/sync`、`session`（`UserManager`、`UserRepository`、`AuthenticatedRequestRecovery`、`SessionReadinessHolder`）、`startup/PostStartupCoordinator` |
+| L1 Entry | 只接收事件并交给 L2，不做业务判断 | `ui/screens`（32 个 `*Screen.kt`）、`ui/navigation`（含 `LocalMainNavController`）、`ui/components`（只收参数、只读 `ui/models` 的环境值）、`MainActivity`、`App`（UI 组合根：提供环境值）、`worker/DownloadComicWorker`（26 行）、`worker/CacheMigrationWorker`（54 行） |
+| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（15 个，加上 `favorites/presentation/FavoritesViewModel` 共 16 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`（含 `DownloadManager`）、`cache/migration` 的协调器与通知适配、`favorites/sync`、`session`（`UserManager`、`UserRepository`、`AuthenticatedRequestRecovery`、`SessionReadinessHolder`）、`startup/PostStartupCoordinator` |
 | L3 Molecule | 组合多个原子能力，完成一个完整业务动作 | `reader/molecule`、`download/molecule`（含 `DownloadLibraryQueries`）、`cache/migration` 的操作端口与实现、`favorites/usecase`、`backup/BackupRestoreOperations`、`download/export/DownloadExportOperations`、`repository/impl`（组合网络服务、内置客户端与领域映射） |
 | L4 Atom | 每个原子只负责一个底层契约 | `database`、`storage`、`retrofit`、`data`、`network`（含内置 API 客户端三件套）、`image`、`coil`、`cache/atom`、`reader/atom`、`download/atom`、`download/export/PdfExport`、`favorites/data`（含 `FavoriteStore`）、`update`（含 `AppUpdateDownloadManager` 下载适配）、`contentfilter`、`launcher`、`utils` |
-| Shared Contract | 不含行为的稳定 DTO，可被各层依赖 | `core/model`（`CommonUIState`、`User`、`RemoteSetting`、`SignInData`）、`core/network`（`NetWorkResult` / `ResponseWrapper` / `AuthFailure`）、`favorites/model/FavoritesModels`、`reader/ReaderImageModels`、`download/model/DownloadLibraryModels` |
+| Shared Contract | 不含行为的稳定 DTO，可被各层依赖 | `core/model`（`CommonUIState`、`User`、`RemoteSetting`、`SignInData`）、`core/network`（`NetWorkResult` / `ResponseWrapper` / `AuthFailure`）、`data/models`（`Comic` / `Comment` / `WeekData` / `ComicPage` / `CommentPage` / `ComicSearchPage` / `ComicPageList` / `ActionResult` / `HomeComicSwiperItem`；零出度）、`favorites/model/FavoritesModels`、`reader/ReaderImageModels`、`download/model/DownloadLibraryModels` |
 
 依赖方向为 `L1 -> L2 -> L3 -> L4`。L3 之间、L4 之间不得为了方便横向调用；
 需要组合时提升到 L3，需要决定顺序时提升到 L2。`di` 是组合根，可以引用所有层，
@@ -31,7 +35,10 @@
 `RemoteConfigManager` → `network`；`LocalSettingManager` 及各种偏好、
 `HistorySearchManager` / `ReadHistoryManager` / `ReaderResumeManager` → `storage`；
 `BackupManager` → `backup`；`ToastManager` → `core`。
-`store` 不再存在于源码树中，新代码不得重建该包名。
+`store` 不再存在于**主源码树**中，新代码不得重建该包名。
+（测试源码里仍留着 `app/src/test/java/com/par9uet/jm/store/` 这个旧包路径，
+里面放的是会话、收藏排序、启动器等测试，与被测类型已不在同一包名；
+属测试包名残留，不影响分层，但归档时应按被测类型归位。）
 
 ## 目录约定
 
@@ -144,6 +151,35 @@ data/ repository/ retrofit/  历史命名保留；本轮列出的历史依赖环
   L2 直接操作下载 DAO（已确认 `DownloadComicCoordinator` 直接 import `DownloadComicDao`），
   以集中维护进度和失败分支；L3 不反向依赖 Worker 或协调器。
 - 通用异步状态放在 `core/model/CommonUIState`，状态存储层不再依赖 UI 包。
+- **仓库层只返回领域类型。** `ComicRepository` / `UserRepository` 的对外方法不再返回
+  `retrofit/model` 的 `*Response`：映射统一在 `repository/impl` 内用 `NetWorkResult.map {}`
+  调 `data/comic/mapper` 完成。此前调用方（`ui/viewModel`、`ui/pagingSource`、
+  `ui/components`、`App.kt`、`download/molecule`）各自调 `toComic()` / `toWeekData()`，
+  使 wire DTO 一路渗到表现层。  分页接口需要的分页元数据（`total`、搜索的 `redirect_aid`）
+  用 `data/models` 的 `ComicPage` / `CommentPage` / `ComicSearchPage` 表达；
+  `ComicPage.total` 可空，因为 watch_list 不返回总数，末页要按"本页是否填满"判断。
+  评论提交的 `status` 成功判定也随之下沉到数据层（`ActionResult.isSuccess`）。
+- **协议字段的畸形输入按"降级 + 留痕"处理，不崩溃也不静默。** 两个此前会抛异常的解析点
+  现在改为防御式，并在 mapper 里 `log` 出原始值，由 `ResponseMappersTest` 钉住：
+  `redirect_aid` 存在但不可解析 → `redirectComicId = null`（不重定向，继续分页）；
+  `CommentListResponse.total` 为空/非数字 → `total = 0`（分页在第一页判定末页，
+  表现为"评论只有一页"）。两者都是**有意的降级**：宁可少翻一页，也不要整页崩溃，
+  但必须能在日志里看出是服务端协议畸形而不是真的只有一页。
+  注意 `UserHistoryCommentListResponse.total` 是 `Int`，不走这条降级路径。
+  另：`App` 里包 `runCatching` 时必须把 `CancellationException` 原样抛出，
+  否则协程取消会被当成"详情获取失败"。
+- **`ui/components` 只接收参数、只读环境值。** 该包不依赖 `storage` / `repository` /
+  `session` / `cache` / `download` / `reader` / `favorites` / `ui/viewModel`，
+  取数由调用方或组合根负责：`App` 提供 `ui/models` 的三个环境值
+  （`LocalRemoteImageHost`、`LocalComicDetailOpener`、`LocalComicDetailLoader`），
+  组件只消费。`ComicCoverImage` / `Comment` 共用同一个远端图片主机，不再各自注入
+  `RemoteConfigPreferences`（原先 2 个组件 + 4 张页面各读一遍）。阅读器图片组件
+  `ComicPicImage` 只被 `ui/screens/readScreen` 使用，已从 `ui/components` 移到该包。
+- 导航基础设施 `ui/navigation/LocalMainNavController` 由 `ui/screens/AppScreen` 提供，
+  但定义在 `ui/navigation`：`ui/components`（`Comic` / `ComicWorkTag` / `ComicRoleTag` /
+  `ComicContentTag` / `BackIconButton`）与 `ui/glass/GlassCaptureHost` 都要读它，
+  若留在 `ui/screens` 会让支撑层反向 import 具体页面包。`ui/components`、`ui/glass`
+  现已禁止 import `ui.screens`。
 - 收藏分页适配器 `favorites/presentation/CollectComicPagingSource` 归属收藏功能，
   收藏功能不再反向依赖通用 UI 包。
 - PDF 导出归属 `download/export`，通用工具包不再反向依赖下载缓存。
@@ -181,7 +217,10 @@ data/ repository/ retrofit/  历史命名保留；本轮列出的历史依赖环
 
   | 受约束位置 | 禁止 import |
   | --- | --- |
-  | `ui`（整体） | `database.` |
+  | `ui`（整体） | `database.`、`retrofit.model.`（含全限定引用；映射归 `repository/impl`） |
+  | `App.kt` | `retrofit.model.`（含全限定引用） |
+  | `ui/components` | `storage.`、`repository.`、`database.`、`session.`、`cache.`、`download.`、`backup.`、`update.`、`network.`、`reader.`、`favorites.`、`ui.viewModel.` |
+  | `ui/components`、`ui/glass` | `ui.screens.`（含全限定引用） |
   | `ui/viewModel/ComicReadViewModel.kt` | `java.io.`、`java.util.zip.`、`database.`、`cache.` |
   | `ui/screens/CacheCleanupScreen.kt`、`ui/screens/downloadScreen/DownloadComicDetailScreen.kt` | `java.io.`、`kotlinx.coroutines.`、`download.coordinator.DownloadManager`、`reader.ReaderImagePipeline`、`database.`、`download.export.export`、`download.export.getCachedComicInfo`、`cache.atom.` |
   | `ui/screens/AboutScreen.kt`、`CheckUpdateScreen.kt`、`BackupRestoreScreen.kt` | `okhttp3.`、`gson`、`java.io.File`、`FileProvider`、`database.`、`backup.BackupManager`、`download.coordinator.DownloadManager`、`storage.LocalSettingManager`、`update.AppUpdateDownloadManager` |
@@ -189,7 +228,7 @@ data/ repository/ retrofit/  历史命名保留；本轮列出的历史依赖环
   | `data`（整体） | `repository.`、`session.`、`reader.` |
   | `retrofit`（整体） | `data.`、`store.`、`session.` |
   | `network`（整体） | `repository.`、`data.` |
-  | `session`（整体） | `ui.`、`data.`、`repository.` |
+  | `session`（整体） | `ui.`、`data.`（`data.models.` 除外：`ComicPage` / `CommentPage` / `ActionResult` 是零出度的共享契约）、`repository.` |
   | `favorites/data` | `download.coordinator.`、`repository.` |
   | `download/molecule` | `store.`、`ui.`、`worker.`、`download.coordinator.`、`reader.`、`java.io.`、`androidx.work.` |
   | `download/atom` | `download.molecule.`、`store.`、`download.coordinator.`、`reader.`、`ui.`、`worker.`、`database.dao.`、`database.AppDatabase` |
@@ -281,8 +320,8 @@ Reader 的 L3 不得依赖 UI 或 Worker，L4 不得反向依赖 L3。磁盘缓�
 
 | 模块 | 行数 | Ce | Ca | I | 判断 |
 | --- | --- | --- | --- | --- | --- |
-| `ui/screens` | 16,022 | 14 | 2 | 0.88 | 表现层；store 拆除后扇出已收敛到领域包与 `core/model` |
-| `ui`（根：components/glass/theme/pagingSource/navigation 等） | 5,080 | 11 | 3 | 0.79 | 表现层支撑 |
+| `ui/screens` | 16,022 | 14 | 2 | 0.88 | 表现层；store 拆除后不再直连 DAO，但仍直读 `storage`/`session` 与若干 L3/L4 设施，见「待修：表现层跨层直连」 |
+| `ui`（根：components/glass/theme/pagingSource/navigation 等） | 5,080 | 11 | 3 | 0.79 | 表现层支撑；`ui/components` 已收窄（细分口径 Ce 17→11），无 L3/L4 领域依赖 |
 | `reader` | 3,374 | 6 | 4 | 0.60 | 已迁移；根包文件说明见下文 |
 | `ui/viewModel` | 2,975 | 15 | 3 | 0.83 | 扇出最高，但多为契约与偏好 |
 | `favorites` | 2,621 | 7 | 3 | 0.70 | 已迁移（含 `FavoriteStore` 及其端口） |
@@ -386,6 +425,43 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
 `ui/screens` 巨型文件的可读性拆分（优先 `DownloadComicDetailScreen`，跨 4 层）、
 `reader` 根包按来源策略与缓存生命周期继续归位、
 `repository` 包名与职责的进一步澄清（现仅剩接口 + 三个实现）。
+
+### 表现层跨层直连：`ui/components` / `ui/viewModel` 已修，`ui/screens` 领域直连已清
+
+用 `python3 scripts/check-coupling.py <模块>` 可复现下列数字。「违规」指跨过 L2 直读
+L4 设施，或反向依赖上层；`data.models` 是共享契约，不算违规。
+
+| 模块 | 状态 | 违规面（2026-09-13 审计口径；本轮复核后） |
+| --- | --- | --- |
+| `ui/components` | **已修** | 原 11/24 文件；细分口径 Ce 17→11，已无 L3/L4 领域依赖 |
+| `ui/viewModel` | **已修** | 原 10/14 文件；`retrofit/model` 8 处清零，无 `favorites/data`、无 `database` |
+| `ui/screens` | **领域直连已清** | `download/coordinator` 2、`repository` 1 已消除；仍直连 `storage` 22、`session` 16、`backup` 7、`favorites/presentation` 6、`network` 6、`update` 3、`cache` 1（后四类多为契约/偏好，见下文） |
+
+已落地的三步：
+
+1. **`ui/components` 收窄**（2026-09-13）：`LocalMainNavController` 归位 `ui/navigation`，
+   组件不再反向 import `ui.screens`；远端图片主机、详情预置、详情取数改成
+   `ui/models` 的环境值 + 组合根提供；`ComicPicImage` 移入 `ui/screens/readScreen`；
+   `ComicLazyGrid` 的屏蔽标签改为入参。边界由 4 条断言钉住。
+2. **仓库层返回领域类型**（2026-09-13）：`ComicRepository` / `UserRepository` 的
+   `*Response` 返回值全部换成 `data/models` 契约，映射下沉 `repository/impl`；
+   `NetWorkResult.map {}` 负责"只映射成功值"。`ui/pagingSource`、
+   `ui/components`、`App.kt`、`download/molecule` 里的 mapper 调用一并删除。
+3. **`ui/screens` 领域设施下沉**（2026-09-13）：
+   - `ExtractCodeScreen` → 新建 `ExtractCodeViewModel`（L2），详情拉取与 toast 收口；
+     顺带修掉 `runCatching` 吞 `CancellationException`、同码二次提取 loading 卡死。
+   - `ComicDetailScreen` / `ComicReadScreen` 的 `DownloadManager.downloadComic` /
+     `downloadChapters` 下沉各自 ViewModel，Screen 只提交事件。
+   - 边界由 `ArchitectureBoundaryTest` 对三处 Screen 的 import + 全限定引用钉住。
+
+剩余的 `ui/screens`（最大的一块，~16.1k 行）仍按页面推进，主要两个收口点：
+`LocalSettingManager`（18 个 Screen）与 `UserManager` / `SessionReadiness`（7 个 Screen）。
+`favorites/presentation.FavoritesViewModel` 是 L2，Screen 直接持有属合法 L1→L2。
+
+注意 `ui/viewModel` 仍有 `cache.atom` 1 处（`CacheCleanupViewModel`）与 `cache/migration` 2 处，
+属文档「当前例外」第 3 项认可的 L2 选定适配器用法；`ui` 读 `storage` 偏好也是既有惯例，
+两者都不算待修范围。session 的 `UserManager` / `SessionReadiness` 虽是 L2，
+但 Screen 里散落的鉴权分支是下一阶段收口目标（经 VM 暴露状态，而非 Screen 直读）。
 
 新增回归约束覆盖：批量重下去重与停止顺序、本地加载 IO 线程、旧目录/ZIP 兼容和失败清理、
 清理期间的重复点击与阅读器租约保护、导出选择快照及过期统计、首页/搜索/周推荐独立注入与状态、

@@ -1,6 +1,5 @@
 package com.par9uet.jm.ui.screens
 
-import com.par9uet.jm.data.comic.mapper.toComic
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,7 +29,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,16 +44,14 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.ImageLoader
-import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.storage.RemoteConfigPreferences
 import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
-import kotlinx.coroutines.Dispatchers
+import com.par9uet.jm.ui.models.LocalRemoteImageHost
+import com.par9uet.jm.ui.navigation.LocalMainNavController
+import com.par9uet.jm.ui.viewModel.ExtractCodeViewModel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.getKoin
 
 /**
@@ -63,60 +59,27 @@ import org.koin.compose.getKoin
  *
  * 用户粘贴包含数字的文字（如分享文案），自动提取所有数字拼接为漫画编码，
  * 拉取漫画详情后弹窗展示封面/标题/作者/标签，确认后跳转详情页。
+ *
+ * 本 Screen 只负责输入/剪贴板与渲染；提取与详情拉取由 [ExtractCodeViewModel] 协调。
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ExtractCodeScreen(
-    comicRepository: ComicRepository = getKoin().get(),
-    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
+    viewModel: ExtractCodeViewModel = koinViewModel(),
     toastManager: ToastManager = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
 ) {
     val mainNavController = LocalMainNavController.current
     val clipboard = LocalClipboard.current
     val clipboardScope = rememberCoroutineScope()
-    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
+    val remoteImageHost = LocalRemoteImageHost.current
+
+    val uiState by viewModel.uiState.collectAsState()
+    val extractedCode = uiState.extractedCode
+    val previewComic = uiState.previewComic
+    val loading = uiState.loading
 
     var inputText by remember { mutableStateOf("") }
-    var extractedCode by remember { mutableStateOf<String?>(null) }
-    var previewComic by remember { mutableStateOf<Comic?>(null) }
-    var loading by remember { mutableStateOf(false) }
-
-    fun extractAndFetch(text: String) {
-        val digits = text.filter { it.isDigit() }
-        if (digits.isBlank()) {
-            toastManager.showAsync("未检测到数字，无法提取编码")
-            return
-        }
-        extractedCode = digits
-        loading = true
-        previewComic = null
-    }
-
-    // 提取后自动拉取详情
-    LaunchedEffect(extractedCode) {
-        val code = extractedCode ?: return@LaunchedEffect
-        loading = true
-        val result = withContext(Dispatchers.IO) {
-            runCatching { comicRepository.getComicDetail(code.toInt()) }
-                .getOrNull()
-        }
-        when (result) {
-            is NetWorkResult.Success<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                previewComic = (result.data as com.par9uet.jm.retrofit.model.ComicDetailResponse).toComic()
-            }
-            is NetWorkResult.Error -> {
-                toastManager.showAsync("获取漫画详情失败：${result.message}")
-                extractedCode = null
-            }
-            null -> {
-                toastManager.showAsync("获取漫画详情异常")
-                extractedCode = null
-            }
-        }
-        loading = false
-    }
 
     CommonScaffold(title = "提取编码") { topContentPadding, bottomContentPadding ->
         Column(
@@ -158,7 +121,7 @@ fun ExtractCodeScreen(
                             val clipText = clipEntry?.clipData?.getItemAt(0)?.text?.toString() ?: ""
                             if (clipText.isNotBlank()) {
                                 inputText = clipText
-                                extractAndFetch(clipText)
+                                viewModel.extractAndFetch(clipText)
                             } else {
                                 toastManager.showAsync("剪切板为空")
                             }
@@ -170,7 +133,7 @@ fun ExtractCodeScreen(
                     Text("粘贴", modifier = Modifier.padding(start = 4.dp))
                 }
                 Button(
-                    onClick = { extractAndFetch(inputText) },
+                    onClick = { viewModel.extractAndFetch(inputText) },
                     enabled = inputText.isNotBlank() && !loading,
                     modifier = Modifier.weight(1f)
                 ) {
@@ -211,8 +174,7 @@ fun ExtractCodeScreen(
     if (comic != null) {
         AlertDialog(
             onDismissRequest = {
-                previewComic = null
-                extractedCode = null
+                viewModel.dismissPreview()
             },
             title = { Text("找到漫画", fontWeight = FontWeight.Bold) },
             text = {
@@ -275,16 +237,14 @@ fun ExtractCodeScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    previewComic = null
-                    extractedCode = null
+                    viewModel.dismissPreview()
                     inputText = ""
                     mainNavController.navigate("comicDetail/${comic.id}")
                 }) { Text("跳转详情") }
             },
             dismissButton = {
                 TextButton(onClick = {
-                    previewComic = null
-                    extractedCode = null
+                    viewModel.dismissPreview()
                 }) { Text("取消") }
             }
         )

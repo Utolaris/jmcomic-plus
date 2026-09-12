@@ -1,12 +1,13 @@
 package com.par9uet.jm.ui.viewModel
 
-import com.par9uet.jm.data.comic.mapper.toComic
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.ComicChapter
+import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.favorites.model.FavoriteLocalQuery
 import com.par9uet.jm.favorites.model.FavoriteSession
 import com.par9uet.jm.favorites.model.FavoriteSessionSnapshot
@@ -16,8 +17,6 @@ import com.par9uet.jm.favorites.usecase.CollectFavorite
 import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.core.model.CommonUIState
@@ -46,6 +45,7 @@ class ComicDetailViewModel(
     private val uncollectFavorites: UncollectFavorites,
     private val moveFavorites: MoveFavorites,
     private val syncRequester: FavoriteSyncRequester,
+    private val downloadManager: DownloadManager,
 ) : ViewModel() {
     private val _comicDetailState = MutableStateFlow<CommonUIState<Comic>>(
         CommonUIState(
@@ -125,12 +125,12 @@ class ComicDetailViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<ComicDetailResponse> -> {
+                is NetWorkResult.Success -> {
                     val state = _comicDetailState.value
                     if (state.data == null || state.data.id == id) {
                         fullDetailComicId = id
                         _comicDetailState.value = state.copy(
-                            data = data.data.toComic(),
+                            data = data.data,
                             isError = false,
                             errorMsg = "",
                         )
@@ -353,6 +353,15 @@ class ComicDetailViewModel(
         }
     }
 
+    /** Fire-and-forget: DownloadManager owns scope, toast, and enqueue. */
+    fun downloadComic(comic: Comic) {
+        downloadManager.downloadComic(comic)
+    }
+
+    fun downloadChapters(comic: Comic, chapters: List<ComicChapter>) {
+        downloadManager.downloadChapters(comic, chapters)
+    }
+
     fun reset(id: Int?) {
         val currentDataId = _comicDetailState.value.data?.id
         // A seed whose full fetch FAILED stays valid for this id (non-blocking error page);
@@ -446,16 +455,12 @@ class ComicDetailViewModel(
                         toastManager.showAsync(data.message)
                     }
 
-                    is NetWorkResult.Success<CommentComicResponse> -> {
-                        val status = data.data.status.trim()
-                        val isSuccess = status.isBlank()
-                            || status.equals("ok", ignoreCase = true)
-                            || status.equals("success", ignoreCase = true)
-                        if (isSuccess) {
-                            toastManager.showAsync(data.data.msg.ifBlank { "发送成功" })
+                    is NetWorkResult.Success -> {
+                        if (data.data.isSuccess) {
+                            toastManager.showAsync(data.data.message.ifBlank { "发送成功" })
                             onSuccess?.invoke()
                         } else {
-                            val message = data.data.msg.ifBlank { "发送评论失败" }
+                            val message = data.data.message.ifBlank { "发送评论失败" }
                             showTransientCommentError(message)
                             toastManager.showAsync(message)
                         }

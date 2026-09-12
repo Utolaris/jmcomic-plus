@@ -67,7 +67,6 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
-import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.storage.ReadHistoryManager
 import com.par9uet.jm.storage.ReaderResumeManager
@@ -77,7 +76,7 @@ import com.par9uet.jm.ui.glass.GlassCaptureHost
 import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
 import org.koin.androidx.compose.koinViewModel
 import org.koin.compose.getKoin
@@ -90,7 +89,6 @@ fun ComicReadScreen(
     comicReadViewModel: ComicReadViewModel = koinViewModel(),
     localSettingManager: LocalSettingManager = getKoin().get(),
     readHistoryManager: ReadHistoryManager = getKoin().get(),
-    downloadManager: DownloadManager = getKoin().get(),
     userManager: UserManager = getKoin().get(),
     readerResumeManager: ReaderResumeManager = getKoin().get()
 ) {
@@ -358,7 +356,7 @@ fun ComicReadScreen(
                             onCache = {
                                 comic?.let { currentComic ->
                                     if (currentComic.comicChapterList.isEmpty()) {
-                                        downloadManager.downloadComic(currentComic)
+                                        comicReadViewModel.downloadComic(currentComic)
                                     } else {
                                         selectedCacheChapterIds =
                                             currentComic.comicChapterList.map { it.id }.toSet()
@@ -428,7 +426,7 @@ fun ComicReadScreen(
                     onConfirm = {
                         val selectedChapters = currentComic.comicChapterList
                             .filter { it.id in selectedCacheChapterIds }
-                        downloadManager.downloadChapters(currentComic, selectedChapters)
+                        comicReadViewModel.downloadChapters(currentComic, selectedChapters)
                         activeDialog = null
                         selectedCacheChapterIds = emptySet()
                     }

@@ -86,7 +86,6 @@ import com.par9uet.jm.ui.components.BackIconButton
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.Comment
 import com.par9uet.jm.storage.ComicReadHistory
-import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.storage.ReadHistoryManager
 import com.par9uet.jm.session.SessionReadiness
 import com.par9uet.jm.session.UserManager
@@ -101,6 +100,7 @@ import com.par9uet.jm.ui.glass.GlassCaptureHost
 import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.utils.shimmer
 import androidx.paging.compose.collectAsLazyPagingItems
@@ -295,7 +295,6 @@ fun ComicDetailScreen(
     id: Int,
     comicDetailViewModel: ComicDetailViewModel = koinActivityViewModel(),
     readHistoryManager: ReadHistoryManager = getKoin().get(),
-    downloadManager: DownloadManager = getKoin().get(),
     userManager: UserManager = getKoin().get()
 ) {
     val mainNavController = LocalMainNavController.current
@@ -406,7 +405,7 @@ fun ComicDetailScreen(
                                     val selectedChapters = comic.comicChapterList.filter {
                                         it.id in selectedChapterIds
                                     }
-                                    downloadManager.downloadChapters(comic, selectedChapters)
+                                    comicDetailViewModel.downloadChapters(comic, selectedChapters)
                                     showDownloadChapterDialog = false
                                 },
                             )
@@ -589,7 +588,7 @@ fun ComicDetailScreen(
                                     onRelated = { mainNavController.navigate("comicRelate") },
                                     onDownload = {
                                         if (comic.comicChapterList.isEmpty()) {
-                                            downloadManager.downloadComic(comic)
+                                            comicDetailViewModel.downloadComic(comic)
                                         } else {
                                             selectedChapterIds = comic.comicChapterList.map { it.id }.toSet()
                                             showDownloadChapterDialog = true
