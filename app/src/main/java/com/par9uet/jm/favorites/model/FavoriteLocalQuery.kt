@@ -3,7 +3,6 @@ package com.par9uet.jm.favorites.model
 import androidx.paging.PagingSource
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.database.model.FavoriteComicEntity
 import kotlinx.coroutines.flow.Flow
 
 /** L4 query capabilities for the Room-backed local Favorites snapshot. */
@@ -16,7 +15,7 @@ interface FavoriteLocalQuery {
         selectedAuthors: Set<String>,
         folderId: Int,
         tagLogic: TagFilterLogic,
-    ): PagingSource<Int, FavoriteComicEntity>
+    ): PagingSource<Int, Comic>
 
     fun observeFolders(accountId: Int): Flow<Map<String, String>>
 

@@ -28,3 +28,4 @@ release-key
 *.keystore
 *.apk
 *.aab
+__pycache__/

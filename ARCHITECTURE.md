@@ -84,8 +84,8 @@ session/                     L2 会话协调（UserManager / UserRepository /
 network/                     L4：Doh 三件套、RemoteConfigManager、内置 API 客户端
                              （EmbeddedClientManager / AuthenticatedEmbeddedClient / EmbeddedSessionCookies）
 storage/                     L4：LocalSettingManager、各种 *Preferences、历史/续读管理器
-data/ repository/ retrofit/  历史命名保留，包间依赖环已全部消除（见「依赖现状」）；
-                             store 已删除
+data/ repository/ retrofit/  历史命名保留；本轮列出的历史依赖环已消除，
+                             legacy L4 包仍存在待处理 SCC（见「依赖现状」）；store 已删除
 ```
 
 新代码优先沿用所在领域已有的子目录命名；跨领域新建时建议统一用
@@ -245,7 +245,7 @@ Reader 的 L3 不得依赖 UI 或 Worker，L4 不得反向依赖 L3。磁盘缓�
 
 ## 依赖现状与已知环
 
-**历史依赖环已全部消除（2026-09-12）。** 此前文档列出 5 个真实技术债环
+**本轮列出的历史依赖环已消除（2026-09-12）；legacy L4 包仍存在待处理 SCC。** 此前文档列出 5 个真实技术债环
 （`data`↔`repository`、`data`↔`retrofit`、`retrofit`↔`store`、`repository`↔`store`、
 `data`↔`reader`），消除方式与落点：
 
@@ -358,8 +358,8 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
 - 下载任务入口、执行协调、内容下载及文件适配已分离；取消仍直接传播，重试次数和终态提交顺序保持不变。
 - Reader 链路的**控制流**已收敛到 `ReaderImagePipeline`，但**实现体**仍集中在包根，
   只是粒度已经足够小。下一步如要继续拆分，应针对来源策略与缓存生命周期，而不是再加一层包装。
-- `data`、`repository`、`retrofit`、`store` 之间的环已全部消除（见「依赖现状」）；
-  后续任何迁移都应先抽取窄端口再切断反向 import，避免产生新的转发型假分层。
+- `data`、`repository`、`retrofit`、`store` 之间的环已消除（见「依赖现状」）；
+  legacy L4（`storage` / `data` / `network` 等）仍有待处理 SCC，后续迁移先抽窄端口再切断反向 import。
 
 ## 当前例外与迁移顺序
 

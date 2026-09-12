@@ -136,16 +136,14 @@ class FavoritesViewModel(
         Pager(
             config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
             pagingSourceFactory = {
-                CollectComicPagingSource(
-                    localQuery.pagingSource(
-                        accountId = key.accountId,
-                        blockedTagList = key.blockedTagList,
-                        searchText = key.filter.searchText,
-                        selectedTags = key.filter.selectedTags,
-                        selectedAuthors = key.filter.selectedAuthors,
-                        folderId = key.folderId,
-                        tagLogic = key.filter.tagLogic,
-                    )
+                localQuery.pagingSource(
+                    accountId = key.accountId,
+                    blockedTagList = key.blockedTagList,
+                    searchText = key.filter.searchText,
+                    selectedTags = key.filter.selectedTags,
+                    selectedAuthors = key.filter.selectedAuthors,
+                    folderId = key.folderId,
+                    tagLogic = key.filter.tagLogic,
                 )
             },
         ).flow

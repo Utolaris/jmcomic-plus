@@ -49,6 +49,7 @@ androidComponents {
 }
 
 kotlin {
+    jvmToolchain(21)
     compilerOptions {
         jvmTarget = JvmTarget.JVM_21
     }

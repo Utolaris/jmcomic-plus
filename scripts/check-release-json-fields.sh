@@ -8,12 +8,33 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-DEXDUMP="${ANDROID_HOME:-/opt/homebrew/share/android-commandlinetools}/build-tools/37.0.0/dexdump"
+SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+if [ -z "$SDK" ]; then
+  for candidate in \
+    "$HOME/Library/Android/sdk" \
+    "/opt/homebrew/share/android-commandlinetools" \
+    "/usr/local/share/android-commandlinetools"
+  do
+    if [ -d "$candidate/platforms" ]; then SDK="$candidate"; break; fi
+  done
+fi
+[ -n "$SDK" ] || { echo "找不到 Android SDK，请设置 ANDROID_HOME"; exit 1; }
+
+DEXDUMP=""
+if [ -d "$SDK/build-tools" ]; then
+  # Prefer the newest installed build-tools.
+  DEXDUMP="$(ls -1d "$SDK"/build-tools/*/dexdump 2>/dev/null | sort -V | tail -1 || true)"
+fi
 DEX="app/build/intermediates/dex/release/minifyReleaseWithR8/classes.dex"
 OUT="build/release_dexdump.txt"
+mkdir -p build
 
-[ -x "$DEXDUMP" ] || { echo "dexdump 不存在: $DEXDUMP"; exit 1; }
+[ -n "$DEXDUMP" ] && [ -x "$DEXDUMP" ] || {
+  echo "在 $SDK/build-tools 下找不到可执行的 dexdump（请安装对应 build-tools）"
+  exit 1
+}
 [ -f "$DEX" ] || { echo "缺少 R8 产物，请先跑 :app:minifyReleaseWithR8"; exit 1; }
 
+echo "==> dexdump: $DEXDUMP"
 "$DEXDUMP" "$DEX" > "$OUT"
 python3 scripts/check-release-json-fields.py "$OUT"

@@ -71,7 +71,7 @@
 ./scripts/run-instrumented-tests.sh -c <类名> -m <方法名>
 ```
 
-**HyperOS / MIUI**：需允许「后台弹出界面」（`appops 10021`），否则测试 Activity 会被压回桌面。脚本会自动 `allow`，详见插桩文档。
+**HyperOS / MIUI**：需允许「后台弹出界面」（`appops 10021`），否则测试 Activity 会被压回桌面。脚本只做 preflight，不会自动改 appops；详见插桩文档。
 
 ---
 

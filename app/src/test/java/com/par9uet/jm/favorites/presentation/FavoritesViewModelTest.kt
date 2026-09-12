@@ -4,7 +4,6 @@ import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.database.model.FavoriteComicEntity
 import com.par9uet.jm.favorites.data.FavoriteDownloader
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
@@ -621,7 +620,7 @@ class FavoritesViewModelTest {
             selectedAuthors: Set<String>,
             folderId: Int,
             tagLogic: TagFilterLogic,
-        ): PagingSource<Int, FavoriteComicEntity> = EmptyPagingSource()
+        ): PagingSource<Int, Comic> = EmptyPagingSource()
 
         override fun observeFolders(accountId: Int): Flow<Map<String, String>> =
             flowOf(emptyMap())
@@ -638,10 +637,10 @@ class FavoritesViewModelTest {
             emptyList()
     }
 
-    private class EmptyPagingSource : PagingSource<Int, FavoriteComicEntity>() {
-        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, FavoriteComicEntity> =
+    private class EmptyPagingSource : PagingSource<Int, Comic>() {
+        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Comic> =
             LoadResult.Page(data = emptyList(), prevKey = null, nextKey = null)
 
-        override fun getRefreshKey(state: PagingState<Int, FavoriteComicEntity>): Int? = null
+        override fun getRefreshKey(state: PagingState<Int, Comic>): Int? = null
     }
 }

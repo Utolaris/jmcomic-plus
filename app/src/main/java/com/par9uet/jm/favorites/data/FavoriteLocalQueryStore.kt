@@ -1,6 +1,7 @@
 package com.par9uet.jm.favorites.data
 
 import androidx.paging.PagingSource
+import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.database.dao.FavoriteComicDao
@@ -25,15 +26,17 @@ internal class FavoriteLocalQueryStore(
         selectedAuthors: Set<String>,
         folderId: Int,
         tagLogic: TagFilterLogic,
-    ): PagingSource<Int, FavoriteComicEntity> = comicDao.pagingSource(
-        buildFavoritePagingQuery(
-            accountId = accountId,
-            blockedTagList = blockedTagList,
-            searchText = searchText,
-            selectedTags = selectedTags,
-            selectedAuthors = selectedAuthors,
-            folderId = folderId,
-            tagLogic = tagLogic,
+    ): PagingSource<Int, Comic> = FavoriteComicPagingSource(
+        comicDao.pagingSource(
+            buildFavoritePagingQuery(
+                accountId = accountId,
+                blockedTagList = blockedTagList,
+                searchText = searchText,
+                selectedTags = selectedTags,
+                selectedAuthors = selectedAuthors,
+                folderId = folderId,
+                tagLogic = tagLogic,
+            )
         )
     )
 
@@ -67,4 +70,28 @@ internal class FavoriteLocalQueryStore(
         val comicsById = comicDao.getByIds(accountId, requestedIds).associateBy { it.albumId }
         return requestedIds.mapNotNull { comicsById[it]?.toComic() }
     }
+}
+
+/** Maps Room favorite rows to [Comic] inside L4 so presentation never sees entities. */
+private class FavoriteComicPagingSource(
+    private val localSource: PagingSource<Int, FavoriteComicEntity>,
+) : PagingSource<Int, Comic>() {
+    init {
+        localSource.registerInvalidatedCallback { invalidate() }
+    }
+
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Comic> =
+        when (val result = localSource.load(params)) {
+            is LoadResult.Error -> LoadResult.Error(result.throwable)
+            is LoadResult.Invalid -> LoadResult.Invalid()
+            is LoadResult.Page -> LoadResult.Page(
+                data = result.data.map { it.toComic() },
+                prevKey = result.prevKey,
+                nextKey = result.nextKey,
+                itemsBefore = result.itemsBefore,
+                itemsAfter = result.itemsAfter,
+            )
+        }
+
+    override fun getRefreshKey(state: PagingState<Int, Comic>): Int? = null
 }

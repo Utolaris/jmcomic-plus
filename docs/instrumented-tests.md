@@ -27,21 +27,21 @@ HyperOS 4 把 instrumentation 拉起的 Activity 当成**后台弹窗**。未授
 - 应用本身往往没问题；单独看 logcat 也未必有明显异常
 - 权限标志是 **`MIUIOP(10021)`**（设置里叫「后台弹出界面」）
 
-脚本在跑测前会自动执行（debug / androidTest 两个包）：
+脚本只做 **preflight 检查**，**不会**自动改写 appops。若为 `ignore`，会失败并打印：
 
 ```bash
 adb shell appops set --user 0 jmcomic.debug      10021 allow
 adb shell appops set --user 0 jmcomic.debug.test 10021 allow
 ```
 
-手工跑 `am instrument` 时请先执行上面两行。检查当前状态：
+检查当前状态：
 
 ```bash
 adb shell appops get jmcomic.debug | grep 10021
 # 期望：MIUIOP(10021): allow
 ```
 
-同时建议：跑测时**不要碰手机**；脚本还会亮屏常亮、收通知栏、开勿扰，并在失焦时尝试把测试 Activity 拉回前台。
+跑测期间请勿操作手机。脚本只做瞬时唤醒/收起通知栏，不改 stayon / DND / 白名单，也不做后台 `am start` 抢回 Activity。
 
 ## 看门狗与结果
 

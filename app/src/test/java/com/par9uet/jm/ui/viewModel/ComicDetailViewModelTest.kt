@@ -5,7 +5,6 @@ import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.database.model.FavoriteComicEntity
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.model.FavoriteLocalQuery
@@ -368,14 +367,14 @@ class ComicDetailViewModelTest {
             selectedAuthors: Set<String>,
             folderId: Int,
             tagLogic: TagFilterLogic,
-        ): PagingSource<Int, FavoriteComicEntity> = EmptyFavoritePagingSource()
+        ): PagingSource<Int, Comic> = EmptyFavoritePagingSource()
     }
 
-    private class EmptyFavoritePagingSource : PagingSource<Int, FavoriteComicEntity>() {
-        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, FavoriteComicEntity> =
+    private class EmptyFavoritePagingSource : PagingSource<Int, Comic>() {
+        override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Comic> =
             LoadResult.Page(emptyList(), prevKey = null, nextKey = null)
 
-        override fun getRefreshKey(state: PagingState<Int, FavoriteComicEntity>): Int? = null
+        override fun getRefreshKey(state: PagingState<Int, Comic>): Int? = null
     }
 
     private class StubComicRepository : ComicRepository {
