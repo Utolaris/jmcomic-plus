@@ -110,6 +110,10 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   批量章节到漫画组的查询归属 L3。
   `download/coordinator/DownloadExecutionControl` 只暴露停止并等待写入结束的能力，
   任务管理不再依赖下载执行器的具体类型。
+  跨域消费走领域自有窄端口 + DI adapter，不反向 import coordinator：
+  `backup/BackupTaskScheduler`、`favorites/data/FavoriteDownloader` 在组合根绑定到
+  `DownloadManager`；`download/export` 自带 `DownloadItem→DownloadComic` private 映射，
+  不依赖 `download/molecule` 的实体转换。
 - 应用更新 APK 下载归属 `update/AppUpdateDownloadManager`（实现 `AppUpdateDownloads`），
   状态契约（`AppUpdateDownloadState` / `Status` / `Request`）同包；不再放在 `store`。
 - `download/coordinator/DownloadComicCoordinator` 负责下载顺序、进度、重试和取消，
@@ -166,7 +170,11 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   | `download/atom` | `download.molecule.`、`store.`、`download.coordinator.`、`reader.`、`ui.`、`worker.`、`database.dao.`、`database.AppDatabase` |
   | `download/coordinator/DownloadManager.kt` | `download.coordinator.DownloadComicCoordinator`、`database.`、`download.atom.`、`java.io.` |
   | `store`（整体） | `ui.`、`worker.` |
-  | `favorites`、`backup`、`update`（整体） | `ui.` |
+  | `favorites`（整体） | `ui.` |
+  | `favorites/data` | `download.coordinator.` |
+  | `backup` | `ui.`、`download.coordinator.` |
+  | `update`（整体） | `ui.` |
+  | `download/export` | `download.molecule.` |
   | `reader/atom` | `reader.molecule.`、`reader.coordinator.`、`ui.`、`worker.`、`store.` |
   | `reader/molecule` | `reader.coordinator.`、`ui.`、`worker.`、`store.` |
   | `worker/DownloadComicWorker.kt` | `database.`、`repository.`、`reader.`、`store.`、`download.molecule.`、`download.atom.`、`coil.`、`java.io.` |

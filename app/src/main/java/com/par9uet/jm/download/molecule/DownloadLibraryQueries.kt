@@ -32,29 +32,6 @@ internal fun DownloadComic.toDomain(): DownloadItem = DownloadItem(
     chapterName = chapterName,
 )
 
-internal fun DownloadItem.toEntity(): DownloadComic = DownloadComic(
-    id = id,
-    name = name,
-    authorList = authorList,
-    tagList = tagList,
-    coverPath = coverPath,
-    zipPath = zipPath,
-    progress = progress,
-    status = status.toPersistence(),
-    createTime = createTime,
-    groupId = groupId,
-    groupName = groupName,
-    chapterName = chapterName,
-)
-
-internal fun DownloadItemStatus.toPersistence(): DownloadStatus = when (this) {
-    DownloadItemStatus.PENDING -> DownloadStatus.PENDING
-    DownloadItemStatus.DOWNLOADING -> DownloadStatus.DOWNLOADING
-    DownloadItemStatus.PAUSED -> DownloadStatus.PAUSED
-    DownloadItemStatus.COMPLETE -> DownloadStatus.COMPLETE
-    DownloadItemStatus.ERROR -> DownloadStatus.ERROR
-}
-
 /** L3 query port for the download library UI. DAO and Room entities stay inside this molecule. */
 class DownloadLibraryQueries(
     private val downloadComicDao: DownloadComicDao,

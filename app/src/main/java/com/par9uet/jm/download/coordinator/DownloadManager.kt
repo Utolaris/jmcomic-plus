@@ -12,21 +12,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-interface BackupTaskScheduler {
-    fun downloadComic(comic: Comic)
-    fun downloadChapters(parentComic: Comic, chapters: List<ComicChapter>)
-}
-
 class DownloadManager(
     private val operations: DownloadTaskOperations,
     private val scope: CoroutineScope,
     private val toastManager: ToastManager,
     private val downloadWorkScheduler: DownloadWorkScheduler,
     private val coordinator: DownloadExecutionControl,
-) : BackupTaskScheduler {
+) {
     private val mutations = Mutex()
 
-    override fun downloadComic(comic: Comic) {
+    fun downloadComic(comic: Comic) {
         scope.launch(Dispatchers.IO) {
             mutations.withLock {
                 val result = operations.downloadComic(comic) ?: return@launch
@@ -41,7 +36,7 @@ class DownloadManager(
         submit { operations.downloadComics(comics) }
     }
 
-    override fun downloadChapters(parentComic: Comic, chapters: List<ComicChapter>) {
+    fun downloadChapters(parentComic: Comic, chapters: List<ComicChapter>) {
         if (chapters.isEmpty()) return
         submit { operations.downloadChapters(parentComic, chapters) }
     }

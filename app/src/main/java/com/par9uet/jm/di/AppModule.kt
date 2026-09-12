@@ -131,6 +131,21 @@ val appModule = module {
     single { com.par9uet.jm.update.ApkInstaller(get()) } bind com.par9uet.jm.update.AppUpdateInstaller::class
     viewModel { com.par9uet.jm.ui.viewModel.AppUpdateViewModel(get(), get(), get(), get()) }
     single { com.par9uet.jm.store.BackupManager() }
+    single<com.par9uet.jm.backup.BackupTaskScheduler> {
+        val downloadManager = get<com.par9uet.jm.download.coordinator.DownloadManager>()
+        object : com.par9uet.jm.backup.BackupTaskScheduler {
+            override fun downloadComic(comic: com.par9uet.jm.data.models.Comic) {
+                downloadManager.downloadComic(comic)
+            }
+
+            override fun downloadChapters(
+                parentComic: com.par9uet.jm.data.models.Comic,
+                chapters: List<com.par9uet.jm.data.models.ComicChapter>,
+            ) {
+                downloadManager.downloadChapters(parentComic, chapters)
+            }
+        }
+    }
     single<com.par9uet.jm.backup.BackupRestoreOperations> {
         com.par9uet.jm.backup.DeviceBackupRestoreOperations(get(), get(), get(), get(), get())
     }

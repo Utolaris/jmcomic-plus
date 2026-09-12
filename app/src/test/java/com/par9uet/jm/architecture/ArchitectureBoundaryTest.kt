@@ -29,8 +29,10 @@ class ArchitectureBoundaryTest {
             )))
             addAll(forbiddenImports("store", listOf("com.par9uet.jm.ui.", "com.par9uet.jm.worker.")))
             addAll(forbiddenImports("favorites", listOf("com.par9uet.jm.ui.")))
-            addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.")))
+            addAll(forbiddenImports("favorites/data", listOf("com.par9uet.jm.download.coordinator.")))
+            addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.", "com.par9uet.jm.download.coordinator.")))
             addAll(forbiddenImports("update", listOf("com.par9uet.jm.ui.")))
+            addAll(forbiddenImports("download/export", listOf("com.par9uet.jm.download.molecule.")))
             addAll(forbiddenImports("download/coordinator/DownloadManager.kt", listOf(
                 "com.par9uet.jm.database.", "com.par9uet.jm.download.atom.", "java.io.",
             )))
