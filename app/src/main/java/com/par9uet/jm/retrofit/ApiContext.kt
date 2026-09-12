@@ -19,6 +19,10 @@ object ApiContext {
         perRequestTimestamp.set(ts)
     }
 
+    fun clearTimestamp() {
+        perRequestTimestamp.remove()
+    }
+
     fun getTimestamp(): Long {
         return perRequestTimestamp.get() ?: API_TS
     }

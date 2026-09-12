@@ -17,11 +17,14 @@ class TokenInterceptor : Interceptor {
 
         // 设置 ThreadLocal 供 ResponseConverterFactory 解密使用
         ApiContext.setTimestamp(timestamp)
-
-        val newRequest = originalRequest.newBuilder()
-            .addHeader("tokenparam", tokenParam)
-            .addHeader("token", API_TOKEN_HASH)
-            .build()
-        return chain.proceed(newRequest)
+        try {
+            val newRequest = originalRequest.newBuilder()
+                .addHeader("tokenparam", tokenParam)
+                .addHeader("token", API_TOKEN_HASH)
+                .build()
+            return chain.proceed(newRequest)
+        } finally {
+            ApiContext.clearTimestamp()
+        }
     }
 }

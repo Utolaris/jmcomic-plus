@@ -101,8 +101,9 @@ private fun writeImagesToPdf(
         var pageIndex = 0
         try {
             imageFiles.forEachIndexed { index, file ->
+                var bitmap: Bitmap? = null
                 try {
-                    val bitmap = decodeBitmapForPdf(context, file)
+                    bitmap = decodeBitmapForPdf(context, file)
                         ?: run {
                             failedPages.add(index + 1)
                             return@forEachIndexed
@@ -115,10 +116,13 @@ private fun writeImagesToPdf(
                     document.finishPage(page)
                     pageIndex++
                     bitmap.recycle()
+                    bitmap = null
                 } catch (e: OutOfMemoryError) {
                     System.gc()
+                    bitmap?.recycle()
                     failedPages.add(index + 1)
                 } catch (e: Exception) {
+                    bitmap?.recycle()
                     failedPages.add(index + 1)
                 }
             }
@@ -128,8 +132,10 @@ private fun writeImagesToPdf(
         }
     } ?: throw IllegalStateException("无法写入 PDF 文件")
 
-    if (failedPages.isNotEmpty() && failedPages.size == imageFiles.size) {
-        throw IllegalStateException("所有图片导出失败，可能内存不足或图片损坏")
+    if (failedPages.isNotEmpty()) {
+        throw IllegalStateException(
+            "导出完成但有 ${failedPages.size}/${imageFiles.size} 页失败：${failedPages.joinToString()}，可能内存不足或图片损坏"
+        )
     }
 
     return outputUri.toString()

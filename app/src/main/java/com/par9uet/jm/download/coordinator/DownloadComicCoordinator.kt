@@ -112,7 +112,9 @@ class DownloadComicCoordinator(
             )
 
             val coverPath = content.downloadCover(downloadTask, coverOwnerId, remoteConfigPreferences.remoteImageHost.value)
-            downloadComicDao.updateCover(UpdateComicCover(comicId, coverPath))
+            if (coverPath.isNotBlank()) {
+                downloadComicDao.updateCover(UpdateComicCover(comicId, coverPath))
+            }
 
             var maxProgress = downloadComicDao.getById(comicId)?.progress ?: 0f
             content.downloadPages(downloadTask) { nextProgress ->

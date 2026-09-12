@@ -9,8 +9,11 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.par9uet.jm.download.DownloadWorkScheduler
+import com.par9uet.jm.utils.logError
 import java.util.UUID
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -48,12 +51,23 @@ internal class WorkManagerDownloadWorkScheduler(
 
     override suspend fun cancel(comicIds: Collection<Int>) = withContext(Dispatchers.IO) {
         val workManager = WorkManager.getInstance(context)
-        comicIds.distinct().forEach { workManager.cancelUniqueWork(workName(it)).result.get() }
+        comicIds.distinct().forEach { comicId ->
+            try {
+                workManager.cancelUniqueWork(workName(comicId))
+                    .result.get(CANCEL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+            } catch (e: TimeoutException) {
+                logError("WorkManagerDownloadWorkScheduler", "cancelUniqueWork 超时: ${workName(comicId)}")
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                throw CancellationException("cancel interrupted")
+            }
+        }
     }
 
     private fun workName(comicId: Int) = "comic-download-$comicId"
 
     private companion object {
         const val DOWNLOAD_RETRY_BACKOFF_SECONDS = 30L
+        const val CANCEL_TIMEOUT_SECONDS = 5L
     }
 }

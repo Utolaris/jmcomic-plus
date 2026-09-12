@@ -8,6 +8,7 @@ import com.par9uet.jm.utils.cancelProgressNotification
 import com.par9uet.jm.utils.formatBytes
 import com.par9uet.jm.utils.showProgressNotification
 import com.par9uet.jm.utils.showUpdateDownloadedNotification
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -66,7 +67,9 @@ class AppUpdateDownloadManager(
 ) : AppUpdateDownloads {
     private val client = OkHttpClient.Builder().dns(dohManager).build()
     private var job: Job? = null
+    @Volatile
     private var paused = false
+    @Volatile
     private var canceled = false
     private var activeRequest: AppUpdateDownloadRequest? = null
 
@@ -136,7 +139,8 @@ class AppUpdateDownloadManager(
     }
 
     private suspend fun download(request: AppUpdateDownloadRequest) = withContext(Dispatchers.IO) {
-        runCatching {
+        val file = File(getCommonCacheDir(context), "updates/${safeFileName(request.fileName)}")
+        try {
             val httpRequest = Request.Builder()
                 .url(request.downloadUrl)
                 .header("User-Agent", "jmcomic-plus-android")
@@ -147,7 +151,6 @@ class AppUpdateDownloadManager(
                 }
                 val body = response.body ?: error("下载失败：响应体为空")
                 val totalBytes = body.contentLength().takeIf { it > 0L } ?: 0L
-                val file = File(getCommonCacheDir(context), "updates/${request.fileName}")
                 file.parentFile?.mkdirs()
                 var downloaded = 0L
                 var windowBytes = 0L
@@ -202,7 +205,10 @@ class AppUpdateDownloadManager(
                     savedPath = file.absolutePath
                 )
             }
-        }.onFailure { throwable ->
+        } catch (cancelled: CancellationException) {
+            file.delete()
+            throw cancelled
+        } catch (throwable: Throwable) {
             if (!canceled) {
                 _state.update {
                     it.copy(
@@ -226,6 +232,12 @@ class AppUpdateDownloadManager(
             text = "${(state.progress * 100).roundToInt()}% · ${formatBytes(state.speedBytesPerSecond)}/s",
             progressPercent = (state.progress * 100).roundToInt()
         )
+    }
+
+    private fun safeFileName(name: String): String {
+        return name.substringAfterLast('/').substringAfterLast('\\')
+            .replace("..", "_")
+            .ifBlank { "update.apk" }
     }
 }
 

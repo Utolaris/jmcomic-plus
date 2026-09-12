@@ -71,15 +71,32 @@ internal class DeviceBackupRestoreOperations(
                 restored += "本地设置"
             }
         }
+        var skippedGroups = 0
+        var validChapters = 0
         groups.forEach { group ->
+            if (!isValidRestoreGroup(group)) {
+                skippedGroups++
+                return@forEach
+            }
+            validChapters += group.chapterCount
             val comic = Comic.create(id = group.id, name = group.name, authorList = group.authors)
             val chapters = group.chapters.sortedBy { it.sortOrder }.map { ComicChapter(id = it.id, name = it.name) }
             if (chapters.size == 1 && chapters.first().name.isBlank()) downloads.downloadComic(comic)
             else downloads.downloadChapters(comic, chapters)
         }
-        if (groups.isNotEmpty()) {
-            restored += "${groups.size} 部漫画的缓存任务（共 ${groups.sumOf { it.chapterCount }} 章）"
+        val validCount = groups.size - skippedGroups
+        if (validCount > 0) {
+            restored += "$validCount 部漫画的缓存任务（共 $validChapters 章）"
+        }
+        if (skippedGroups > 0) {
+            restored += "跳过 $skippedGroups 部无效漫画"
         }
         return if (restored.isEmpty()) "未找到可恢复的内容" else "已恢复：${restored.joinToString("、")}"
     }
+}
+
+private fun isValidRestoreGroup(group: ComicGroupBackup): Boolean {
+    if (group.id <= 0) return false
+    if (group.name.isBlank() || group.name.contains('/') || group.name.contains('\\')) return false
+    return group.chapters.all { it.id >= 0 }
 }
