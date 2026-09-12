@@ -12,10 +12,15 @@ local.properties
 release-key
 .debug-screenshot.png
 
+# App module build outputs (merged from app/.gitignore)
+/app/build
+/app/release
+
 # Agent workspace / local env
 .workbuddy/
 .codex/
-.env
+.env*
+!.env.example
 
 # Signing / packaged artifacts
 *.p12
