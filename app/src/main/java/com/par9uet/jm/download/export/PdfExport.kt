@@ -144,7 +144,9 @@ private fun writeImagesToPdf(
         return outputUri.toString()
     } finally {
         if (!success) {
-            runCatching { context.contentResolver.delete(outputUri, null, null) }
+            // ContentResolver.delete is unreliable on DocumentsProvider trees; use the
+            // same API as deleteCachePath so the incomplete SAF document is actually removed.
+            runCatching { DocumentsContract.deleteDocument(context.contentResolver, outputUri) }
         }
     }
 }

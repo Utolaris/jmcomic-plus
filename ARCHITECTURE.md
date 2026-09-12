@@ -5,15 +5,17 @@
 
 > 本文描述的是**当前代码的真实状态**，不是目标状态。文中出现的每个类名、路径和数字都应能在
 > `app/src/main/java/com/par9uet/jm` 下找到；与代码不符的措辞视为文档缺陷，应直接修正。
-> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 334 个 Kotlin 文件 / 42,589 行。
-> 本轮迁移（store 清空 + 依赖环消除）后的全量核对：2026-09-12。
+> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 **337** 个 Kotlin 文件 / **42,732** 行
+> （`find app/src/main/java -name '*.kt' | wc -l` + `wc -l` 口径）。
+> 本轮迁移（store 清空 + 依赖环消除）后的全量核对：2026-09-12；
+> 工具链与 hygiene 对齐后的再次核对：2026-09-12（Java 21 / OpenJDK 21 构建，详见文末）。
 
 ## 层级
 
 | 层 | 职责 | 主要落点 |
 | --- | --- | --- |
-| L1 Entry | 只接收事件并交给 L2，不做业务判断 | `ui/screens`（33 个 `*Screen.kt`）、`ui/navigation`、`MainActivity`、`App`、`worker/DownloadComicWorker`（26 行）、`worker/CacheMigrationWorker`（54 行） |
-| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（14 个，加上 `favorites/presentation/FavoritesViewModel` 共 15 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`（含 `DownloadManager`）、`cache/migration` 的协调器与通知适配、`favorites/sync`、`session`（`UserManager`、`AuthenticatedRequestRecovery`）、`startup/PostStartupCoordinator` |
+| L1 Entry | 只接收事件并交给 L2，不做业务判断 | `ui/screens`（32 个 `*Screen.kt`）、`ui/navigation`、`MainActivity`、`App`、`worker/DownloadComicWorker`（26 行）、`worker/CacheMigrationWorker`（54 行） |
+| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（14 个，加上 `favorites/presentation/FavoritesViewModel` 共 15 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`（含 `DownloadManager`）、`cache/migration` 的协调器与通知适配、`favorites/sync`、`session`（`UserManager`、`UserRepository`、`AuthenticatedRequestRecovery`、`SessionReadinessHolder`）、`startup/PostStartupCoordinator` |
 | L3 Molecule | 组合多个原子能力，完成一个完整业务动作 | `reader/molecule`、`download/molecule`（含 `DownloadLibraryQueries`）、`cache/migration` 的操作端口与实现、`favorites/usecase`、`backup/BackupRestoreOperations`、`download/export/DownloadExportOperations`、`repository/impl`（组合网络服务、内置客户端与领域映射） |
 | L4 Atom | 每个原子只负责一个底层契约 | `database`、`storage`、`retrofit`、`data`、`network`（含内置 API 客户端三件套）、`image`、`coil`、`cache/atom`、`reader/atom`、`download/atom`、`download/export/PdfExport`、`favorites/data`（含 `FavoriteStore`）、`update`（含 `AppUpdateDownloadManager` 下载适配）、`contentfilter`、`launcher`、`utils` |
 | Shared Contract | 不含行为的稳定 DTO，可被各层依赖 | `core/model`（`CommonUIState`、`User`、`RemoteSetting`、`SignInData`）、`core/network`（`NetWorkResult` / `ResponseWrapper` / `AuthFailure`）、`favorites/model/FavoritesModels`、`reader/ReaderImageModels`、`download/model/DownloadLibraryModels` |
@@ -76,7 +78,8 @@ update/AppUpdateDownloadManager  已从 store 迁入 update（L2 下载协调 + 
 core/                        共享契约与基础类型：core/model（User / RemoteSetting / SignInData /
                              CommonUIState）、core/network（NetWorkResult / ResponseWrapper）、
                              core/BaseRepository、core/ToastManager
-session/                     L2 会话协调（UserManager 等 4 个文件）
+session/                     L2 会话协调（UserManager / UserRepository /
+                             AuthenticatedRequestRecovery / SessionReadinessHolder）
 network/                     L4：Doh 三件套、RemoteConfigManager、内置 API 客户端
                              （EmbeddedClientManager / AuthenticatedEmbeddedClient / EmbeddedSessionCookies）
 storage/                     L4：LocalSettingManager、各种 *Preferences、历史/续读管理器
@@ -390,3 +393,20 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
 并禁止缓存迁移的实现重新进入 Worker。
 
 每次只迁移一个可独立验证的边界，并为 L2 分支、L3 组合和 L4 契约分别补测试。
+
+## 构建与密钥（2026-09-12 核对）
+
+- **语言级别**：Java / Kotlin bytecode **21**（`JvmTarget.JVM_21`，`source/targetCompatibility = 21`），
+  与本机 GraalVM 21.0.9 LTS 语言级对齐。
+- **构建 JDK**：Gradle daemon 必须使用标准 **OpenJDK 21**（如 Homebrew `openjdk@21`）。
+  不要用 GraalVM 当 `JAVA_HOME`：AGP 的 `JdkImageTransform` 会对
+  `core-for-system-modules.jar` 跑 jlink，而 GraalVM 的 `java.base` 仍依赖 `jdk.internal.vm.ci`，变换会失败。
+  `gradle/wrapper` 为 Gradle **9.7.1**，AGP **9.4.0**，KSP **2.3.12**。本地 `gradlew` 默认走 wrapper；
+  需要本机 brew Gradle 时设 `JM_USE_LOCAL_GRADLE=1`。
+- **签名密钥**：`release` 的 `storePassword` / `keyPassword` 只读环境变量
+  `JMCOMIC_RELEASE_STORE_PASSWORD` / `JMCOMIC_RELEASE_KEY_PASSWORD`；`release-key/`、
+  `*.p12` / `*.jks` / `*.keystore`、`.env*` 均在 `.gitignore` 中，**git 历史中从未出现过签名材料**。
+- **客户端协议常量**：`retrofit/ApiContext.kt` 的 `APP_DATA_SECRET`（推荐接口 payload 解密用）
+  是**写死在源码里的协议盐**，不是用户密钥、也不是签名密钥。它会随 APK 一起被逆向，
+  放进 BuildConfig/本地属性也无法保密；仓库内保留字面量是为了与线上 JM 协议兼容。
+- **本地数据**：登录口令/会话等经 `storage/CryptoManager`（Android Keystore `app_master_key`，AES-GCM）加密落盘，仓库不持有用户密钥。

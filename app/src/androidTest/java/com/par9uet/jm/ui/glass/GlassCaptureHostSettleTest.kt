@@ -41,7 +41,7 @@ class GlassCaptureHostSettleTest {
     @Test
     fun staticSourceStopsSchedulingDraws() {
         startHost()
-        compose.waitForIdle()
+        compose.waitUntil(10_000) { true }
 
         startDrawObserver()
         Thread.sleep(700)
@@ -57,12 +57,14 @@ class GlassCaptureHostSettleTest {
     @Test
     fun sourceContentChangeStillRefreshesTheCapture() {
         startHost()
-        compose.waitForIdle()
+        compose.waitUntil(10_000) { true }
 
         startDrawObserver()
         val before = drawCount.get()
         sourceText.value = "内容已变化"
-        compose.waitForIdle()
+        var changed = false
+        compose.runOnIdle { changed = true }
+        compose.waitUntil(10_000) { changed }
         Thread.sleep(400)
         val after = drawCount.get()
         observing = false

@@ -165,6 +165,87 @@ current_focus() {
     || true
 }
 
+# Compose 插桩要求 Activity 处于 RESUMED。个人机上通知栏、微信/知乎等任意前台
+# 都会让 waitForIdle/waitUntil 永远等不到帧，表现为“UI 测试卡死”而应用本身正常。
+# 这里只做无损的环境稳住：亮屏、常亮、收起通知栏/勿扰；不卸载、不禁用用户应用。
+prepare_device_for_instrumentation() {
+  local serial="$1"
+  adb -s "$serial" shell input keyevent KEYCODE_WAKEUP >/dev/null 2>&1 || true
+  adb -s "$serial" shell svc power stayon true >/dev/null 2>&1 || true
+  # 收起通知栏即可；不要发 HOME——那会把设备停在 Launcher，
+  # HyperOS 上随后 instrumentation 拉起的 Activity 容易被压在后台，waitForIdle 永远等不到帧。
+  adb -s "$serial" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+  adb -s "$serial" shell cmd statusbar collapse >/dev/null 2>&1 || true
+  # 关掉 heads-up，避免 DEVELOPER_IMPORTANT 等通知把 shade 拉下来抢焦点。
+  adb -s "$serial" shell settings put global heads_up_notifications_enabled 0 >/dev/null 2>&1 || true
+  # 勿扰，降低通知弹出抢前台的概率（跑完恢复）。
+  adb -s "$serial" shell cmd notification set_dnd on >/dev/null 2>&1 || true
+  adb -s "$serial" shell settings put global zen_mode 2 >/dev/null 2>&1 || true
+  # HyperOS 会把非 Launcher 任务压后台；从省电白名单里摘掉，减少被冻结/转后台。
+  adb -s "$serial" shell dumpsys deviceidle whitelist +$APPLICATION_ID >/dev/null 2>&1 || true
+  adb -s "$serial" shell cmd appops set "$APPLICATION_ID" RUN_ANY_IN_BACKGROUND allow >/dev/null 2>&1 || true
+  # HyperOS 4：后台弹出界面（MIUIOP 10021）。默认 ignore 时 instrumentation 拉起的
+  # Activity 会被系统直接压回后台，Compose waitForIdle 永远等不到帧。
+  adb -s "$serial" shell appops set --user 0 "$APPLICATION_ID" 10021 allow >/dev/null 2>&1 || true
+  adb -s "$serial" shell appops set --user 0 "$TEST_PACKAGE" 10021 allow >/dev/null 2>&1 || true
+}
+
+teardown_device_after_instrumentation() {
+  local serial="$1"
+  adb -s "$serial" shell cmd notification set_dnd off >/dev/null 2>&1 || true
+  adb -s "$serial" shell settings put global zen_mode 0 >/dev/null 2>&1 || true
+  adb -s "$serial" shell settings put global heads_up_notifications_enabled 1 >/dev/null 2>&1 || true
+  adb -s "$serial" shell dumpsys deviceidle whitelist -$APPLICATION_ID >/dev/null 2>&1 || true
+}
+
+# 整场 instrumentation 期间：收起通知栏，并把测试进程钉在前台。
+# HyperOS 上 ComponentActivity 会启动，但通知栏（尤其 DEVELOPER_IMPORTANT）会立刻
+# 抢走窗口焦点把 Activity pause，Compose waitForIdle 因此永远等不到帧。
+start_foreground_keeper() {
+  local serial="$1" log_file="$2"
+  (
+    events=0
+    while :; do
+      sleep 1
+      focus="$(current_focus "$serial")"
+      case "$focus" in
+        *"$APPLICATION_ID"*|*"$TEST_PACKAGE"*) continue ;;
+        *NotificationShade*|*StatusBar*)
+          events=$((events + 1))
+          printf '[foreground-keeper] # %s collapse shade (focus=%s)\n' \
+            "$events" "${focus:-unknown}" >> "$log_file"
+          adb -s "$serial" shell cmd statusbar collapse >/dev/null 2>&1 || true
+          adb -s "$serial" shell input keyevent KEYCODE_BACK >/dev/null 2>&1 || true
+          continue
+          ;;
+      esac
+      events=$((events + 1))
+      # Compose rule 的 Activity 组件名是固定的。
+      local_component="$APPLICATION_ID/androidx.activity.ComponentActivity"
+      top_component="$(
+        adb -s "$serial" shell dumpsys activity activities 2>/dev/null \
+          | tr -d '\r' \
+          | grep -oE "${APPLICATION_ID}/[A-Za-z0-9_.$]+" \
+          | head -1 || true
+      )"
+      printf '[foreground-keeper] # %s lost focus (%s), resume %s\n' \
+        "$events" "${focus:-unknown}" "${top_component:-$local_component}" >> "$log_file"
+      adb -s "$serial" shell cmd statusbar collapse >/dev/null 2>&1 || true
+      adb -s "$serial" shell am start -n "${top_component:-$local_component}" \
+        >/dev/null 2>&1 || true
+    done
+  ) &
+  FOREGROUND_KEEPER_PID=$!
+}
+
+stop_foreground_keeper() {
+  if [ -n "${FOREGROUND_KEEPER_PID:-}" ]; then
+    kill "$FOREGROUND_KEEPER_PID" 2>/dev/null || true
+    wait "$FOREGROUND_KEEPER_PID" 2>/dev/null || true
+    FOREGROUND_KEEPER_PID=""
+  fi
+}
+
 # 盯着 instrumentation 的输出：长时间没有新内容就判定卡死，主动中止并把当时的前台窗口记下来。
 #
 # UI 用例最容易这样：Compose 的等待要求当前界面处于 resumed，别的应用（聊天、通知全屏意图）
@@ -339,12 +420,20 @@ main() {
 
   echo "==> 运行插桩测试：$TEST_PACKAGE/$RUNNER"
   echo "==> 超过 ${STALL_SECONDS}s 没有新输出会判定卡死并主动中止（--stall 可改）"
-  if [ "$START_APP" -eq 1 ]; then
-    # UI 用例要应用在前台：先自己拉起来，避免一上来就被别的应用压在后台。
-    adb -s "$serial" shell monkey -p "$APPLICATION_ID" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1 || true
-    sleep 2
-    echo "==> 当前前台：$(current_focus "$serial")"
-  fi
+  prepare_device_for_instrumentation "$serial"
+  echo "==> 设备已准备（亮屏/常亮/收通知栏/勿扰）；跑测期间请勿操作手机"
+  # Compose rule 用的是 androidx.activity.ComponentActivity，不是主界面。
+  # 先把它拉到前台占住任务栈；force-stop 会让 HyperOS 随后把新 Activity 直接压到
+  # Launcher 后面（任务栈里甚至找不到 activity）。
+  adb -s "$serial" shell am force-stop "$APPLICATION_ID" >/dev/null 2>&1 || true
+  sleep 0.5
+  adb -s "$serial" shell am start -n "$APPLICATION_ID/androidx.activity.ComponentActivity" \
+    >/dev/null 2>&1 || true
+  sleep 1
+  echo "==> 当前前台：$(current_focus "$serial")"
+  local keeper_log="$PROJECT_DIR/build/foreground-keeper.log"
+  : > "$keeper_log"
+  start_foreground_keeper "$serial" "$keeper_log"
   local stall_file="$output_file.stall"
   rm -f "$stall_file"
   start_stall_watchdog "$serial" "$output_file" "$stall_file" "$STALL_SECONDS" &
@@ -353,6 +442,7 @@ main() {
   adb -s "$serial" shell am instrument "${instrument_args[@]}" "$TEST_PACKAGE/$RUNNER" 2>&1 | tee "$output_file"
   local adb_status=${PIPESTATUS[0]}
   set -e
+  stop_foreground_keeper
   kill "$watchdog_pid" 2>/dev/null || true
   wait "$watchdog_pid" 2>/dev/null || true
   # tee 已经收工，这时再合并看门狗写下的卡死记录。
@@ -364,6 +454,7 @@ main() {
     adb -s "$serial" logcat -d > "$logcat_file"
     echo "==> logcat 已写入 $logcat_file"
   fi
+  teardown_device_after_instrumentation "$serial"
 
   local verdict
   set +e

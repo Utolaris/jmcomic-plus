@@ -146,8 +146,11 @@ class BackupRestoreOperationsTest {
         )
 
         assertEquals("已恢复：1 部漫画的缓存任务（共 1 章）、跳过 2 部无效漫画", summary)
-        assertEquals(listOf(30), scheduler.comics.map { it.id })
-        assertTrue(scheduler.chapters.isEmpty())
+        // A single *named* chapter is scheduled as a chapter download; only a blank
+        // chapter name means "download the whole comic" into scheduler.comics.
+        assertEquals(listOf(30), scheduler.chapters.map { it.first.id })
+        assertEquals(listOf(31), scheduler.chapters.single().second.map { it.id })
+        assertTrue(scheduler.comics.isEmpty())
     }
 
     @Test

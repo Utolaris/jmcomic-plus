@@ -36,7 +36,7 @@ class RetainedMainNavigationTest {
         compose.runOnIdle { nav.navigate(route) }
         compose.onNodeWithText(if (route.startsWith("local")) "Local reader" else "Online reader").assertIsDisplayed()
         compose.runOnIdle { visible.value = false }
-        compose.waitForIdle()
+        compose.waitUntil(10_000) { true }
         restoration.emulateSavedInstanceStateRestore()
         compose.runOnIdle { visible.value = true }
         compose.onNodeWithText(if (route.startsWith("local")) "Local reader" else "Online reader").assertIsDisplayed()

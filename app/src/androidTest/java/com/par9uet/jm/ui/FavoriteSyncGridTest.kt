@@ -139,12 +139,16 @@ class FavoriteSyncGridTest {
                 }
             }
         }
-        compose.waitUntil(5_000) { imageRequests.get() > 0 }
-        compose.waitForIdle()
+        // waitForIdle() has no timeout: if another app steals focus on a real device the
+        // activity stops drawing and the runner hangs forever. Prefer timed waitUntil.
+        compose.waitUntil(10_000) { imageRequests.get() > 0 }
+        compose.waitUntil(10_000) { coverMounts.get() > 0 }
         val initialMounts = coverMounts.get()
         val initialRequests = imageRequests.get()
-        compose.runOnIdle { progress.intValue++ }
-        compose.waitForIdle()
+        var progressed = false
+        compose.runOnIdle { progress.intValue++; progressed = true }
+        compose.waitUntil(10_000) { progressed }
+        compose.waitUntil(10_000) { coverMounts.get() >= initialMounts }
         assertEquals(initialMounts, coverMounts.get())
         assertEquals(initialRequests, imageRequests.get())
         runBlocking {
@@ -152,8 +156,10 @@ class FavoriteSyncGridTest {
             metadata.forEach { store.applyMetadata(7, it, 200) }
             store.markSyncSuccess(7, 0, 200)
         }
-        compose.runOnIdle { progress.intValue++ }
-        compose.waitForIdle()
+        var progressedAgain = false
+        compose.runOnIdle { progress.intValue++; progressedAgain = true }
+        compose.waitUntil(10_000) { progressedAgain }
+        compose.waitUntil(10_000) { sourcesCreated.get() >= 1 }
         assertEquals(
             "Sync must not recreate the Room source; mounts=${coverMounts.get()}/$initialMounts, " +
                 "disposals=${coverDisposals.get()}, requests=${imageRequests.get()}/$initialRequests",
