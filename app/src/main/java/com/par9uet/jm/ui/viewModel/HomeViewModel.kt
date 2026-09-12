@@ -3,7 +3,8 @@ package com.par9uet.jm.ui.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
+import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.HomeComicSwiperItem
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.storage.RecommendationPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,7 +34,7 @@ class HomeViewModel(
     )
 
     data class HomeCategoryLoadState(
-        val content: List<HomeSwiperComicListItemResponse.ListItem> = emptyList(),
+        val content: List<Comic> = emptyList(),
         val isLoading: Boolean = false,
         val isError: Boolean = false,
         val errorMsg: String? = null,
@@ -58,8 +59,8 @@ class HomeViewModel(
     private var homeRequestGeneration = 0L
     private var lastPreferenceRecommendEnabled: Boolean? = null
     private val homeCategoryCache =
-        mutableMapOf<String, List<HomeSwiperComicListItemResponse.ListItem>>()
-    private var networkHomeCache: List<HomeSwiperComicListItemResponse>? = null
+        mutableMapOf<String, List<Comic>>()
+    private var networkHomeCache: List<HomeComicSwiperItem>? = null
     private val activeCategoryLoads = mutableMapOf<String, HomeRequestToken>()
 
     companion object {
@@ -242,8 +243,8 @@ class HomeViewModel(
         }
     }
 
-    private fun applyPromoteHome(categories: List<HomeSwiperComicListItemResponse>) {
-        val promoteSections = swapFirstTwoHomePages(categories.filter { it.content.isNotEmpty() })
+    private fun applyPromoteHome(categories: List<HomeComicSwiperItem>) {
+        val promoteSections = swapFirstTwoHomePages(categories.filter { it.list.isNotEmpty() })
         if (promoteSections.isEmpty()) {
             applyEmbeddedHome()
             return
@@ -259,8 +260,8 @@ class HomeViewModel(
             .toMutableMap()
         promoteSections.forEach { item ->
             val id = networkCategoryId(item.id)
-            homeCategoryCache[id] = item.content
-            newStates[id] = HomeCategoryLoadState(content = item.content)
+            homeCategoryCache[id] = item.list
+            newStates[id] = HomeCategoryLoadState(content = item.list)
         }
         EMBEDDED_CATEGORIES.forEach { info ->
             homeCategoryCache[info.id]?.let { content ->

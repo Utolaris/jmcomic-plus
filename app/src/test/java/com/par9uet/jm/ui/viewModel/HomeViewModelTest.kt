@@ -1,17 +1,16 @@
 package com.par9uet.jm.ui.viewModel
 
-import com.par9uet.jm.data.models.ComicSearchOrderFilter
-import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.CollectComicResponse
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.ComicListResponse
-import com.par9uet.jm.retrofit.model.ComicPicListResponse
-import com.par9uet.jm.retrofit.model.CommentComicResponse
-import com.par9uet.jm.retrofit.model.CommentListResponse
-import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
-import com.par9uet.jm.retrofit.model.WeekResponse
+import com.par9uet.jm.data.models.ActionResult
+import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.ComicPageList
+import com.par9uet.jm.data.models.ComicSearchOrderFilter
+import com.par9uet.jm.data.models.ComicSearchPage
+import com.par9uet.jm.data.models.CommentPage
+import com.par9uet.jm.data.models.HomeComicSwiperItem
+import com.par9uet.jm.data.models.WeekData
+import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.storage.ContentPreferences
 import com.par9uet.jm.storage.RecommendationPreferences
 import kotlinx.coroutines.CompletableDeferred
@@ -77,9 +76,9 @@ class HomeViewModelTest {
     }
 
     private class FakeComicRepository(
-        private val embeddedHandler: suspend (String) -> NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> =
+        private val embeddedHandler: suspend (String) -> NetWorkResult<List<Comic>> =
             { NetWorkResult.Error("stub") },
-        private val networkHandler: suspend () -> NetWorkResult<List<HomeSwiperComicListItemResponse>> =
+        private val networkHandler: suspend () -> NetWorkResult<List<HomeComicSwiperItem>> =
             { NetWorkResult.Error("stub") },
     ) : ComicRepository {
         val embeddedCalls = mutableListOf<String>()
@@ -87,26 +86,26 @@ class HomeViewModelTest {
 
         override suspend fun getEmbeddedHomeCategory(
             categoryId: String
-        ): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> {
+        ): NetWorkResult<List<Comic>> {
             embeddedCalls.add(categoryId)
             return embeddedHandler(categoryId)
         }
 
-        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> {
+        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeComicSwiperItem>> {
             networkPageCalls++
             return networkHandler()
         }
 
-        override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
+        override suspend fun getComicDetail(id: Int): NetWorkResult<Comic> =
             NetWorkResult.Error("stub")
 
-        override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> =
+        override suspend fun collectComic(id: Int): NetWorkResult<Unit> =
             NetWorkResult.Error("stub")
 
-        override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> =
+        override suspend fun unCollectComic(id: Int): NetWorkResult<Unit> =
             NetWorkResult.Error("stub")
 
-        override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPicListResponse> =
+        override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPageList> =
             NetWorkResult.Error("stub")
 
         override suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray? = null
@@ -115,55 +114,53 @@ class HomeViewModelTest {
             page: Int,
             order: ComicSearchOrderFilter,
             searchContent: String
-        ): NetWorkResult<ComicListResponse> = NetWorkResult.Error("stub")
+        ): NetWorkResult<ComicSearchPage> = NetWorkResult.Error("stub")
 
-        override suspend fun getWeekData(): NetWorkResult<WeekResponse> =
+        override suspend fun getWeekData(): NetWorkResult<WeekData> =
             NetWorkResult.Error("stub")
 
         override suspend fun getWeekRecommendComicList(
             page: Int,
             categoryId: String,
             typeId: String
-        ): NetWorkResult<WeekRecommendComicResponse> = NetWorkResult.Error("stub")
+        ): NetWorkResult<ComicPage> = NetWorkResult.Error("stub")
 
         override suspend fun getCommentList(
             page: Int,
             comicId: Int
-        ): NetWorkResult<CommentListResponse> = NetWorkResult.Error("stub")
+        ): NetWorkResult<CommentPage> = NetWorkResult.Error("stub")
 
         override suspend fun comment(
             content: String,
             comicId: Int,
             commentId: Int?
-        ): NetWorkResult<CommentComicResponse> = NetWorkResult.Error("stub")
+        ): NetWorkResult<ActionResult> = NetWorkResult.Error("stub")
 
         override suspend fun getComicIdsByTag(tagName: String, maxPages: Int): Set<Int> = emptySet()
     }
 
-    private fun item(id: Int): HomeSwiperComicListItemResponse.ListItem =
-        HomeSwiperComicListItemResponse.ListItem(
-            id = id.toString(),
-            author = "",
-            description = null,
-            name = "comic$id",
-            image = "",
-            category = HomeSwiperComicListItemResponse.ListItem.Category(null, null),
-            category_sub = HomeSwiperComicListItemResponse.ListItem.Category(null, null),
-            is_favorite = false,
-            update_at = 0,
-        )
+    private fun item(id: Int): Comic = Comic(
+        id = id,
+        name = "comic$id",
+        authorList = emptyList(),
+        description = "",
+        readCount = 0,
+        likeCount = 0,
+        commentCount = 0,
+        tagList = emptyList(),
+        roleList = emptyList(),
+        workList = emptyList(),
+        price = 0,
+    )
 
-    private fun page(id: String, title: String, items: List<HomeSwiperComicListItemResponse.ListItem>) =
-        HomeSwiperComicListItemResponse(
+    private fun page(id: String, title: String, items: List<Comic>) =
+        HomeComicSwiperItem(
             id = id,
             title = title,
-            slug = id,
-            type = "preference",
-            filter_val = "",
-            content = items,
+            list = items,
         )
 
-    private fun embeddedOk(categoryId: String): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> =
+    private fun embeddedOk(categoryId: String): NetWorkResult<List<Comic>> =
         NetWorkResult.Success(listOf(item(categoryId.hashCode())))
 
     @Test
@@ -212,15 +209,15 @@ class HomeViewModelTest {
             listOf("C108推荐本本", "连载漫画", "其它栏目", "本周热门"),
             vm.homeState.value.categories.take(4).map { it.title },
         )
-        assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
-        assertEquals(listOf("1"), vm.homeState.value.states["net_serial"]?.content?.map { it.id })
-        assertEquals(listOf("3"), vm.homeState.value.states["net_other"]?.content?.map { it.id })
+        assertEquals(listOf(2), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
+        assertEquals(listOf(1), vm.homeState.value.states["net_serial"]?.content?.map { it.id })
+        assertEquals(listOf(3), vm.homeState.value.states["net_other"]?.content?.map { it.id })
         assertNull(vm.homeState.value.states[HomeViewModel.CATEGORY_LATEST])
 
         vm.selectHomeCategory("net_rec")
         advanceUntilIdle()
         assertEquals(1, repo.networkPageCalls)
-        assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
+        assertEquals(listOf(2), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
     }
 
     @Test
@@ -248,7 +245,7 @@ class HomeViewModelTest {
             listOf("C109推荐本本", "连载漫画", "其它栏目"),
             vm.homeState.value.categories.take(3).map { it.title },
         )
-        assertEquals(listOf("2"), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
+        assertEquals(listOf(2), vm.homeState.value.states["net_rec"]?.content?.map { it.id })
     }
 
     @Test
@@ -277,7 +274,7 @@ class HomeViewModelTest {
             vm.homeState.value.categories.take(3).map { it.title },
         )
         assertEquals("net_second", vm.homeState.value.selectedCategoryId)
-        assertEquals(listOf("1"), vm.homeState.value.states["net_first"]?.content?.map { it.id })
+        assertEquals(listOf(1), vm.homeState.value.states["net_first"]?.content?.map { it.id })
     }
 
     @Test
@@ -334,7 +331,7 @@ class HomeViewModelTest {
 
     @Test
     fun staleResultAfterRecommendationTopologyChangeIsDiscarded() = runTest(scheduler) {
-        val gate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        val gate = CompletableDeferred<NetWorkResult<List<Comic>>>()
         val repo = FakeComicRepository(
             embeddedHandler = {
                 if (it == "builtin_week_hot") gate.await() else embeddedOk(it)
@@ -441,7 +438,7 @@ class HomeViewModelTest {
 
     @Test
     fun togglePreferenceWhileCategoryLoadingDoesNotBlockLaterLoad() = runTest(scheduler) {
-        val gate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        val gate = CompletableDeferred<NetWorkResult<List<Comic>>>()
         var firstWeekHot = true
         val repo = FakeComicRepository(
             embeddedHandler = {
@@ -489,7 +486,7 @@ class HomeViewModelTest {
 
     @Test
     fun rapidAToBToAKeepsAWithAValidRequest() = runTest(scheduler) {
-        val aGate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        val aGate = CompletableDeferred<NetWorkResult<List<Comic>>>()
         val repo = FakeComicRepository(
             embeddedHandler = { categoryId ->
                 if (categoryId == "builtin_week_hot") aGate.await() else embeddedOk(categoryId)
@@ -513,12 +510,12 @@ class HomeViewModelTest {
         aGate.complete(NetWorkResult.Success(listOf(item(99))))
         advanceUntilIdle()
         assertFalse(vm.homeState.value.states["builtin_week_hot"]?.isLoading == true)
-        assertEquals(listOf("99"), vm.homeState.value.states["builtin_week_hot"]?.content?.map { it.id })
+        assertEquals(listOf(99), vm.homeState.value.states["builtin_week_hot"]?.content?.map { it.id })
     }
 
     @Test
     fun refreshingCachedCategoryKeepsItsContentVisible() = runTest(scheduler) {
-        val refreshGate = CompletableDeferred<NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>>()
+        val refreshGate = CompletableDeferred<NetWorkResult<List<Comic>>>()
         var weekHotCalls = 0
         val repo = FakeComicRepository(
             embeddedHandler = { categoryId ->
@@ -538,12 +535,12 @@ class HomeViewModelTest {
 
         val refreshing = vm.homeState.value.states["builtin_week_hot"]
         assertTrue(refreshing?.isLoading == true)
-        assertEquals(listOf("1"), refreshing?.content?.map { it.id })
+        assertEquals(listOf(1), refreshing?.content?.map { it.id })
 
         refreshGate.complete(NetWorkResult.Success(listOf(item(2))))
         advanceUntilIdle()
         assertEquals(
-            listOf("2"),
+            listOf(2),
             vm.homeState.value.states["builtin_week_hot"]?.content?.map { it.id },
         )
     }

@@ -10,7 +10,7 @@ import com.par9uet.jm.download.atom.DownloadPageDecoder
 import com.par9uet.jm.download.molecule.DeviceDownloadContentOperations
 import com.par9uet.jm.image.cancellationExceptionOrNull
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.ComicPicListResponse
+import com.par9uet.jm.data.models.ComicPageList
 import com.par9uet.jm.core.network.NetWorkResult
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.CancellationException
@@ -24,8 +24,8 @@ class DownloadContentOperationsTest {
         id = 1, name = "漫画", authorList = emptyList(), coverPath = "/cover.webp", zipPath = "",
         progress = 1f, status = DownloadStatus.DOWNLOADING, createTime = 1, groupId = 100,
     )
-    private var response: NetWorkResult<ComicPicListResponse> = NetWorkResult.Success(
-        ComicPicListResponse(listOf("one", "two"), 1, 123, "speed"),
+    private var response: NetWorkResult<ComicPageList> = NetWorkResult.Success(
+        ComicPageList(listOf("one", "two"), 1, 123, "speed"),
     )
     private val existing = mutableSetOf(0, 1)
     private var saved: DownloadComic? = null
@@ -83,7 +83,7 @@ class DownloadContentOperationsTest {
     @Test
     fun `empty and failed page lists fail before progress updates`() = runTest {
         for (result in listOf(
-            NetWorkResult.Success(ComicPicListResponse(emptyList(), 1, 123, "")),
+            NetWorkResult.Success(ComicPageList(emptyList(), 1, 123, "")),
             NetWorkResult.Error("network"),
         )) {
             response = result

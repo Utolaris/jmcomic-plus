@@ -1,9 +1,9 @@
 package com.par9uet.jm.di
 
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
+import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekResponse
 import com.par9uet.jm.storage.ContentPreferences
 import com.par9uet.jm.storage.RecommendationPreferences
 import com.par9uet.jm.ui.viewModel.HomeViewModel
@@ -27,11 +27,11 @@ class CatalogViewModelWiringTest {
         val repository = Proxy.newProxyInstance(ComicRepository::class.java.classLoader, arrayOf(ComicRepository::class.java)) { _, method, _ ->
             calls += method.name
             when (method.name) {
-                "getWeekData" -> NetWorkResult.Success(WeekResponse(
-                    categories = listOf(WeekResponse.CategoryItem("week", "本周", "分类")),
-                    type = listOf(WeekResponse.TypeItem("hot", "热门")),
+                "getWeekData" -> NetWorkResult.Success(WeekData(
+                    categoryList = listOf("week" to "本周"),
+                    typeList = listOf("hot" to "热门"),
                 ))
-                "getEmbeddedHomeCategory" -> NetWorkResult.Success(emptyList<HomeSwiperComicListItemResponse.ListItem>())
+                "getEmbeddedHomeCategory" -> NetWorkResult.Success(emptyList<Comic>())
                 else -> error("Unexpected request ${method.name}")
             }
         } as ComicRepository

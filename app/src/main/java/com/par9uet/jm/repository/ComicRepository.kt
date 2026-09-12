@@ -1,51 +1,64 @@
 package com.par9uet.jm.repository
 
-import com.par9uet.jm.data.models.ComicSearchOrderFilter
-import com.par9uet.jm.retrofit.model.CollectComicResponse
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.ComicListResponse
-import com.par9uet.jm.retrofit.model.ComicPicListResponse
-import com.par9uet.jm.retrofit.model.CommentComicResponse
-import com.par9uet.jm.retrofit.model.CommentListResponse
-import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
-import com.par9uet.jm.retrofit.model.WeekResponse
+import com.par9uet.jm.data.models.ActionResult
+import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.ComicPageList
+import com.par9uet.jm.data.models.ComicSearchOrderFilter
+import com.par9uet.jm.data.models.ComicSearchPage
+import com.par9uet.jm.data.models.CommentPage
+import com.par9uet.jm.data.models.HomeComicSwiperItem
+import com.par9uet.jm.data.models.WeekData
 
+/**
+ * 漫画数据仓库（L3 边界）。
+ *
+ * 这里**只出现领域类型**：`retrofit/model` 的 wire DTO 由 `repository/impl` 内部消费，
+ * 映射统一走 `data/comic/mapper`。表现层因此不需要认识任何 `*Response`，
+ * 也就不需要在 ViewModel / PagingSource 里重复调用 mapper。
+ */
 interface ComicRepository {
-    suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse>
-    suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse>
-    suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse>
+    suspend fun getComicDetail(id: Int): NetWorkResult<Comic>
+
+    suspend fun collectComic(id: Int): NetWorkResult<Unit>
+
+    suspend fun unCollectComic(id: Int): NetWorkResult<Unit>
+
     /** Embedded API: load one Home category lazily. */
-    suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>>
+    suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<Comic>>
 
     /** Optional network /promote page; each response section is a Home category. */
-    suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>>
-    suspend fun getComicPicList(id: Int): NetWorkResult<ComicPicListResponse>
+    suspend fun getNetworkHomePage(): NetWorkResult<List<HomeComicSwiperItem>>
+
+    suspend fun getComicPicList(id: Int): NetWorkResult<ComicPageList>
+
     suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray?
+
     suspend fun getComicList(
         page: Int,
         order: ComicSearchOrderFilter,
         searchContent: String,
-    ): NetWorkResult<ComicListResponse>
+    ): NetWorkResult<ComicSearchPage>
 
-    suspend fun getWeekData(): NetWorkResult<WeekResponse>
+    suspend fun getWeekData(): NetWorkResult<WeekData>
+
     suspend fun getWeekRecommendComicList(
         page: Int,
         categoryId: String,
         typeId: String,
-    ): NetWorkResult<WeekRecommendComicResponse>
+    ): NetWorkResult<ComicPage>
 
     suspend fun getCommentList(
         page: Int,
         comicId: Int,
-    ): NetWorkResult<CommentListResponse>
+    ): NetWorkResult<CommentPage>
 
     suspend fun comment(
         content: String,
         comicId: Int,
         commentId: Int?
-    ): NetWorkResult<CommentComicResponse>
+    ): NetWorkResult<ActionResult>
 
     /**
      * 通过 JMComic 内置 API 按标签名搜索，返回该标签下的漫画 ID 集合。

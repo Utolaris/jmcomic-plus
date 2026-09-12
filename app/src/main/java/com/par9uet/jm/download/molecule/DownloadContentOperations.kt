@@ -21,7 +21,6 @@ import com.par9uet.jm.image.classifyImageHostFailure
 import com.par9uet.jm.image.cancellationExceptionOrNull
 import com.par9uet.jm.image.isCancellation
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.log
@@ -91,18 +90,18 @@ class DeviceDownloadContentOperations(
             val comicId = downloadTask.id
             when (val data = comicRepository.getComicPicList(comicId)) {
                 is NetWorkResult.Error -> throw IllegalStateException(data.message)
-                is NetWorkResult.Success<ComicPicListResponse> -> {
-                    if (data.data.list.isEmpty()) throw IllegalStateException("图片列表为空")
+                is NetWorkResult.Success -> {
+                    if (data.data.urls.isEmpty()) throw IllegalStateException("图片列表为空")
                     val chapterPath = files.chapterPath(downloadTask)
-                    data.data.list.forEachIndexed { index, url ->
-                        val nextProgress = (index + 1).toFloat() / data.data.list.size
+                    data.data.urls.forEachIndexed { index, url ->
+                        val nextProgress = (index + 1).toFloat() / data.data.urls.size
                         if (!files.pageExists(chapterPath, index)) {
                             val imageState = ComicPicImageState(
                                 index = index,
                                 comicId = comicId,
                                 originSrc = url,
-                                __scrambleId = data.data.__scrambleId,
-                                __speed = data.data.__speed,
+                                __scrambleId = data.data.scrambleId,
+                                __speed = data.data.speed,
                             )
                             val bitmap = downloadPageWithinTimeout(DOWNLOAD_PAGE_TIMEOUT_MS) {
                                 decoder.decode(imageState)

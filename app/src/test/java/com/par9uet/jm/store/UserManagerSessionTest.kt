@@ -15,11 +15,11 @@ import com.par9uet.jm.session.UserRepository
 import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
+import com.par9uet.jm.core.model.SignInData
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.SignInDataResponse
-import com.par9uet.jm.retrofit.model.SignInResponse
-import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
-import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
+import com.par9uet.jm.data.models.ActionResult
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.CommentPage
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.core.ToastManager
@@ -474,7 +474,7 @@ class UserManagerSessionTest {
 
         override suspend fun getHistoryComicList(
             page: Int
-        ): NetWorkResult<UserHistoryComicListResponse> = NetWorkResult.Error("stub")
+        ): NetWorkResult<ComicPage> = NetWorkResult.Error("stub")
 
         override suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit> =
             NetWorkResult.Error("stub")
@@ -482,12 +482,12 @@ class UserManagerSessionTest {
         override suspend fun getHistoryCommentList(
             page: Int,
             userId: Int
-        ): NetWorkResult<UserHistoryCommentListResponse> = NetWorkResult.Error("stub")
+        ): NetWorkResult<CommentPage> = NetWorkResult.Error("stub")
 
-        override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> =
+        override suspend fun getSignData(userId: Int): NetWorkResult<SignInData> =
             NetWorkResult.Error("stub")
 
-        override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<SignInResponse> =
+        override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<ActionResult> =
             NetWorkResult.Error("stub")
     }
 

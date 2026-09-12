@@ -1,18 +1,26 @@
 package com.par9uet.jm.data.comic.mapper
 
+import com.par9uet.jm.data.models.ActionResult
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.ComicPageList
+import com.par9uet.jm.data.models.ComicSearchPage
 import com.par9uet.jm.data.models.Comment
+import com.par9uet.jm.data.models.CommentPage
 import com.par9uet.jm.data.models.HomeComicSwiperItem
 import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.ComicListResponse
+import com.par9uet.jm.retrofit.model.ComicPicListResponse
+import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
+import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.translateCommentTime
 
 /**
@@ -204,3 +212,70 @@ internal fun WeekRecommendComicResponse.toComicList(): List<Comic> {
 }
 
 private fun String?.toIntOrZero(): Int = this?.toIntOrNull() ?: 0
+
+/**
+ * 分页/回执类响应 -> 领域契约。
+ *
+ * 这些映射原先散在 `ui/pagingSource` 与 `ui/viewModel` 里（调用方各自调 `toComicList()`），
+ * 会让 wire DTO 一路渗到表现层。收口到这里后，仓库层返回的就是领域类型。
+ */
+
+internal fun ComicListResponse.toComicSearchPage(): ComicSearchPage {
+    val redirect = redirect_aid
+    // 协议里 redirect_aid 存在即表示"唯一匹配、应跳转"。非数字属协议畸形：
+    // 解析失败必须留痕，否则会静默退化成"继续分页"，看不出服务端返回了异常值。
+    if (!redirect.isNullOrBlank() && redirect.toIntOrNull() == null) {
+        log("ResponseMappers", "malformed redirect_aid=$redirect")
+    }
+    return ComicSearchPage(
+        items = toComicList(),
+        total = total.toIntOrZero(),
+        redirectComicId = redirect?.toIntOrNull(),
+    )
+}
+
+internal fun CommentListResponse.toCommentPage(): CommentPage {
+    // total 为空或非数字时降级为 0；0 会让分页在第一页就判定末页（表现为"评论只有一页"），
+    // 所以要留痕，便于区分"真只有一页"和"服务端没给 total"。
+    if (total.toIntOrNull() == null) {
+        log("ResponseMappers", "malformed comment total=$total")
+    }
+    return CommentPage(items = toCommentList(), total = total.toIntOrZero())
+}
+
+internal fun UserHistoryCommentListResponse.toCommentPage(): CommentPage {
+    return CommentPage(items = toCommentList(), total = total)
+}
+
+/**
+ * watch_list 不返回 total，因此置 null —— 调用方按"本页是否填满页大小"判断末页，
+ * 不能拿一个凑出来的数字冒充服务端总数。
+ */
+internal fun UserHistoryComicListResponse.toComicPage(): ComicPage {
+    return ComicPage(items = toComicList(), total = null)
+}
+
+internal fun WeekRecommendComicResponse.toComicPage(): ComicPage {
+    return ComicPage(items = toComicList(), total = total)
+}
+
+internal fun ComicPicListResponse.toComicPageList(): ComicPageList {
+    return ComicPageList(
+        urls = list,
+        albumId = __aId,
+        scrambleId = __scrambleId,
+        speed = __speed,
+    )
+}
+
+/** `status` 的成功判定规则留在数据层，表现层只读 [ActionResult.isSuccess]。 */
+internal fun CommentComicResponse.toActionResult(): ActionResult {
+    val normalized = status.trim()
+    return ActionResult(
+        isSuccess = normalized.isBlank() ||
+            normalized.equals("ok", ignoreCase = true) ||
+            normalized.equals("success", ignoreCase = true),
+        message = msg,
+    )
+}
+

@@ -1,10 +1,10 @@
 package com.par9uet.jm.session
-import com.par9uet.jm.retrofit.model.LoginResponse
+import com.par9uet.jm.core.model.SignInData
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.SignInDataResponse
-import com.par9uet.jm.retrofit.model.SignInResponse
-import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
-import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
+import com.par9uet.jm.data.models.ActionResult
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.CommentPage
+import com.par9uet.jm.retrofit.model.LoginResponse
 import okhttp3.Cookie
 
 /** Isolated authenticated session that can be promoted after the caller validates its generation. */
@@ -13,6 +13,12 @@ data class CandidateSession(
     val embeddedCookies: List<Cookie> = emptyList(),
 )
 
+/**
+ * 会话仓库。
+ *
+ * 对外方法只返回领域类型（`SignInData` / `ComicPage` / `CommentPage` / `ActionResult`），
+ * 登录凭据 `LoginResponse` 只在本包内传递，不进表现层。
+ */
 interface UserRepository {
     suspend fun login(username: String, password: String): NetWorkResult<CandidateSession>
 
@@ -31,19 +37,19 @@ interface UserRepository {
     /** Clears client-side session state without performing a network logout request. */
     fun clearSession()
 
-    suspend fun getHistoryComicList(page: Int = 1): NetWorkResult<UserHistoryComicListResponse>
+    suspend fun getHistoryComicList(page: Int = 1): NetWorkResult<ComicPage>
     suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit>
     suspend fun getHistoryCommentList(
         page: Int = 1,
         userId: Int
-    ): NetWorkResult<UserHistoryCommentListResponse>
+    ): NetWorkResult<CommentPage>
 
     suspend fun getSignData(
         userId: Int,
-    ): NetWorkResult<SignInDataResponse>
+    ): NetWorkResult<SignInData>
 
     suspend fun signIn(
         userId: Int,
         dailyId: Int,
-    ): NetWorkResult<SignInResponse>
+    ): NetWorkResult<ActionResult>
 }

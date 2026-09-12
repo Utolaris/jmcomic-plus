@@ -1,11 +1,9 @@
 package com.par9uet.jm.ui.pagingSource
 
-import com.par9uet.jm.data.comic.mapper.toCommentList
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comment
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.core.network.NetWorkResult
 
 class ComicCommentPagingSource(
@@ -20,9 +18,9 @@ class ComicCommentPagingSource(
                 LoadResult.Error(Exception(data.message))
             }
 
-            is NetWorkResult.Success<CommentListResponse> -> {
-                val list = data.data.toCommentList()
-                val total = data.data.total.toInt()
+            is NetWorkResult.Success -> {
+                val list = data.data.items
+                val total = data.data.total
                 val isLastPage = currentPage >= (total + params.loadSize - 1) / params.loadSize
                 LoadResult.Page(
                     data = list,

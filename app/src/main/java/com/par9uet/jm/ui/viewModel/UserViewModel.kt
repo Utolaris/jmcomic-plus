@@ -10,8 +10,6 @@ import com.par9uet.jm.core.model.SignInData
 import com.par9uet.jm.session.CandidateSession
 import com.par9uet.jm.session.UserRepository
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.SignInDataResponse
-import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.storage.ContentPreferences
 import com.par9uet.jm.core.ToastManager
@@ -210,10 +208,10 @@ class UserViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<SignInDataResponse> -> {
+                is NetWorkResult.Success -> {
                     _signInDataState.update {
                         it.copy(
-                            data = data.data.toSignData()
+                            data = data.data
                         )
                     }
                 }
@@ -250,12 +248,12 @@ class UserViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<SignInResponse> -> {
-                    toastManager.showAsync(data.data.msg)
+                is NetWorkResult.Success -> {
+                    toastManager.showAsync(data.data.message)
                     getSignInData()
                     _signInState.update {
                         it.copy(
-                            data = data.data.msg
+                            data = data.data.message
                         )
                     }
                 }

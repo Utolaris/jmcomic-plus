@@ -32,3 +32,15 @@ fun <T> NetWorkResult<T>.getOrThrow(): T {
         is NetWorkResult.Error -> throw RuntimeException(message)
     }
 }
+
+/**
+ * 只映射成功值，失败原样透传（保留 message / code / authFailure / kind / cause）。
+ *
+ * 用于仓库层把 wire DTO 就地映射成领域类型：`dataSource.getX().map { it.toDomain() }`。
+ */
+inline fun <T, R> NetWorkResult<T>.map(transform: (T) -> R): NetWorkResult<R> {
+    return when (this) {
+        is NetWorkResult.Success -> NetWorkResult.Success(transform(data))
+        is NetWorkResult.Error -> this
+    }
+}

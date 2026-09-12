@@ -1,14 +1,14 @@
 package com.par9uet.jm.ui.pagingSource
 
 import androidx.paging.PagingSource
+import com.par9uet.jm.core.model.SignInData
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.data.models.ActionResult
 import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.CommentPage
 import com.par9uet.jm.session.CandidateSession
 import com.par9uet.jm.session.UserRepository
-import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.SignInDataResponse
-import com.par9uet.jm.retrofit.model.SignInResponse
-import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
-import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -73,24 +73,44 @@ class HistoryComicPagingSourceTest {
 
     private class HistoryRepository(private val sizes: Map<Int, Int>) : UserRepository {
         val requests = mutableListOf<Int>()
-        override suspend fun getHistoryComicList(page: Int): NetWorkResult<UserHistoryComicListResponse> {
+
+        /**
+         * watch_list 语境：仓库返回的已经是领域 [Comic]，
+         * `total` 为 null 表示服务端不提供总数（末页改由本页条数判断）。
+         * 标签直接落在 `tagList` 上——`filterBlockedTags` 读的就是这个字段。
+         */
+        override suspend fun getHistoryComicList(page: Int): NetWorkResult<ComicPage> {
             requests += page
-            return NetWorkResult.Success(UserHistoryComicListResponse(
-                list = List(sizes.getValue(page)) { index ->
-                    UserHistoryComicListResponse.ListItem(
-                        id = (page * 100 + index).toString(), author = "author", description = null,
-                        name = "comic", image = "", category = UserHistoryComicListResponse.ListItem.Category("1", "blocked"),
-                        category_sub = UserHistoryComicListResponse.ListItem.Category(null, null),
-                    )
-                },
-            ))
+            return NetWorkResult.Success(
+                ComicPage(
+                    items = List(sizes.getValue(page)) { index ->
+                        historyComic(id = page * 100 + index)
+                    },
+                    total = null,
+                )
+            )
         }
+
         override suspend fun login(username: String, password: String): NetWorkResult<CandidateSession> = error("unused")
         override fun activateVerifiedSession(verified: CandidateSession) = Unit
         override fun clearSession() = Unit
         override suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit> = error("unused")
-        override suspend fun getHistoryCommentList(page: Int, userId: Int): NetWorkResult<UserHistoryCommentListResponse> = error("unused")
-        override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> = error("unused")
-        override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<SignInResponse> = error("unused")
+        override suspend fun getHistoryCommentList(page: Int, userId: Int): NetWorkResult<CommentPage> = error("unused")
+        override suspend fun getSignData(userId: Int): NetWorkResult<SignInData> = error("unused")
+        override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<ActionResult> = error("unused")
+
+        private fun historyComic(id: Int): Comic = Comic(
+            id = id,
+            name = "comic",
+            authorList = listOf("author"),
+            description = "",
+            readCount = 0,
+            likeCount = 0,
+            commentCount = 0,
+            tagList = listOf("blocked"),
+            roleList = listOf(),
+            workList = listOf(),
+            price = 0,
+        )
     }
 }

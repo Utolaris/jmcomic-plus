@@ -1,13 +1,10 @@
 package com.par9uet.jm.ui.pagingSource
 
-import com.par9uet.jm.data.comic.mapper.toComicList
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.ComicListResponse
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.contentfilter.filterBlockedTags
 import com.par9uet.jm.contentfilter.normalizeSearchExcludedTags
@@ -42,9 +39,9 @@ class SearchComicPagingSource(
                 LoadResult.Error(Exception(data.message))
             }
 
-            is NetWorkResult.Success<ComicListResponse> -> {
-                if (data.data.redirect_aid != null) {
-                    val redirectId = data.data.redirect_aid.toInt()
+            is NetWorkResult.Success -> {
+                val redirectId = data.data.redirectComicId
+                if (redirectId != null) {
                     if (isComicBlockedByDetail(redirectId, excludedTags.toTagSet())) {
                         onFindSingleComicId(null)
                     } else {
@@ -57,8 +54,8 @@ class SearchComicPagingSource(
                     )
                 } else {
                     onFindSingleComicId(null)
-                    val list = filterExcludedComics(data.data.toComicList(), excludedTags)
-                    val total = data.data.total.toInt()
+                    val list = filterExcludedComics(data.data.items, excludedTags)
+                    val total = data.data.total
                     val isLastPage = currentPage >= (total + params.loadSize - 1) / params.loadSize
                     LoadResult.Page(
                         data = list,
@@ -112,7 +109,7 @@ class SearchComicPagingSource(
         detailBlockedCache[comicId]?.let { return it }
 
         val isBlocked = when (val detail = comicRepository.getComicDetail(comicId)) {
-            is NetWorkResult.Success<ComicDetailResponse> -> detail.data.containsAnyExcludedTag(excludedTagSet)
+            is NetWorkResult.Success -> detail.data.containsAnyExcludedTag(excludedTagSet)
             is NetWorkResult.Error -> false
         }
         detailBlockedCache[comicId] = isBlocked
@@ -131,8 +128,8 @@ class SearchComicPagingSource(
         return normalizeSearchExcludedTags(this).map { it.toTagKey() }.toSet()
     }
 
-    private fun ComicDetailResponse.containsAnyExcludedTag(excludedTagSet: Set<String>): Boolean {
-        return (tags + actors + works)
+    private fun Comic.containsAnyExcludedTag(excludedTagSet: Set<String>): Boolean {
+        return (tagList + roleList + workList)
             .map { it.toTagKey() }
             .any { it in excludedTagSet }
     }

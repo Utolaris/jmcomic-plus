@@ -1,12 +1,10 @@
 package com.par9uet.jm.ui.pagingSource
 
-import com.par9uet.jm.data.comic.mapper.toComicList
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.contentfilter.filterBlockedTags
 
 data class WeekFilter(
@@ -37,10 +35,14 @@ class WeekComicPagingSource(
                 LoadResult.Error(Exception(data.message))
             }
 
-            is NetWorkResult.Success<WeekRecommendComicResponse> -> {
-                val list = data.data.toComicList().filterBlockedTags(blockedTagList)
+            is NetWorkResult.Success -> {
+                val list = data.data.items.filterBlockedTags(blockedTagList)
                 val total = data.data.total
-                val isLastPage = currentPage >= (total + params.loadSize - 1) / params.loadSize
+                val isLastPage = if (total != null) {
+                    currentPage >= (total + params.loadSize - 1) / params.loadSize
+                } else {
+                    data.data.items.size < params.loadSize
+                }
                 LoadResult.Page(
                     data = list,
                     prevKey = if (currentPage == 1) null else currentPage - 1,

@@ -1,15 +1,20 @@
 package com.par9uet.jm.repository.impl
 
 import com.par9uet.jm.core.BaseRepository
+import com.par9uet.jm.data.comic.mapper.toComicPage
+import com.par9uet.jm.data.comic.mapper.toCommentPage
+import com.par9uet.jm.data.models.ActionResult
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.CommentPage
 import com.par9uet.jm.network.AuthenticatedEmbeddedClient
 import com.par9uet.jm.network.EmbeddedClientManager
 import com.par9uet.jm.session.CandidateSession
 import com.par9uet.jm.session.UserRepository
+import com.par9uet.jm.core.model.SignInData
 import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.SignInDataResponse
-import com.par9uet.jm.retrofit.model.SignInResponse
+import com.par9uet.jm.core.network.map
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import io.github.jukomu.jmcomic.api.exception.NetworkException
@@ -110,7 +115,7 @@ class UserRepositoryImpl(
         }
     }
 
-    override suspend fun getHistoryComicList(page: Int): NetWorkResult<UserHistoryComicListResponse> {
+    override suspend fun getHistoryComicList(page: Int): NetWorkResult<ComicPage> {
         return safeEmbeddedCall("内置 API 获取历史漫画失败") {
             requireNotNull(
                 authenticatedEmbeddedClient.withClient { client ->
@@ -120,7 +125,7 @@ class UserRepositoryImpl(
                     )
                 }
             )
-        }
+        }.map { it.toComicPage() }
     }
 
     override suspend fun deleteHistoryComic(id: Int): NetWorkResult<Unit> {
@@ -135,7 +140,7 @@ class UserRepositoryImpl(
     override suspend fun getHistoryCommentList(
         page: Int,
         userId: Int
-    ): NetWorkResult<UserHistoryCommentListResponse> {
+    ): NetWorkResult<CommentPage> {
         return safeEmbeddedCall("内置 API 获取评论历史失败") {
             requireNotNull(
                 authenticatedEmbeddedClient.withClient { client ->
@@ -149,26 +154,26 @@ class UserRepositoryImpl(
                     )
                 }
             )
-        }
+        }.map { it.toCommentPage() }
     }
 
-    override suspend fun getSignData(userId: Int): NetWorkResult<SignInDataResponse> {
+    override suspend fun getSignData(userId: Int): NetWorkResult<SignInData> {
         return safeEmbeddedCall("内置 API 获取签到数据失败") {
             requireNotNull(
                 authenticatedEmbeddedClient.withClient { client ->
                     val status = client.getDailyCheckInStatus(userId.toString())
-                    status.toSignInDataResponse()
+                    status.toSignInData()
                 }
             )
         }
     }
 
-    override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<SignInResponse> {
+    override suspend fun signIn(userId: Int, dailyId: Int): NetWorkResult<ActionResult> {
         return safeEmbeddedCall("内置 API 签到失败") {
             authenticatedEmbeddedClient.withClient { client ->
                 client.doDailyCheckin(userId.toString(), dailyId.toString())
             }
-            SignInResponse(msg = "签到成功")
+            ActionResult(isSuccess = true, message = "签到成功")
         }
     }
 
@@ -229,26 +234,31 @@ class UserRepositoryImpl(
         )
     }
 
-    private fun JmDailyCheckInStatus.toSignInDataResponse(): SignInDataResponse {
-        return SignInDataResponse(
-            daily_id = dailyId,
-            three_days_coin = threeDaysCoin,
-            three_days_exp = threeDaysExp,
-            seven_days_coin = sevenDaysCoin,
-            seven_days_exp = sevenDaysExp,
-            event_name = eventName,
-            background_pc = backgroundPc,
-            background_phone = backgroundPhone,
+    /**
+     * 内置 API 的签到状态直接映射成 `core.model.SignInData`。
+     * 不再绕一层 wire 的 `SignInDataResponse`（已删除）：此前经它再 `toSignData()`
+     * 会让映射规则分两处维护。
+     */
+    private fun JmDailyCheckInStatus.toSignInData(): SignInData {
+        return SignInData(
+            dailyId = dailyId,
+            threeDaysCoin = threeDaysCoin.toIntOrNull() ?: 0,
+            threeDaysExp = threeDaysExp.toIntOrNull() ?: 0,
+            sevenDaysCoin = sevenDaysCoin.toIntOrNull() ?: 0,
+            sevenDaysExp = sevenDaysExp.toIntOrNull() ?: 0,
+            eventName = eventName,
             currentProgress = currentProgress,
-            record = record.map { week ->
-                week.map { item ->
-                    SignInDataResponse.RecordItem(
-                        date = item.date,
-                        signed = item.signed ?: false,
-                        bonus = item.bonus,
+            dateMap = record.flatten()
+                .map { item ->
+                    SignInData.SignInDataDateMapValue(
+                        isSign = item.signed ?: false,
+                        hasExtraBonus = item.bonus,
                     )
                 }
-            }
+                .foldIndexed(mutableMapOf<Int, SignInData.SignInDataDateMapValue>()) { index, acc, item ->
+                    acc[index + 1] = item
+                    acc
+                },
         )
     }
 }

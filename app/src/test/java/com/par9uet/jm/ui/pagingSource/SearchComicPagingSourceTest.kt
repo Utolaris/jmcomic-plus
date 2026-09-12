@@ -1,20 +1,17 @@
 package com.par9uet.jm.ui.pagingSource
 
 import androidx.paging.PagingSource
-import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.ComicSearchOrderFilter
-import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.CollectComicResponse
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.ComicDetailRelatedListItemResponse
-import com.par9uet.jm.retrofit.model.ComicListResponse
-import com.par9uet.jm.retrofit.model.ComicPicListResponse
-import com.par9uet.jm.retrofit.model.CommentComicResponse
-import com.par9uet.jm.retrofit.model.CommentListResponse
-import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
-import com.par9uet.jm.retrofit.model.WeekResponse
+import com.par9uet.jm.data.models.ActionResult
+import com.par9uet.jm.data.models.Comic
+import com.par9uet.jm.data.models.ComicPage
+import com.par9uet.jm.data.models.ComicPageList
+import com.par9uet.jm.data.models.ComicSearchOrderFilter
+import com.par9uet.jm.data.models.ComicSearchPage
+import com.par9uet.jm.data.models.CommentPage
+import com.par9uet.jm.data.models.HomeComicSwiperItem
+import com.par9uet.jm.data.models.WeekData
+import com.par9uet.jm.repository.ComicRepository
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -47,31 +44,31 @@ class SearchComicPagingSourceTest {
     private class FakeComicRepository : ComicRepository {
         var lastSearchContent: String? = null
 
+        /**
+         * 仓库现在直接返回领域契约：搜索结果页带 `total`，
+         * 详情直接用 `tagList` 参与标签排除（不再经过 wire 的 tags/actors/works）。
+         */
         override suspend fun getComicList(
             page: Int,
             order: ComicSearchOrderFilter,
             searchContent: String
-        ): NetWorkResult<ComicListResponse> {
+        ): NetWorkResult<ComicSearchPage> {
             lastSearchContent = searchContent
             return NetWorkResult.Success(
-                ComicListResponse(
-                    search_query = searchContent,
-                    total = "2",
-                    redirect_aid = null,
-                    content = listOf(
-                        contentItem(id = 1),
-                        contentItem(id = 2)
-                    )
+                ComicSearchPage(
+                    items = listOf(
+                        comic(id = 1, tags = listOf("category")),
+                        comic(id = 2, tags = listOf("category")),
+                    ),
+                    total = 2,
+                    redirectComicId = null,
                 )
             )
         }
 
-        override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> {
+        override suspend fun getComicDetail(id: Int): NetWorkResult<Comic> {
             return NetWorkResult.Success(
-                detail(
-                    id = id,
-                    tags = if (id == 1) listOf("a") else listOf("c")
-                )
+                comic(id = id, tags = if (id == 1) listOf("a") else listOf("c"))
             )
         }
 
@@ -79,73 +76,48 @@ class SearchComicPagingSourceTest {
             error("getComicIdsByTag should not be used for search exclusions")
         }
 
+        override suspend fun collectComic(id: Int): NetWorkResult<Unit> = unused()
 
-        override suspend fun collectComic(id: Int): NetWorkResult<CollectComicResponse> = unused()
+        override suspend fun unCollectComic(id: Int): NetWorkResult<Unit> = unused()
 
-        override suspend fun unCollectComic(id: Int): NetWorkResult<CollectComicResponse> = unused()
+        override suspend fun getEmbeddedHomeCategory(categoryId: String): NetWorkResult<List<Comic>> =
+            unused()
 
-        override suspend fun getEmbeddedHomeCategory(
-            categoryId: String
-        ): NetWorkResult<List<HomeSwiperComicListItemResponse.ListItem>> = unused()
+        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeComicSwiperItem>> = unused()
 
-        override suspend fun getNetworkHomePage(): NetWorkResult<List<HomeSwiperComicListItemResponse>> = unused()
-
-        override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPicListResponse> = unused()
+        override suspend fun getComicPicList(id: Int): NetWorkResult<ComicPageList> = unused()
 
         override suspend fun downloadImageBytes(comicId: Int, imageIndex: Int): ByteArray? = unused()
 
-        override suspend fun getWeekData(): NetWorkResult<WeekResponse> = unused()
+        override suspend fun getWeekData(): NetWorkResult<WeekData> = unused()
 
         override suspend fun getWeekRecommendComicList(
             page: Int,
             categoryId: String,
             typeId: String
-        ): NetWorkResult<WeekRecommendComicResponse> = unused()
+        ): NetWorkResult<ComicPage> = unused()
 
-        override suspend fun getCommentList(page: Int, comicId: Int): NetWorkResult<CommentListResponse> = unused()
+        override suspend fun getCommentList(page: Int, comicId: Int): NetWorkResult<CommentPage> = unused()
 
         override suspend fun comment(
             content: String,
             comicId: Int,
             commentId: Int?
-        ): NetWorkResult<CommentComicResponse> = unused()
+        ): NetWorkResult<ActionResult> = unused()
 
-        private fun contentItem(id: Int): ComicListResponse.ContentListItem {
-            val category = ComicListResponse.ContentListItem.Category(id = null, title = "category")
-            return ComicListResponse.ContentListItem(
-                id = id.toString(),
-                author = "author",
-                description = "",
-                name = "comic $id",
-                image = "",
-                category = category,
-                category_sub = category,
-                is_favorite = false,
-                update_at = 0,
-                tags = null
-            )
-        }
-
-        private fun detail(id: Int, tags: List<String>): ComicDetailResponse {
-            return ComicDetailResponse(
-                id = id,
-                name = "comic $id",
-                description = "",
-                author = listOf("author"),
-                total_views = 0,
-                likes = 0,
-                comment_total = 0,
-                tags = tags,
-                actors = emptyList(),
-                works = emptyList(),
-                is_favorite = false,
-                related_list = emptyList<ComicDetailRelatedListItemResponse>(),
-                series = emptyList(),
-                series_id = "",
-                price = "0",
-                purchased = false
-            )
-        }
+        private fun comic(id: Int, tags: List<String>): Comic = Comic(
+            id = id,
+            name = "comic $id",
+            authorList = listOf("author"),
+            description = "",
+            readCount = 0,
+            likeCount = 0,
+            commentCount = 0,
+            tagList = tags,
+            roleList = emptyList(),
+            workList = emptyList(),
+            price = 0,
+        )
 
         private fun unused(): Nothing {
             throw UnsupportedOperationException("Unused fake repository method")

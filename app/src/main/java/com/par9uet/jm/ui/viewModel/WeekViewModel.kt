@@ -1,6 +1,5 @@
 package com.par9uet.jm.ui.viewModel
 
-import com.par9uet.jm.data.comic.mapper.toWeekData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -9,7 +8,6 @@ import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.WeekResponse
 import com.par9uet.jm.storage.ContentPreferences
 import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.ui.pagingSource.WeekComicPagingSource
@@ -44,8 +42,8 @@ class WeekViewModel(
                     }
                 }
 
-                is NetWorkResult.Success<WeekResponse> -> {
-                    val d = data.data.toWeekData()
+                is NetWorkResult.Success -> {
+                    val d = data.data
                     _weekDataState.update {
                         it.copy(data = d)
                     }

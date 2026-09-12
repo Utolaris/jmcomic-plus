@@ -10,7 +10,6 @@ import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.core.network.NetworkErrorKind
-import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.utils.log
@@ -313,7 +312,7 @@ class UserManager(
 
         val signData = when (val result = userRepository.getSignData(snapshot.user.id)) {
             is NetWorkResult.Error -> return@runInBackground
-            is NetWorkResult.Success<SignInDataResponse> -> result.data.toSignData()
+            is NetWorkResult.Success -> result.data
         }
         coroutineContext.ensureActive()
         if (!isCurrentSession(snapshot)) return@runInBackground
@@ -323,7 +322,7 @@ class UserManager(
         when (val result = userRepository.signIn(snapshot.user.id, signData.dailyId)) {
             is NetWorkResult.Success -> {
                 coroutineContext.ensureActive()
-                if (isCurrentSession(snapshot)) toastManager.showAsync(result.data.msg)
+                if (isCurrentSession(snapshot)) toastManager.showAsync(result.data.message)
             }
 
             is NetWorkResult.Error -> log("自动签到", "签到失败：" + result.message)

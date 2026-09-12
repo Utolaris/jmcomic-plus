@@ -1,6 +1,5 @@
 package com.par9uet.jm
 
-import com.par9uet.jm.data.comic.mapper.toComic
 import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +21,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -48,10 +48,15 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavHostController
 import com.par9uet.jm.ui.navigation.RetainedMainNavigation
+import com.par9uet.jm.ui.models.ComicDetailLoader
+import com.par9uet.jm.ui.models.ComicDetailOpener
+import com.par9uet.jm.ui.models.LocalComicDetailLoader
+import com.par9uet.jm.ui.models.LocalComicDetailOpener
+import com.par9uet.jm.ui.models.LocalRemoteImageHost
+import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.startup.PostStartupCoordinator
 import com.par9uet.jm.storage.LocalSettingManager
@@ -65,17 +70,20 @@ import com.par9uet.jm.ui.screens.AppLockScreen
 import com.par9uet.jm.ui.screens.AppScreen
 import com.par9uet.jm.ui.screens.NsfwWarningDialog
 import com.par9uet.jm.ui.screens.WelcomeScreen
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.koin.compose.getKoin
+import org.koin.compose.viewmodel.koinActivityViewModel
 
 @Composable
 fun App(
     toastManager: ToastManager = getKoin().get(),
     localSettingManager: LocalSettingManager = getKoin().get(),
     postStartupCoordinator: PostStartupCoordinator = getKoin().get(),
+    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
 ) {
     val appLock by localSettingManager.appLock.collectAsState()
     val onboardingCompleted by localSettingManager.onboardingCompleted.collectAsState()
@@ -141,15 +149,51 @@ fun App(
         )
 
     }
-    RetainedMainNavigation(visible = !showOnboarding && !showAppLock) { mainNavController ->
-        MainAppContent(
-            mainNavController = mainNavController,
-            clipboardAutoDetectEnabled = miscSettings.clipboardAutoDetectEnabled,
-            localSettingManager = localSettingManager,
-            toastManager = toastManager,
-            showNsfwDialog = showNsfwDialog,
-            onNsfwDismissed = { sessionNsfwDismissed = true },
-        )
+    // 远端图片主机是 App 级环境值：在这里读一次，组件与页面只消费环境值，
+    // 避免每个看图的地方各自依赖 storage 端口。
+    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
+    val koin = getKoin()
+    val detailLoader = remember(koin) {
+        ComicDetailLoader { id ->
+            withContext(Dispatchers.IO) {
+                val outcome = runCatching { koin.get<ComicRepository>().getComicDetail(id) }
+                // runCatching 会连 CancellationException 一起吞掉，把它当成"详情获取失败"
+                // 会让协程取消无法传播（经典坑）。必须原样抛出。
+                outcome.exceptionOrNull()?.let { error ->
+                    if (error is CancellationException) throw error
+                }
+                when (val result = outcome.getOrNull()) {
+                    is NetWorkResult.Success -> result.data
+                    else -> null
+                }
+            }
+        }
+    }
+    CompositionLocalProvider(
+        LocalRemoteImageHost provides remoteImageHost,
+        LocalComicDetailLoader provides detailLoader,
+    ) {
+        RetainedMainNavigation(visible = !showOnboarding && !showAppLock) { mainNavController ->
+            // 在根上准备"打开详情"的编排：先用列表项预置详情状态，再导航。
+            // ui/components 只读 CompositionLocal，不依赖 ViewModel。
+            val comicDetailViewModel: ComicDetailViewModel = koinActivityViewModel()
+            val detailOpener = remember(mainNavController, comicDetailViewModel) {
+                ComicDetailOpener { comic ->
+                    comicDetailViewModel.prepareDetail(comic)
+                    mainNavController.navigate("comicDetail/${comic.id}")
+                }
+            }
+            CompositionLocalProvider(LocalComicDetailOpener provides detailOpener) {
+                MainAppContent(
+                    mainNavController = mainNavController,
+                    clipboardAutoDetectEnabled = miscSettings.clipboardAutoDetectEnabled,
+                    localSettingManager = localSettingManager,
+                    toastManager = toastManager,
+                    showNsfwDialog = showNsfwDialog,
+                    onNsfwDismissed = { sessionNsfwDismissed = true },
+                )
+            }
+        }
     }
 }
 
@@ -219,9 +263,8 @@ private fun MainAppContent(
             runCatching { koin.get<ComicRepository>().getComicDetail(id) }.getOrNull()
         }
         when (result) {
-            is NetWorkResult.Success<*> -> {
-                @Suppress("UNCHECKED_CAST")
-                clipboardDetectedComic = (result.data as ComicDetailResponse).toComic()
+            is NetWorkResult.Success -> {
+                clipboardDetectedComic = result.data
             }
 
             else -> {
