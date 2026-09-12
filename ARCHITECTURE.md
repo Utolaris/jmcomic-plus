@@ -5,29 +5,31 @@
 
 > 本文描述的是**当前代码的真实状态**，不是目标状态。文中出现的每个类名、路径和数字都应能在
 > `app/src/main/java/com/par9uet/jm` 下找到；与代码不符的措辞视为文档缺陷，应直接修正。
-> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 329 个 Kotlin 文件 / 42,280 行。
+> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 334 个 Kotlin 文件 / 42,589 行。
+> 本轮迁移（store 清空 + 依赖环消除）后的全量核对：2026-09-12。
 
 ## 层级
 
 | 层 | 职责 | 主要落点 |
 | --- | --- | --- |
 | L1 Entry | 只接收事件并交给 L2，不做业务判断 | `ui/screens`（33 个 `*Screen.kt`）、`ui/navigation`、`MainActivity`、`App`、`worker/DownloadComicWorker`（26 行）、`worker/CacheMigrationWorker`（54 行） |
-| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（14 个，加上 `favorites/presentation/FavoritesViewModel` 共 15 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`（含 `DownloadManager`）、`cache/migration` 的协调器与通知适配、`favorites/sync`、`startup/PostStartupCoordinator`、`store` 中的兼容入口（`UserManager` 等） |
-| L3 Molecule | 组合多个原子能力，完成一个完整业务动作 | `reader/molecule`、`download/molecule`（含 `DownloadLibraryQueries`）、`cache/migration` 的操作端口与实现、`favorites/usecase`、`backup/BackupRestoreOperations`、`download/export/DownloadExportOperations` |
-| L4 Atom | 每个原子只负责一个底层契约 | `database`、`storage`、`retrofit`、`data`、`repository`、`network`、`image`、`coil`、`cache/atom`、`reader/atom`、`download/atom`、`download/export/PdfExport`、`favorites/data`、`update`（含 `AppUpdateDownloadManager` 下载适配）、`contentfilter`、`launcher`、`utils` |
-| Shared Contract | 不含行为的稳定 DTO，可被各层依赖 | `core/model/CommonUIState`、`favorites/model/FavoritesModels`、`reader/ReaderImageModels`、`download/model/DownloadLibraryModels` |
+| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（14 个，加上 `favorites/presentation/FavoritesViewModel` 共 15 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`（含 `DownloadManager`）、`cache/migration` 的协调器与通知适配、`favorites/sync`、`session`（`UserManager`、`AuthenticatedRequestRecovery`）、`startup/PostStartupCoordinator` |
+| L3 Molecule | 组合多个原子能力，完成一个完整业务动作 | `reader/molecule`、`download/molecule`（含 `DownloadLibraryQueries`）、`cache/migration` 的操作端口与实现、`favorites/usecase`、`backup/BackupRestoreOperations`、`download/export/DownloadExportOperations`、`repository/impl`（组合网络服务、内置客户端与领域映射） |
+| L4 Atom | 每个原子只负责一个底层契约 | `database`、`storage`、`retrofit`、`data`、`network`（含内置 API 客户端三件套）、`image`、`coil`、`cache/atom`、`reader/atom`、`download/atom`、`download/export/PdfExport`、`favorites/data`（含 `FavoriteStore`）、`update`（含 `AppUpdateDownloadManager` 下载适配）、`contentfilter`、`launcher`、`utils` |
+| Shared Contract | 不含行为的稳定 DTO，可被各层依赖 | `core/model`（`CommonUIState`、`User`、`RemoteSetting`、`SignInData`）、`core/network`（`NetWorkResult` / `ResponseWrapper` / `AuthFailure`）、`favorites/model/FavoritesModels`、`reader/ReaderImageModels`、`download/model/DownloadLibraryModels` |
 
 依赖方向为 `L1 -> L2 -> L3 -> L4`。L3 之间、L4 之间不得为了方便横向调用；
 需要组合时提升到 L3，需要决定顺序时提升到 L2。`di` 是组合根，可以引用所有层，
 但不得承载业务判断。
 
-`store` 仍是**历史混合包**，同一包内既有 L2 兼容入口（`UserManager`、`FavoriteStore`），
-也有 L4 状态与适配实现（`LocalSettingManager`、`FavoriteStore` 的 SQL 侧、
-`RemoteConfigManager`、各种 `*Preferences`）。下载与更新域的 L2/L4 入口已迁出：
-`DownloadManager` / `DownloadToastAggregator` / `BackupTaskScheduler` → `download/coordinator`，
-`DownloadWorkScheduler` 端口 → `download`，
-`AppUpdateDownloadManager` 及其状态契约 → `update`。
-引用 `store` 时仍按具体类的层级判断，不要按包名判断。
+`store` 包已**整体清空并删除**（2026-09-12），原混合包按真实层级拆分：
+`UserManager` / `UserRepository` / `AuthenticatedRequestRecovery` / `SessionReadinessHolder` →
+`session`（L2 会话协调）；`FavoriteStore` 及其 SQL 侧（`FavoriteQueries` / `FavoriteSyncPlanner` /
+`FavoriteMappers`）→ `favorites/data`；`FavoriteSyncState` → `favorites/sync`；
+`RemoteConfigManager` → `network`；`LocalSettingManager` 及各种偏好、
+`HistorySearchManager` / `ReadHistoryManager` / `ReaderResumeManager` → `storage`；
+`BackupManager` → `backup`；`ToastManager` → `core`。
+`store` 不再存在于源码树中，新代码不得重建该包名。
 
 ## 目录约定
 
@@ -55,7 +57,7 @@ favorites/                   已迁移，但用词不同
 ├── presentation/ViewModel         L2
 ├── sync/                          L2
 ├── usecase/                       L3
-└── data/                          L4（同时定义 FavoriteStore 实现的窄端口）
+└── data/                          L4（FavoriteStore 及其端口、SQL 侧都在这里）
 
 cache/                       部分迁移
 ├── atom/CacheFiles.kt             L4
@@ -71,7 +73,15 @@ cache/                       部分迁移
 
 update/ backup/ contentfilter/ launcher/ startup/   扁平包，按类判断层级
 update/AppUpdateDownloadManager  已从 store 迁入 update（L2 下载协调 + 状态契约）
-data/ repository/ retrofit/ store/                   遗留包，含依赖环
+core/                        共享契约与基础类型：core/model（User / RemoteSetting / SignInData /
+                             CommonUIState）、core/network（NetWorkResult / ResponseWrapper）、
+                             core/BaseRepository、core/ToastManager
+session/                     L2 会话协调（UserManager 等 4 个文件）
+network/                     L4：Doh 三件套、RemoteConfigManager、内置 API 客户端
+                             （EmbeddedClientManager / AuthenticatedEmbeddedClient / EmbeddedSessionCookies）
+storage/                     L4：LocalSettingManager、各种 *Preferences、历史/续读管理器
+data/ repository/ retrofit/  历史命名保留，包间依赖环已全部消除（见「依赖现状」）；
+                             store 已删除
 ```
 
 新代码优先沿用所在领域已有的子目录命名；跨领域新建时建议统一用
@@ -105,7 +115,7 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   `download/molecule/DownloadLibraryQueries` 把下载 DAO 与 Room 实体映射成
   `download/model` 契约，供 ViewModel 观察列表与分组，UI 不再 import `database`；
   `download/atom/DownloadFiles` 只清理已有缓存文件。
-  业务层不依赖 Store、Worker 或 UI。排队端口仍由 L2 调用，以保留单篇创建先提示后入队、
+  业务层不依赖 Worker 或 UI。排队端口仍由 L2 调用，以保留单篇创建先提示后入队、
   其他操作先入队后提示的现有顺序。暂停、删除、清理和批量重下都在此入口串行化；
   批量章节到漫画组的查询归属 L3。
   `download/coordinator/DownloadExecutionControl` 只暴露停止并等待写入结束的能力，
@@ -152,8 +162,8 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   组合设置快照、文档读写和下载排队；Screen 仅持有系统文件选择器和展示组件。
 - `favorites/sync/FavoriteSyncController` 是唯一收藏同步任务入口，按登录会话代次隔离任务、进度与结果；
   `favorites/usecase/SyncFavorites` 负责远端分页、元数据补齐和受会话保护的本地提交。
-- `store/FavoriteStore` 保留 Room 事务及 DAO 操作，纯 SQL 构造、同步规划和实体映射分别位于
-  `store/FavoriteQueries`、`store/FavoriteSyncPlanner` 和 `store/FavoriteMappers`。
+- `favorites/data/FavoriteStore` 保留 Room 事务及 DAO 操作，纯 SQL 构造、同步规划和实体映射分别位于
+  `favorites/data/FavoriteQueries`、`favorites/data/FavoriteSyncPlanner` 和 `favorites/data/FavoriteMappers`。
   它直接实现 `favorites/data` 定义的三个窄本地端口 `FavoriteLocalQuery`、
   `FavoriteLocalMutation`、`FavoriteLocalSync`，避免额外转发对象。
 - `ArchitectureBoundaryTest` 固定以下边界，防止后续补丁重新引入反向依赖。
@@ -164,12 +174,17 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   | `ui`（整体） | `database.` |
   | `ui/viewModel/ComicReadViewModel.kt` | `java.io.`、`java.util.zip.`、`database.`、`cache.` |
   | `ui/screens/CacheCleanupScreen.kt`、`ui/screens/downloadScreen/DownloadComicDetailScreen.kt` | `java.io.`、`kotlinx.coroutines.`、`download.coordinator.DownloadManager`、`reader.ReaderImagePipeline`、`database.`、`download.export.export`、`download.export.getCachedComicInfo`、`cache.atom.` |
-  | `ui/screens/AboutScreen.kt`、`CheckUpdateScreen.kt`、`BackupRestoreScreen.kt` | `okhttp3.`、`gson`、`java.io.File`、`FileProvider`、`database.`、`store.BackupManager`、`download.coordinator.DownloadManager`、`store.LocalSettingManager`、`update.AppUpdateDownloadManager` |
+  | `ui/screens/AboutScreen.kt`、`CheckUpdateScreen.kt`、`BackupRestoreScreen.kt` | `okhttp3.`、`gson`、`java.io.File`、`FileProvider`、`database.`、`backup.BackupManager`、`download.coordinator.DownloadManager`、`storage.LocalSettingManager`、`update.AppUpdateDownloadManager` |
   | `cache/atom` | `ui.`、`store.`、`reader.` |
+  | `data`（整体） | `repository.`、`session.`、`reader.` |
+  | `retrofit`（整体） | `data.`、`store.`、`session.` |
+  | `network`（整体） | `repository.`、`data.` |
+  | `session`（整体） | `ui.`、`data.`、`repository.` |
+  | `favorites/data` | `download.coordinator.`、`repository.` |
   | `download/molecule` | `store.`、`ui.`、`worker.`、`download.coordinator.`、`reader.`、`java.io.`、`androidx.work.` |
   | `download/atom` | `download.molecule.`、`store.`、`download.coordinator.`、`reader.`、`ui.`、`worker.`、`database.dao.`、`database.AppDatabase` |
   | `download/coordinator/DownloadManager.kt` | `download.coordinator.DownloadComicCoordinator`、`database.`、`download.atom.`、`java.io.` |
-  | `store`（整体） | `ui.`、`worker.` |
+  | `store`（整体，已删除，断言保留防复活） | `ui.`、`worker.` |
   | `favorites`（整体） | `ui.` |
   | `favorites/data` | `download.coordinator.` |
   | `backup` | `ui.`、`download.coordinator.` |
@@ -196,7 +211,7 @@ UI / ViewModel / Download Worker       # 调用入口
         └── ReaderImageDiskCache                   # L4 文件租约、代次、写入与清理
 ```
 
-Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。磁盘缓存将源文件与
+Reader 的 L3 不得依赖 UI 或 Worker，L4 不得反向依赖 L3。磁盘缓存将源文件与
 解码文件保留在同一个原子内，是为了让清理时的锁顺序和 cache generation 保持原子性；
 拆成两个互相调用的 L4 会重新引入竞态和横向依赖。
 
@@ -217,45 +232,71 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 
 这些文件粒度已经足够小且可独立测试，机械下沉到 `atom/` 只会增加目录层级，
 因此不列为近期迁移目标；但它们**不是**分层目录的一部分，阅读链路时不要只看子目录。
-链路的完整行为说明见 [docs/reader-image-pipeline.md](docs/reader-image-pipeline.md)。
 
 ## 依赖现状与已知环
 
-按包统计 `import com.par9uet.jm.*` 得到的环（A→B 且 B→A）：
+**历史依赖环已全部消除（2026-09-12）。** 此前文档列出 5 个真实技术债环
+（`data`↔`repository`、`data`↔`retrofit`、`retrofit`↔`store`、`repository`↔`store`、
+`data`↔`reader`），消除方式与落点：
 
-| 环 | 性质 | 说明 |
+| 原环 | 消除方式 | 现存单向依赖 |
 | --- | --- | --- |
-| `data` ↔ `repository` | 跨层遗留 | 模型与仓库实现双向引用，历史包袱 |
-| `data` ↔ `retrofit` | 跨层遗留 | 模型同时被解析层引用 |
-| `retrofit` ↔ `store` | 跨层遗留 | `UserManager` 直接用 `retrofit.model.*`，`retrofit` 反向用 `store` 的会话状态 |
-| `repository` ↔ `store` | 跨层遗留 | `RemoteConfigManager`、`UserManager` 与仓库互相引用 |
-| `data` ↔ `reader` | 跨层遗留 | `data/models/ComicPicImageState` 引用 `reader.ReaderPage` / `ReaderPageKey`，而 `reader/molecule/LoadLocalChapter` 反向引用 `data.models.ComicChapter` |
-| `download` ↔ `store` | **残余** | `DownloadManager`（已迁 `download/coordinator`）仍依赖 `store.ToastManager`；`DownloadFeedback`/`DownloadComicCoordinator` 仍读 `store` 的偏好。不再互为包环的主体 |
-| `favorites` ↔ `store` | **契约与实现的自然双向** | `favorites/data` 定义窄端口，`store/FavoriteStore` 实现它们，因此必然互相 import |
+| `data` ↔ `repository` | 内置 API 客户端三件套（`EmbeddedClientManager` / `AuthenticatedEmbeddedClient` / `EmbeddedSessionCookies`）本质是网络设施，从 `repository/impl` 迁到 `network`；`data`/`favorites/data`/`di` 改引 `network` | `repository → data`（仓库用领域模型与数据源，合法向下） |
+| `data` ↔ `retrofit` | response→领域模型的 `toXxx()` mapper 从 `retrofit/model` 成员函数改为 `data/comic/mapper/ResponseMappers` 的扩展函数，`retrofit/model` 回归纯 wire DTO | `data → retrofit`（数据源用 wire 类型与服务接口，合法向下） |
+| `retrofit` ↔ `store` | store 清空；`UserManager` 迁 `session`，`LoginResponse.toUser` 等以共享契约为目标的 mapper 留在 `retrofit/model`（目标类型在 `core/model`） | `session → retrofit`（会话协调用登录服务，合法向下） |
+| `repository` ↔ `store` | store 清空；`RemoteConfigManager` 迁 `network` 后不再依赖 `RemoteSettingRepository`——`network` 定义窄端口 `RemoteSettingFetch`，由组合根（`di/AppModule`）委托给仓库实现 | `network → session/storage/core`（客户端设施依赖会话与偏好，合法向下） |
+| `data` ↔ `reader` | `ComicPicImageState` 不再持有 `ReaderPage`/`ReaderPageKey` 转换与 `java.io.File` 探测，改由 `reader/ComicPicImageStateReader` 扩展适配器承担 | `reader → data`（阅读器读领域模型，合法向下） |
 
-前五项是需要在迁移具体功能时收拢模型和端口的**真实技术债**；
-不能用一次性改包名掩盖依赖环。`favorites↔store` 是有意保留，不应"修掉"。
-下载 UI 直连 Room 的 4 个文件已修：DAO 访问收敛到
-`download/molecule/DownloadLibraryQueries`，UI 使用 `download/model` 契约。
+随之消除的连带反向依赖：`session → data`（共享 DTO `User` / `RemoteSetting` / `SignInData`
+迁到 `core/model`）、`network → repository`（见上表）、`network → data`（`RemoteSetting` 迁
+`core/model`）。
+
+以上每个被切断的方向都有 `ArchitectureBoundaryTest` 断言钉住（`data` 禁
+`repository`/`session`、`retrofit` 禁 `data`/`store`/`session`、`network` 禁
+`repository`/`data`、`session` 禁 `data`/`repository`、`favorites/data` 禁 `repository`），
+回归时先看边界测试。`download`↔`store` 的残余已随 store 清空自然消失
+（`ToastManager` → `core`，偏好 → `storage`）；`favorites`↔`store` 的"自然双向"
+已随 `FavoriteStore` 迁入 `favorites/data` 变成包内实现细节，不再是跨包环。
 
 ## 耦合热点与拆分优先级
 
-下面是对 `import com.par9uet.jm.*` 做静态统计的结果（模块 = 一二级包目录），
-用于决定**先拆谁**。Ce=扇出、Ca=扇入、I=Ce/(Ce+Ca) 不稳定性。
+下表由脚本对 `import com.par9uet.jm.*` 统一重算（2026-09-12，store 清空与依赖环消除之后）。
+**口径**：模块 = 一二级包目录（`ui/screens`、`ui/viewModel`、`cache/migration`、
+`database/model`、`retrofit/model` 单列，其余子目录并入一级包）；Ce = 该模块 import 到的
+模块数，Ca = 依赖它的模块数，I = Ce/(Ce+Ca)。行数为 `wc -l` 口径，可能有约 1% 出入。
+迁移前的旧表数值按旧口径手算，两者**不可跨版本直接对比**；本表自洽，且可用同一脚本复现。
 
 | 模块 | 行数 | Ce | Ca | I | 判断 |
 | --- | --- | --- | --- | --- | --- |
-| `worker` | 203 | 3 | 1 | 0.75 | 已拆：两个 Worker 都只解析参数，扇出落在各自的 L2 协调器与端口实现 |
-| `di` | 521 | 27 | 1 | 0.96 | 组合根，合法，不动 |
-| `ui/screens` | 16,072 | 21 | 3 | 0.88 | 表现层，扇出集中在 `store`/`data` |
-| `ui/viewModel` | 3,030 | 28 | 3 | 0.90 | 扇出最高，但多为契约与偏好 |
-| `store` | 3,142 | 16 | 19 | 0.46 | **全局枢纽**，Ca 与 Ce 双高 |
-| `cache/migration` | 602 | 23 | 3 | 0.88 | 扇出集中在 `cache` 域内文档原子与下载 DAO，属 L3 组合，不必再拆 |
-| `reader`（根） | 2,504 | 7 | 0 | 1.00 | 无外部依赖方，自洽 |
-| `data` | 1,007 | 6 | 21 | 0.22 | 稳定契约，不要动 |
-| `utils` | 545 | 2 | 20 | 0.09 | 稳定，不要动 |
-| `database/model` | 196 | 0 | 15 | 0.00 | 稳定，不要动 |
-| `retrofit/model` | 640 | 2 | 16 | 0.11 | 稳定，不要动 |
+| `ui/screens` | 16,022 | 14 | 2 | 0.88 | 表现层；store 拆除后扇出已收敛到领域包与 `core/model` |
+| `ui`（根：components/glass/theme/pagingSource/navigation 等） | 5,080 | 11 | 3 | 0.79 | 表现层支撑 |
+| `reader` | 3,374 | 6 | 4 | 0.60 | 已迁移；根包文件说明见下文 |
+| `ui/viewModel` | 2,975 | 15 | 3 | 0.83 | 扇出最高，但多为契约与偏好 |
+| `favorites` | 2,621 | 7 | 3 | 0.70 | 已迁移（含 `FavoriteStore` 及其端口） |
+| `storage` | 1,588 | 3 | 13 | 0.19 | 偏好与持久化收口点（原 store 的 L4 部分落在这里），稳定 |
+| `download` | 1,351 | 11 | 4 | 0.73 | 已迁移 |
+| `data` | 1,123 | 4 | 13 | 0.24 | 稳定契约；response mapper 收口在 `data/comic/mapper` |
+| `network` | 954 | 4 | 8 | 0.33 | 新收口点：Doh、`RemoteConfigManager`、内置 API 客户端三件套 |
+| `image` | 695 | 0 | 5 | 0.00 | 稳定，不要动 |
+| `session` | 655 | 4 | 8 | 0.33 | L2 会话协调（原 store 的 L2 入口落在这里） |
+| `cache` | 628 | 1 | 3 | 0.25 | 含未归位的 L4 根文件 |
+| `cache/migration` | 602 | 4 | 3 | 0.62 | 已拆：L2 协调器 + L3 操作端口 |
+| `utils` | 564 | 0 | 5 | 0.00 | 稳定，不要动 |
+| `di` | 550 | 19 | 0 | 1.00 | 组合根，合法，不动 |
+| 根包（`App` / `MainActivity` / `JmApplication`） | 471 | 8 | 0 | 1.00 | 入口 |
+| `update` | 425 | 2 | 3 | 0.40 | 已迁移 |
+| `repository` | 420 | 6 | 6 | 0.50 | 已收口：只剩指向 data/network/session/retrofit 的向下依赖 |
+| `database` | 399 | 1 | 6 | 0.14 | 稳定 |
+| `backup` | 383 | 3 | 2 | 0.60 | 已迁移 |
+| `retrofit/model` | 370 | 1 | 9 | 0.08 | 纯 wire DTO（mapper 已移入 data），稳定 |
+| `retrofit` | 284 | 3 | 4 | 0.43 | 客户端与拦截器 |
+| `core` | 229 | 0 | 16 | 0.00 | 最稳定：共享 DTO、`NetWorkResult`、`BaseRepository`、`ToastManager` |
+| `worker` | 222 | 2 | 1 | 0.75 | 已拆：两个 Worker 都只解析参数 |
+| `database/model` | 186 | 0 | 6 | 0.00 | 稳定，不要动 |
+| `contentfilter` | 149 | 1 | 0 | 1.00 | 自洽 |
+| `coil` | 102 | 2 | 3 | 0.40 | |
+| `launcher` | 86 | 1 | 2 | 0.33 | |
+| `startup` | 81 | 4 | 2 | 0.67 | |
 
 单文件维度（"跨层数"= 该文件 import 触及的层数，含自身）：
 
@@ -268,17 +309,17 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 - **扇出最高**：`cache/migration/DeviceCacheMigrationOperations`（22，均为 `cache` 域内文档原子）、
   `reader/molecule/ReaderSourceLoader`（22，但均为 reader 域内 internal 组件，属正常）
 
-### 值得拆的两个目标
+### 已完成的两轮拆分（原"值得拆的目标"）
 
-**1. `store` 包——下载/更新域已切出，剩余仍是全局枢纽**
+**1. `store` 包——已清空（2026-09-12）**
 
-已迁出：`DownloadManager` / `DownloadToastAggregator` / `BackupTaskScheduler` →
-`download/coordinator`，`DownloadWorkScheduler` → `download`，
-`AppUpdateDownloadManager` 及其状态契约 → `update`。
-剩余 L2 兼容入口（`UserManager`、`FavoriteStore`、`RemoteConfigManager`）与
-L4 状态/偏好（`LocalSettingManager`、各种 `*Preferences`）仍在 `store`。
-下一步拆法：L2 入口下沉到各自领域 `coordinator/`；L4 状态与偏好下沉到
-`storage/` 或 `database/`。
+此前是 Ca/Ce 双高的全局枢纽。分两轮迁完：第一轮 `DownloadManager` / `DownloadToastAggregator` /
+`BackupTaskScheduler` → `download/coordinator`，`DownloadWorkScheduler` → `download`，
+`AppUpdateDownloadManager` → `update`；第二轮把剩余 L2 入口下沉到 `session`
+（`UserManager` 等）、L4 状态与偏好下沉到 `storage`、`FavoriteStore` 及其 SQL 侧下沉到
+`favorites/data`、`RemoteConfigManager` 下沉到 `network`、`BackupManager` → `backup`、
+`ToastManager` → `core`。共享 DTO（`User` / `RemoteSetting` / `SignInData`）归位
+`core/model`。`store` 目录已删除。
 
 **2. 下载相关的 4 个 UI 文件直连 Room——已修**
 
@@ -287,12 +328,11 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
 
 ### 不建议动
 
-- **`data` / `utils` / `database/model` / `retrofit/model`**：Ca 高但 Ce 极低，
+- **`data` / `utils` / `database/model` / `retrofit/model` / `core`**：Ca 高但 Ce 极低，
   是被依赖的稳定契约，拆分只会制造转发层。
-- **`reader` 根包 15 个文件**：Ca=0，没有外部依赖方，粒度已足够小，下沉到 `atom/`
-  只增加目录层级。
-- **`di`**：I=0.96 是组合根的应有形态。
-- **`ui/screens` 的巨型文件**：行数确实跨层（L1 直接读 `store`/`data`），
+- **`reader` 根包文件**：粒度足够小，下沉到 `atom/` 只增加目录层级。
+- **`di`**：I=1.00 是组合根的应有形态。
+- **`ui/screens` 的巨型文件**：行数确实跨层（L1 直接读领域包与 `storage`），
   但主要矛盾是可读性。若要动手，优先 `DownloadComicDetailScreen`（跨 4 层）而非
   `LocalSettingScreen`（纯设置项渲染）。
 
@@ -305,8 +345,8 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
 - 下载任务入口、执行协调、内容下载及文件适配已分离；取消仍直接传播，重试次数和终态提交顺序保持不变。
 - Reader 链路的**控制流**已收敛到 `ReaderImagePipeline`，但**实现体**仍集中在包根，
   只是粒度已经足够小。下一步如要继续拆分，应针对来源策略与缓存生命周期，而不是再加一层包装。
-- `data`、`repository`、`retrofit`、`store` 之间的环已被完整列出（见上表），
-  迁移时应先抽取窄端口再切断反向 import，避免产生新的转发型假分层。
+- `data`、`repository`、`retrofit`、`store` 之间的环已全部消除（见「依赖现状」）；
+  后续任何迁移都应先抽取窄端口再切断反向 import，避免产生新的转发型假分层。
 
 ## 当前例外与迁移顺序
 
@@ -319,10 +359,15 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
    L4 不得反向调用协调器。
 4. 下载相关的 4 个 UI 文件直连 Room——**已修**，`ui` 禁止 import `database`，
    DAO 观察走 `download/molecule/DownloadLibraryQueries`。
+5. `RemoteConfigManager` 通过 `network` 包内的窄端口 `RemoteSettingFetch` 取数，
+   组合根把端口委托给 `RemoteSettingRepository`——这是 network 不依赖 repository 的代价，
+   属于有意的端口例外而非转发层。
 
-上述 1～3 项是有意保留的例外。优先级见"耦合热点与拆分优先级"：下一步仍是拆剩余 `store`
-（`UserManager` / `FavoriteStore` / `RemoteConfigManager` / 偏好实现），以及
-`data`↔`repository`/`retrofit` 等真实依赖环。
+上述 1～3、5 项是有意保留的例外。store 清空与 5 个依赖环消除后，
+耦合表里已没有"先拆谁"级别的热点；后续候选（按收益排序）：
+`ui/screens` 巨型文件的可读性拆分（优先 `DownloadComicDetailScreen`，跨 4 层）、
+`reader` 根包按来源策略与缓存生命周期继续归位、
+`repository` 包名与职责的进一步澄清（现仅剩接口 + 三个实现）。
 
 新增回归约束覆盖：批量重下去重与停止顺序、本地加载 IO 线程、旧目录/ZIP 兼容和失败清理、
 清理期间的重复点击与阅读器租约保护、导出选择快照及过期统计、首页/搜索/周推荐独立注入与状态、

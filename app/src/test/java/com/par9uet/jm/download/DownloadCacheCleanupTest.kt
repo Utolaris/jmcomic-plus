@@ -5,7 +5,7 @@ import com.par9uet.jm.download.atom.DownloadFiles
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
 import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.download.DownloadWorkScheduler
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.*

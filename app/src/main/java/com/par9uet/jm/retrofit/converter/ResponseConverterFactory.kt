@@ -5,8 +5,8 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.reflect.TypeToken
 import com.par9uet.jm.retrofit.decryptData
-import com.par9uet.jm.retrofit.model.ResponseWrapper
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.network.ResponseWrapper
+import com.par9uet.jm.core.ToastManager
 import okhttp3.ResponseBody
 import retrofit2.Converter
 import retrofit2.Retrofit

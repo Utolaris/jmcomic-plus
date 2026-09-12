@@ -1,4 +1,7 @@
 package com.par9uet.jm.ui.viewModel
+import com.par9uet.jm.data.comic.mapper.toComic
+import com.par9uet.jm.reader.readerPageKey
+import com.par9uet.jm.reader.toReaderPage
 
 import android.content.Context
 import androidx.compose.runtime.mutableIntStateOf
@@ -14,15 +17,15 @@ import com.par9uet.jm.favorites.usecase.CollectFavorite
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.reader.molecule.LoadLocalChapter
 import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.reader.ReaderPageKey
 import com.par9uet.jm.reader.readerPrefetchPlan
 import com.par9uet.jm.reader.runReaderPrefetchSchedule
-import com.par9uet.jm.store.ReaderPreferences
-import com.par9uet.jm.store.ReadHistoryManager
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.storage.ReaderPreferences
+import com.par9uet.jm.storage.ReadHistoryManager
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -365,7 +368,7 @@ class ComicReadViewModel(
         val plannedPages = plannedIndices.mapNotNull { plannedIndex ->
             pages.getOrNull(plannedIndex)?.let { plannedIndex to it }
         }
-        val desiredKeys = plannedPages.map { it.second.pageKey }
+        val desiredKeys = plannedPages.map { it.second.readerPageKey() }
         if (
             prefetchScheduleJob?.isActive == true &&
             desiredKeys == prefetchScheduleKeys &&

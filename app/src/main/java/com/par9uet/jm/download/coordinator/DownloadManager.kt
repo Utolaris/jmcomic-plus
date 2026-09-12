@@ -5,7 +5,7 @@ import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.download.DownloadWorkScheduler
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
 import com.par9uet.jm.download.molecule.DownloadTaskResult
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

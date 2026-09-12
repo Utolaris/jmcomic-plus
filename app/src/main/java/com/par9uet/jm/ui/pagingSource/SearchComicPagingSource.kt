@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.pagingSource
 
+import com.par9uet.jm.data.comic.mapper.toComicList
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comic
@@ -7,7 +8,7 @@ import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.ComicListResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.contentfilter.filterBlockedTags
 import com.par9uet.jm.contentfilter.normalizeSearchExcludedTags
 import kotlinx.coroutines.async

@@ -1,11 +1,12 @@
 package com.par9uet.jm.ui.pagingSource
 
+import com.par9uet.jm.data.comic.mapper.toCommentList
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comment
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.CommentListResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 
 class ComicCommentPagingSource(
     private val comicRepository: ComicRepository,

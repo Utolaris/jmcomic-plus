@@ -1,4 +1,6 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.favorites.data.planFavoriteSync
+import com.par9uet.jm.favorites.data.FavoriteRemoteItem
 
 import com.par9uet.jm.database.model.FavoriteComicEntity
 import org.junit.Assert.assertEquals

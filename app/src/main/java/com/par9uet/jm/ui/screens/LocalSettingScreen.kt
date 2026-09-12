@@ -839,7 +839,7 @@ private fun readModeText(value: String): String {
     }
 }
 
-private fun notificationText(notification: com.par9uet.jm.store.CacheNotificationSetting): String {
+private fun notificationText(notification: com.par9uet.jm.storage.CacheNotificationSetting): String {
     return when {
         !notification.show -> "\u5173\u95ed"
         notification.showName -> "\u5f00\u542f\u5e76\u663e\u793a\u6f2b\u753b\u540d"

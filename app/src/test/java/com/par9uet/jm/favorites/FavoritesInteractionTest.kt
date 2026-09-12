@@ -1,11 +1,11 @@
 package com.par9uet.jm.favorites
 
 import com.par9uet.jm.database.model.FavoriteComicEntity
-import com.par9uet.jm.store.FavoriteRemoteItem
-import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
-import com.par9uet.jm.store.nextTemporaryRemoteOrder
-import com.par9uet.jm.store.planFavoriteSync
-import com.par9uet.jm.store.resolveGlobalOrderAfterScopeSync
+import com.par9uet.jm.favorites.data.FavoriteRemoteItem
+import com.par9uet.jm.favorites.data.FAVORITE_SCOPE_ALL
+import com.par9uet.jm.favorites.data.nextTemporaryRemoteOrder
+import com.par9uet.jm.favorites.data.planFavoriteSync
+import com.par9uet.jm.favorites.data.resolveGlobalOrderAfterScopeSync
 import org.junit.Assert.assertEquals
 import org.junit.Test
 

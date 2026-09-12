@@ -1,5 +1,6 @@
 package com.par9uet.jm
 
+import com.par9uet.jm.data.comic.mapper.toComic
 import android.content.Context
 import android.os.Build
 import androidx.compose.foundation.layout.Arrangement
@@ -48,12 +49,12 @@ import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.startup.PostStartupCoordinator
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.ReaderResumeManager
-import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.ReaderResumeManager
+import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.AppSnackbarHost
 import com.par9uet.jm.ui.glass.GlassModal

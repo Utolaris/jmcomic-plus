@@ -25,7 +25,7 @@ import androidx.compose.ui.text.fromHtml
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.par9uet.jm.data.models.Comment
-import com.par9uet.jm.store.RemoteConfigPreferences
+import com.par9uet.jm.storage.RemoteConfigPreferences
 import org.koin.compose.getKoin
 
 @Composable

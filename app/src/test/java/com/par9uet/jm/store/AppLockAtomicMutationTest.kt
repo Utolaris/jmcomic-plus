@@ -1,4 +1,5 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.storage.LocalSettingManager
 
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD

@@ -18,9 +18,10 @@ import com.par9uet.jm.download.molecule.DeviceDownloadContentOperations
 import com.par9uet.jm.download.molecule.DownloadLibraryQueries
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
 import com.par9uet.jm.reader.ReaderImagePipeline
+import com.par9uet.jm.reader.toReaderPage
 import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.download.DownloadWorkScheduler
-import com.par9uet.jm.store.FavoriteStore
+import com.par9uet.jm.favorites.data.FavoriteStore
 import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
 import com.par9uet.jm.worker.DownloadComicWorker

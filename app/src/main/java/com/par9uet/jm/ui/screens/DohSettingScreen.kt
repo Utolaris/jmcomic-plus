@@ -48,7 +48,7 @@ import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.network.DohServer
 import com.par9uet.jm.network.builtinDohServers
 import com.par9uet.jm.network.isValidDohUrl
-import com.par9uet.jm.store.DohPreferences
+import com.par9uet.jm.storage.DohPreferences
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.GlassModal
 import androidx.compose.foundation.layout.widthIn

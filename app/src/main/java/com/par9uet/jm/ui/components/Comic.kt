@@ -20,7 +20,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import org.koin.compose.getKoin

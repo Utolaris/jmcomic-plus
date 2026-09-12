@@ -13,6 +13,27 @@ class ArchitectureBoundaryTest {
                 "java.io.", "java.util.zip.", "com.par9uet.jm.database.", "com.par9uet.jm.cache.",
             )))
             addAll(forbiddenImports("ui", listOf("com.par9uet.jm.database.")))
+            addAll(forbiddenImports("data", listOf("com.par9uet.jm.reader.")))
+            addAll(forbiddenImports("session", listOf("com.par9uet.jm.ui.")))
+            addAll(forbiddenImports("core", listOf("com.par9uet.jm.ui.")))
+            // 依赖环收口后的单向约束（详见 ARCHITECTURE.md「依赖现状与已知环」）：
+            // data 不再反向依赖 repository；retrofit 是纯 wire 层，不回头 import 领域模型；
+            // network 不依赖 repository/data；session 不依赖 data（共享 DTO 在 core/model）。
+            addAll(forbiddenImports("data", listOf(
+                "com.par9uet.jm.repository.", "com.par9uet.jm.session.",
+            )))
+            addAll(forbiddenImports("retrofit", listOf(
+                "com.par9uet.jm.data.", "com.par9uet.jm.store.", "com.par9uet.jm.session.",
+            )))
+            addAll(forbiddenImports("network", listOf(
+                "com.par9uet.jm.repository.", "com.par9uet.jm.data.",
+            )))
+            addAll(forbiddenImports("session", listOf(
+                "com.par9uet.jm.data.", "com.par9uet.jm.repository.",
+            )))
+            addAll(forbiddenImports("favorites/data", listOf(
+                "com.par9uet.jm.repository.",
+            )))
             listOf("CacheCleanupScreen.kt", "downloadScreen/DownloadComicDetailScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
                     "java.io.", "kotlinx.coroutines.", "com.par9uet.jm.download.coordinator.DownloadManager",
@@ -74,8 +95,8 @@ class ArchitectureBoundaryTest {
             listOf("AboutScreen.kt", "CheckUpdateScreen.kt", "BackupRestoreScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
                     "okhttp3.", "com.google.gson.", "java.io.File", "androidx.core.content.FileProvider",
-                    "com.par9uet.jm.database.", "com.par9uet.jm.store.BackupManager",
-                    "com.par9uet.jm.download.coordinator.DownloadManager", "com.par9uet.jm.store.LocalSettingManager",
+                    "com.par9uet.jm.database.", "com.par9uet.jm.backup.BackupManager",
+                    "com.par9uet.jm.download.coordinator.DownloadManager", "com.par9uet.jm.storage.LocalSettingManager",
                     "com.par9uet.jm.update.AppUpdateDownloadManager",
                 )))
             }

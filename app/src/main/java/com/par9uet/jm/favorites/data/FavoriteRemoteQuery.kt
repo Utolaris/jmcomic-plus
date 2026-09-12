@@ -1,8 +1,8 @@
 package com.par9uet.jm.favorites.data
 
-import com.par9uet.jm.repository.impl.AuthenticatedEmbeddedClient
-import com.par9uet.jm.store.FavoriteMetadataPayload
-import com.par9uet.jm.store.FavoriteRemoteItem
+import com.par9uet.jm.network.AuthenticatedEmbeddedClient
+import com.par9uet.jm.favorites.data.FavoriteMetadataPayload
+import com.par9uet.jm.favorites.data.FavoriteRemoteItem
 import io.github.jukomu.jmcomic.api.model.FavoriteQuery
 import io.github.jukomu.jmcomic.api.model.JmAlbum
 import io.github.jukomu.jmcomic.api.model.JmAlbumMeta

@@ -2,7 +2,7 @@ package com.par9uet.jm.update
 
 import android.content.Context
 import com.par9uet.jm.cache.getCommonCacheDir
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.utils.APP_UPDATE_NOTIFICATION_ID
 import com.par9uet.jm.utils.cancelProgressNotification
 import com.par9uet.jm.utils.formatBytes

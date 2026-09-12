@@ -1,16 +1,16 @@
 package com.par9uet.jm.favorites.sync
 
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.retrofit.model.NetworkErrorKind
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.core.network.NetworkErrorKind
 import com.par9uet.jm.favorites.TestFavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException
 import org.junit.Assert.assertTrue
-import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
-import com.par9uet.jm.store.FavoriteSyncProgress
-import com.par9uet.jm.store.FavoriteSyncReport
+import com.par9uet.jm.favorites.data.FAVORITE_SCOPE_ALL
+import com.par9uet.jm.favorites.sync.FavoriteSyncProgress
+import com.par9uet.jm.favorites.sync.FavoriteSyncReport
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi

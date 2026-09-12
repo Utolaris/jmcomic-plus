@@ -7,7 +7,7 @@ import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.store.ContentPreferences
+import com.par9uet.jm.storage.ContentPreferences
 import com.par9uet.jm.ui.pagingSource.SearchComicFilter
 import com.par9uet.jm.ui.pagingSource.SearchComicPagingSource
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -1,8 +1,8 @@
 package com.par9uet.jm.data.comic
 
-import com.par9uet.jm.repository.BaseRepository
+import com.par9uet.jm.core.BaseRepository
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.service.ComicService
 
 /** The sole network business capability: optional Home recommendation. */

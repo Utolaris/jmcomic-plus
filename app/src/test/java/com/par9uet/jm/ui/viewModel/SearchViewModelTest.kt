@@ -2,7 +2,7 @@ package com.par9uet.jm.ui.viewModel
 
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.store.ContentPreferences
+import com.par9uet.jm.storage.ContentPreferences
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

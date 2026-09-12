@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.screens
 
+import com.par9uet.jm.data.comic.mapper.toComic
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,9 +46,9 @@ import androidx.compose.ui.unit.dp
 import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
 import kotlinx.coroutines.Dispatchers

@@ -1,7 +1,7 @@
 package com.par9uet.jm.backup
 
-import com.par9uet.jm.store.ChapterBackup
-import com.par9uet.jm.store.ComicGroupBackup
+import com.par9uet.jm.backup.ChapterBackup
+import com.par9uet.jm.backup.ComicGroupBackup
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test

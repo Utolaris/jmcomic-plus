@@ -1,11 +1,13 @@
 package com.par9uet.jm.repository.impl
 
-import com.par9uet.jm.repository.BaseRepository
-import com.par9uet.jm.repository.CandidateSession
-import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.retrofit.model.AuthFailure
+import com.par9uet.jm.core.BaseRepository
+import com.par9uet.jm.network.AuthenticatedEmbeddedClient
+import com.par9uet.jm.network.EmbeddedClientManager
+import com.par9uet.jm.session.CandidateSession
+import com.par9uet.jm.session.UserRepository
+import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse

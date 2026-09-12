@@ -1,8 +1,8 @@
 package com.par9uet.jm.network
 
-import com.par9uet.jm.store.DohPreferences
-import com.par9uet.jm.store.DohPreferencesEditor
-import com.par9uet.jm.store.DohSettingsState
+import com.par9uet.jm.storage.DohPreferences
+import com.par9uet.jm.storage.DohPreferencesEditor
+import com.par9uet.jm.storage.DohSettingsState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import java.net.UnknownHostException

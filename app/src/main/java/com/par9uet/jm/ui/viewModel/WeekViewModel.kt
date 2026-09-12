@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.viewModel
 
+import com.par9uet.jm.data.comic.mapper.toWeekData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -7,9 +8,9 @@ import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.WeekData
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekResponse
-import com.par9uet.jm.store.ContentPreferences
+import com.par9uet.jm.storage.ContentPreferences
 import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.ui.pagingSource.WeekComicPagingSource
 import com.par9uet.jm.ui.pagingSource.WeekFilter

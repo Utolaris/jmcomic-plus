@@ -10,7 +10,7 @@ import com.par9uet.jm.favorites.data.FavoriteLocalSync
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
 import com.par9uet.jm.favorites.data.FavoriteSession
-import com.par9uet.jm.store.FavoriteStore
+import com.par9uet.jm.favorites.data.FavoriteStore
 import com.par9uet.jm.favorites.data.UserManagerFavoriteSession
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.favorites.sync.FavoriteSyncController

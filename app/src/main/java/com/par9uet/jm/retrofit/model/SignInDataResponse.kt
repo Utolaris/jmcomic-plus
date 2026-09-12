@@ -1,6 +1,6 @@
 package com.par9uet.jm.retrofit.model
 
-import com.par9uet.jm.data.models.SignInData
+import com.par9uet.jm.core.model.SignInData
 
 data class SignInDataResponse(
     val daily_id: Int,

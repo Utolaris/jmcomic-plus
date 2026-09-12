@@ -6,7 +6,7 @@ import com.par9uet.jm.download.export.DownloadCacheSummary
 import com.par9uet.jm.download.export.DownloadExportOperations
 import com.par9uet.jm.download.export.PdfExportMode
 import com.par9uet.jm.download.model.DownloadItem
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -1,6 +1,6 @@
 package com.par9uet.jm.retrofit.interceptor
 
-import com.par9uet.jm.store.ApiEndpointPreference
+import com.par9uet.jm.storage.ApiEndpointPreference
 import okhttp3.Interceptor
 import okhttp3.Response
 

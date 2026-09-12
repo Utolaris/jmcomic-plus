@@ -63,7 +63,7 @@ import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_SUNSET
 import com.par9uet.jm.ui.theme.ColorPreset
 import com.par9uet.jm.ui.theme.toColorOrNull
 import com.par9uet.jm.ui.theme.colorPresets
-import com.par9uet.jm.store.AppearancePreferences
+import com.par9uet.jm.storage.AppearancePreferences
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.GlassModal
 import org.koin.compose.getKoin

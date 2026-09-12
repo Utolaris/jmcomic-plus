@@ -5,13 +5,13 @@ import androidx.core.net.toUri
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.database.dao.DownloadComicDao
-import com.par9uet.jm.store.BACKUP_PROTECTION_NONE
-import com.par9uet.jm.store.BackupContentOptions
-import com.par9uet.jm.store.BackupFile
-import com.par9uet.jm.store.BackupManager
-import com.par9uet.jm.store.ComicCacheBackup
-import com.par9uet.jm.store.ComicGroupBackup
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.backup.BACKUP_PROTECTION_NONE
+import com.par9uet.jm.backup.BackupContentOptions
+import com.par9uet.jm.backup.BackupFile
+import com.par9uet.jm.backup.BackupManager
+import com.par9uet.jm.backup.ComicCacheBackup
+import com.par9uet.jm.backup.ComicGroupBackup
+import com.par9uet.jm.storage.LocalSettingManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 

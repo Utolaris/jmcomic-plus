@@ -28,7 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.contentfilter.filterBlockedTags
 import org.koin.compose.getKoin
 

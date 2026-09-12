@@ -7,9 +7,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.database.model.FavoriteComicEntity
-import com.par9uet.jm.store.FavoriteMetadataPayload
-import com.par9uet.jm.store.FavoriteRemoteItem
-import com.par9uet.jm.store.FavoriteStore
+import com.par9uet.jm.favorites.data.FavoriteMetadataPayload
+import com.par9uet.jm.favorites.data.FavoriteRemoteItem
+import com.par9uet.jm.favorites.data.FavoriteStore
 import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After

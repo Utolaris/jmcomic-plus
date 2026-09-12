@@ -45,7 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.BlockedTagTemplate
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.contentfilter.normalizeBlockedTagList
 import org.koin.compose.getKoin

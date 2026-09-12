@@ -1,7 +1,7 @@
 package com.par9uet.jm.favorites.data
 
 import com.par9uet.jm.data.comic.ComicEmbeddedDataSource
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 
 /** L4 remote mutation capabilities used by Favorites behavior. */
 interface FavoriteRemoteMutation {

@@ -23,7 +23,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
-import com.par9uet.jm.store.ReadHistoryManager
+import com.par9uet.jm.storage.ReadHistoryManager
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 

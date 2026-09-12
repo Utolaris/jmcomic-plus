@@ -60,7 +60,7 @@ import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
 import com.par9uet.jm.ui.screens.LocalMainNavController
 import com.par9uet.jm.download.model.DownloadItemGroup
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingManager
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel
 

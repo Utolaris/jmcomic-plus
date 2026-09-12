@@ -11,7 +11,7 @@ import com.par9uet.jm.download.molecule.DeviceDownloadContentOperations
 import com.par9uet.jm.image.cancellationExceptionOrNull
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest

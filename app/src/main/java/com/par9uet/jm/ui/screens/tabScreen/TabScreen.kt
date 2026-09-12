@@ -51,8 +51,8 @@ import com.par9uet.jm.favorites.model.FavoritesIntent
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.ui.interaction.PullDownSearchIndicator
 import com.par9uet.jm.ui.interaction.rememberPullDownActionState
-import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.store.SessionReadiness
+import com.par9uet.jm.session.UserManager
+import com.par9uet.jm.session.SessionReadiness
 import com.par9uet.jm.ui.navigation.MainTab
 import com.par9uet.jm.ui.navigation.NavigationMotion
 import com.par9uet.jm.ui.navigation.shouldIgnoreTabSelection

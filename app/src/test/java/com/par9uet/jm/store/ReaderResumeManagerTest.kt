@@ -1,4 +1,7 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.storage.ReaderResumeManager
+import com.par9uet.jm.storage.ReaderResumePersistence
+import com.par9uet.jm.storage.ReaderResumeSession
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

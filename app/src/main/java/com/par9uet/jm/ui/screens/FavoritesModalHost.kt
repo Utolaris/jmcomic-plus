@@ -63,7 +63,7 @@ import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.favorites.model.FavoritesIntent
 import com.par9uet.jm.favorites.model.FavoritesModal
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel
-import com.par9uet.jm.retrofit.model.NetworkErrorKind
+import com.par9uet.jm.core.network.NetworkErrorKind
 import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassModal
 

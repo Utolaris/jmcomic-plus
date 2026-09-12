@@ -3,7 +3,7 @@ package com.par9uet.jm.storage
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.google.gson.Gson
-import com.par9uet.jm.store.ReadHistoryManager
+import com.par9uet.jm.storage.ReadHistoryManager
 import kotlinx.coroutines.runBlocking
 import okhttp3.Cookie
 import org.junit.Assert.*

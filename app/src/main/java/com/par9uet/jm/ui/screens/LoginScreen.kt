@@ -46,8 +46,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.R
-import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.store.SessionReadiness
+import com.par9uet.jm.session.UserManager
+import com.par9uet.jm.session.SessionReadiness
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin

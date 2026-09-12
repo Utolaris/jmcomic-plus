@@ -1,7 +1,7 @@
 package com.par9uet.jm.favorites.data
 
-import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.session.UserManager
+import com.par9uet.jm.core.network.NetWorkResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 

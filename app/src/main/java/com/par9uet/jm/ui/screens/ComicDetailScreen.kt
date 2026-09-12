@@ -87,9 +87,9 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.Comment
 import com.par9uet.jm.storage.ComicReadHistory
 import com.par9uet.jm.download.coordinator.DownloadManager
-import com.par9uet.jm.store.ReadHistoryManager
-import com.par9uet.jm.store.SessionReadiness
-import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.storage.ReadHistoryManager
+import com.par9uet.jm.session.SessionReadiness
+import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
 import com.par9uet.jm.ui.components.ComicContentTag
 import com.par9uet.jm.ui.components.ComicCoverImage

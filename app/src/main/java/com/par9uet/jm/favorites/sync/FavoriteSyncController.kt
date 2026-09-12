@@ -4,11 +4,11 @@ import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.data.toFavoriteSyncError
 import com.par9uet.jm.favorites.model.FavoriteSyncUiState
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.withAuthenticationRecovery
-import com.par9uet.jm.store.FAVORITE_SCOPE_ALL
-import com.par9uet.jm.store.FavoriteSyncProgress
-import com.par9uet.jm.store.FavoriteSyncReport
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.session.withAuthenticationRecovery
+import com.par9uet.jm.favorites.data.FAVORITE_SCOPE_ALL
+import com.par9uet.jm.favorites.sync.FavoriteSyncProgress
+import com.par9uet.jm.favorites.sync.FavoriteSyncReport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart

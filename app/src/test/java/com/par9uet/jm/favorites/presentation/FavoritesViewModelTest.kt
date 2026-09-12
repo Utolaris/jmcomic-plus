@@ -24,9 +24,9 @@ import com.par9uet.jm.favorites.usecase.DownloadSelectedFavorites
 import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.favorites.usecase.RenameFavoriteFolder
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.ContentPreferences
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.storage.ContentPreferences
+import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -5,24 +5,24 @@ import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.retrofit.interceptor.BaseUrlInterceptor
 import com.par9uet.jm.storage.LocalSettingPersistence
-import com.par9uet.jm.store.ApiEndpointPreference
-import com.par9uet.jm.store.AppExperiencePreferences
-import com.par9uet.jm.store.AppSecurityEditor
-import com.par9uet.jm.store.AppSecurityPreferences
-import com.par9uet.jm.store.AppearanceEditor
-import com.par9uet.jm.store.AppearancePreferences
-import com.par9uet.jm.store.CacheNotificationPreferences
-import com.par9uet.jm.store.BlockedTagTemplatePreferences
-import com.par9uet.jm.store.ContentPreferences
-import com.par9uet.jm.store.DohPreferences
-import com.par9uet.jm.store.DohPreferencesEditor
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.LocalSettingSnapshotProvider
-import com.par9uet.jm.store.MiscSettingsPreferences
-import com.par9uet.jm.store.ReaderPreferences
-import com.par9uet.jm.store.RecommendationPreferences
-import com.par9uet.jm.store.RemoteConfigManager
-import com.par9uet.jm.store.RemoteConfigPreferences
+import com.par9uet.jm.storage.ApiEndpointPreference
+import com.par9uet.jm.storage.AppExperiencePreferences
+import com.par9uet.jm.storage.AppSecurityEditor
+import com.par9uet.jm.storage.AppSecurityPreferences
+import com.par9uet.jm.storage.AppearanceEditor
+import com.par9uet.jm.storage.AppearancePreferences
+import com.par9uet.jm.storage.CacheNotificationPreferences
+import com.par9uet.jm.storage.BlockedTagTemplatePreferences
+import com.par9uet.jm.storage.ContentPreferences
+import com.par9uet.jm.storage.DohPreferences
+import com.par9uet.jm.storage.DohPreferencesEditor
+import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingSnapshotProvider
+import com.par9uet.jm.storage.MiscSettingsPreferences
+import com.par9uet.jm.storage.ReaderPreferences
+import com.par9uet.jm.storage.RecommendationPreferences
+import com.par9uet.jm.network.RemoteConfigManager
+import com.par9uet.jm.storage.RemoteConfigPreferences
 import com.par9uet.jm.launcher.LauncherIdentityApplier
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertSame
@@ -44,9 +44,17 @@ class SettingsKoinWiringTest {
             module {
                 single { InMemoryLocalSettingPersistence() } bind LocalSettingPersistence::class
                 single { LauncherDisguiseApplierFake() } bind LauncherIdentityApplier::class
-                single { InMemoryRemoteConfigStore() } bind com.par9uet.jm.store.RemoteConfigStore::class
-                single { RemoteConfigManager(get(), get()) } bind RemoteConfigPreferences::class
-                single { NoOpRemoteSettingRepository() } bind RemoteSettingRepository::class
+                single { InMemoryRemoteConfigStore() } bind com.par9uet.jm.network.RemoteConfigStore::class
+                val remoteSettingRepository = NoOpRemoteSettingRepository()
+                single {
+                    RemoteConfigManager(
+                        remoteSettingFetch = com.par9uet.jm.network.RemoteSettingFetch {
+                            remoteSettingRepository.getRemoteSetting()
+                        },
+                        store = get(),
+                    )
+                } bind RemoteConfigPreferences::class
+                single { remoteSettingRepository } bind RemoteSettingRepository::class
                 // 与 production 完全一致的 alias 列表，防止测试与线上 wiring 漂移。
                 single { LocalSettingManager(get<LocalSettingPersistence>(), get()) }
                     .binds(com.par9uet.jm.di.LOCAL_SETTING_MANAGER_ALIASES)
@@ -101,7 +109,7 @@ class SettingsKoinWiringTest {
         override fun apply(disguise: com.par9uet.jm.data.models.LauncherDisguise) = true
     }
 
-    private class InMemoryRemoteConfigStore : com.par9uet.jm.store.RemoteConfigStore {
+    private class InMemoryRemoteConfigStore : com.par9uet.jm.network.RemoteConfigStore {
         private val map = mutableMapOf<String, Any>()
         override fun <T> get(key: String, type: java.lang.reflect.Type): T? = map[key] as? T
         override fun <T> set(key: String, value: T) { map[key] = value as Any }
@@ -109,6 +117,6 @@ class SettingsKoinWiringTest {
 
     private class NoOpRemoteSettingRepository : RemoteSettingRepository {
         override suspend fun getRemoteSetting() =
-            com.par9uet.jm.retrofit.model.NetWorkResult.Error("unused in wiring test")
+            com.par9uet.jm.core.network.NetWorkResult.Error("unused in wiring test")
     }
 }

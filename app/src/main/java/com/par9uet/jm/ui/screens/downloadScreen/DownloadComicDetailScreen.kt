@@ -52,7 +52,7 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import com.par9uet.jm.store.RemoteConfigPreferences
+import com.par9uet.jm.storage.RemoteConfigPreferences
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.ChapterSingleSelectDialog

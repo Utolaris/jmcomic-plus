@@ -6,7 +6,7 @@ import com.par9uet.jm.download.export.DownloadExportOperations
 import com.par9uet.jm.download.export.PdfExportMode
 import com.par9uet.jm.download.molecule.toDomain
 import com.par9uet.jm.download.model.DownloadItem
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import org.junit.After

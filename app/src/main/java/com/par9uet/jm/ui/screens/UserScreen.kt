@@ -53,10 +53,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.par9uet.jm.R
-import com.par9uet.jm.data.models.User
-import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.store.UserManager
-import com.par9uet.jm.store.SessionReadiness
+import com.par9uet.jm.core.model.User
+import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.session.UserManager
+import com.par9uet.jm.session.SessionReadiness
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin

@@ -1,4 +1,5 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.storage.LocalSettingManager
 
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_CUSTOM
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT

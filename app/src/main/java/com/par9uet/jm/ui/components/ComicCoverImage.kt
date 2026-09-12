@@ -35,9 +35,9 @@ import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext

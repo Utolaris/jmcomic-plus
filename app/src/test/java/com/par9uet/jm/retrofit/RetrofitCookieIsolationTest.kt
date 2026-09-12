@@ -1,12 +1,17 @@
 package com.par9uet.jm.retrofit
 
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.retrofit.converter.PrimitiveToRequestBodyConverterFactory
 import com.par9uet.jm.retrofit.converter.ResponseConverterFactory
 import com.par9uet.jm.retrofit.interceptor.BaseUrlInterceptor
 import com.par9uet.jm.retrofit.interceptor.ToastInterceptor
 import com.par9uet.jm.retrofit.interceptor.TokenInterceptor
-import com.par9uet.jm.store.*
+import com.par9uet.jm.storage.ApiEndpointPreference
+import com.par9uet.jm.storage.DohPreferences
+import com.par9uet.jm.storage.DohPreferencesEditor
+import com.par9uet.jm.storage.DohSettingsState
+
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse

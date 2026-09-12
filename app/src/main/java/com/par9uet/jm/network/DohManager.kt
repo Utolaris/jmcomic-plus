@@ -1,8 +1,8 @@
 package com.par9uet.jm.network
 
 import android.util.Base64
-import com.par9uet.jm.store.DohPreferences
-import com.par9uet.jm.store.DohPreferencesEditor
+import com.par9uet.jm.storage.DohPreferences
+import com.par9uet.jm.storage.DohPreferencesEditor
 import com.par9uet.jm.utils.applyCertificateTrust
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -320,13 +320,13 @@ private class DohResolver(
 
 }
 
-private fun com.par9uet.jm.store.DohSettingsState.toDohServer(): DohServer = resolveDohServer(
+private fun com.par9uet.jm.storage.DohSettingsState.toDohServer(): DohServer = resolveDohServer(
     selectedId = serverId,
     customName = customServerName,
     customUrl = customServerUrl,
 )
 
-internal fun com.par9uet.jm.store.DohSettingsState.resolverKey(sessionEnabled: Boolean): String = listOf(
+internal fun com.par9uet.jm.storage.DohSettingsState.resolverKey(sessionEnabled: Boolean): String = listOf(
     enabled,
     sessionEnabled,
     serverId,

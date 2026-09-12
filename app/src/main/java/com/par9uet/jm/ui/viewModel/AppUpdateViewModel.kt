@@ -7,7 +7,7 @@ import com.par9uet.jm.update.AppUpdateDownloads
 import com.par9uet.jm.update.AppUpdateDownloadRequest
 import com.par9uet.jm.update.AppUpdateDownloadState
 import com.par9uet.jm.update.AppUpdateDownloadStatus
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.update.AppUpdateInstaller
 import com.par9uet.jm.update.GithubRelease
 import com.par9uet.jm.update.ReleaseSource

@@ -68,11 +68,11 @@ import androidx.core.view.WindowInsetsControllerCompat
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.download.coordinator.DownloadManager
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.ReadHistoryManager
-import com.par9uet.jm.store.ReaderResumeManager
-import com.par9uet.jm.store.SessionReadiness
-import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.ReadHistoryManager
+import com.par9uet.jm.storage.ReaderResumeManager
+import com.par9uet.jm.session.SessionReadiness
+import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.ui.glass.GlassCaptureHost
 import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.glass.GlassSurface

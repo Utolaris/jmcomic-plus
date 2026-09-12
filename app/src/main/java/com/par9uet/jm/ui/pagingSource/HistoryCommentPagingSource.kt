@@ -1,10 +1,11 @@
 package com.par9uet.jm.ui.pagingSource
 
+import com.par9uet.jm.data.comic.mapper.toCommentList
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.par9uet.jm.data.models.Comment
-import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.session.UserRepository
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 
 class HistoryCommentPagingSource(

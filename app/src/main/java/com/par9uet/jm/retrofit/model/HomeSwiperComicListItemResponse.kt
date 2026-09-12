@@ -1,8 +1,5 @@
 package com.par9uet.jm.retrofit.model
 
-import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.HomeComicSwiperItem
-
 class HomeSwiperComicListItemResponse(
     val id: String,
     val title: String,
@@ -26,34 +23,5 @@ class HomeSwiperComicListItemResponse(
             val id: String?,
             val title: String?
         )
-
-        fun toComic(): Comic {
-            return Comic(
-                id = id.toInt(),
-                name = name,
-                authorList = listOf(author),
-                description = description ?: "",
-                readCount = 0,
-                likeCount = 0,
-                commentCount = 0,
-                tagList = listOf(),
-                roleList = listOf(),
-                workList = listOf(),
-                isCollect = false,
-                relateComicList = listOf(),
-                comicChapterList = listOf(),
-                price = 0,
-                isBuy = false,
-            )
-        }
     }
-
-    fun toHomeComicSwiperItem(): HomeComicSwiperItem {
-        return HomeComicSwiperItem(
-            id = id,
-            title = title,
-            list = content.map { it.toComic() }
-        )
-    }
-
 }

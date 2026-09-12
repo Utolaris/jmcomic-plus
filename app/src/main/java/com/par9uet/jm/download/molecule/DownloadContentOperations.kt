@@ -22,7 +22,7 @@ import com.par9uet.jm.image.cancellationExceptionOrNull
 import com.par9uet.jm.image.isCancellation
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicPicListResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.log
 import kotlinx.coroutines.Dispatchers

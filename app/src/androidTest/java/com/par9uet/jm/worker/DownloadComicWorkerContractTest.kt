@@ -18,7 +18,7 @@ import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.download.coordinator.DownloadComicCoordinator
 import com.par9uet.jm.download.coordinator.DownloadFeedback
 import com.par9uet.jm.download.molecule.DownloadContentOperations
-import com.par9uet.jm.store.RemoteConfigPreferences
+import com.par9uet.jm.storage.RemoteConfigPreferences
 import java.util.UUID
 import java.util.concurrent.Executor
 import kotlinx.coroutines.Dispatchers

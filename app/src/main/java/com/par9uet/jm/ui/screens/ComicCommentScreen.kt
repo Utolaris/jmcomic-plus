@@ -79,8 +79,8 @@ import androidx.paging.LoadState
 import androidx.paging.compose.LazyPagingItems
 import androidx.paging.compose.collectAsLazyPagingItems
 import com.par9uet.jm.data.models.Comment
-import com.par9uet.jm.store.SessionReadiness
-import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.session.SessionReadiness
+import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.ui.components.Comment
 import com.par9uet.jm.ui.components.CommentSkeleton
 import com.par9uet.jm.ui.components.CommonScaffold

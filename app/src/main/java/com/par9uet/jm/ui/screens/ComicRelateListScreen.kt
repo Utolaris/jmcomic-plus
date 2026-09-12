@@ -10,7 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.unit.dp
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.ui.components.Comic
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.adaptiveComicGridCells

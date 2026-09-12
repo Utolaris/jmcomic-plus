@@ -14,12 +14,12 @@ import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.reader.ReaderImagePipeline
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.storage.ReadHistoryStorage
 import com.par9uet.jm.storage.SecureStorage
-import com.par9uet.jm.store.ReadHistoryManager
-import com.par9uet.jm.store.ReaderPreferences
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.storage.ReadHistoryManager
+import com.par9uet.jm.storage.ReaderPreferences
+import com.par9uet.jm.core.ToastManager
 import java.lang.reflect.Proxy
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -1,0 +1,490 @@
+package com.par9uet.jm.session
+import com.par9uet.jm.core.SessionRecoveryException
+import com.par9uet.jm.core.ToastManager
+import com.par9uet.jm.core.model.CommonUIState
+import com.par9uet.jm.core.model.User
+import com.par9uet.jm.session.CandidateSession
+import com.par9uet.jm.session.UserRepository
+import com.par9uet.jm.retrofit.ActiveSessionCookieStore
+import com.par9uet.jm.core.network.AuthFailure
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.core.network.NetworkErrorKind
+import com.par9uet.jm.retrofit.model.SignInDataResponse
+import com.par9uet.jm.storage.CookieStorage
+import com.par9uet.jm.storage.UserStorage
+import com.par9uet.jm.utils.log
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlin.coroutines.cancellation.CancellationException
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.coroutines.coroutineContext
+
+/**
+ * 用户会话状态机。
+ *
+ * 会话正确性边界：sessionGeneration。任何“把结果应用到活动会话”的提交都必须在
+ * loginMutex 内做 generation + 身份双重校验；登录/验证网络请求本身始终在锁外执行。
+ * Favorites 的阻塞式远程请求由独立 gate 与 transition 串行化，transition 等待时不占用
+ * loginMutex，因此 guarded local commit 与账号切换之间不存在 ABBA。
+ *
+ * Cookie 提交统一走 [UserRepository.activateVerifiedSession]：只有 generation 仍然有效时
+ * 才把候选/登录会话的完整 cookie（内置 API 含 AVS）持久化并同步到活动客户端。
+ */
+class UserManager(
+    private val userStorage: UserStorage,
+    private val cookieStorage: CookieStorage,
+    private val userRepository: UserRepository,
+    private val retrofit: ActiveSessionCookieStore,
+    private val sessionReadinessHolder: SessionReadinessHolder,
+) : AuthenticatedRequestExecutor {
+    private val _userState = MutableStateFlow(CommonUIState<User>())
+    val userState = _userState.asStateFlow()
+
+    /** Authoritative UI authentication state; Compose callers must not supply a fake false initial value. */
+    val authState = sessionReadinessHolder.state
+    private val loginMutex = Mutex()
+    private val sessionGeneration = AtomicLong(0L)
+    private val _sessionState = MutableStateFlow(UserSessionSnapshot(0, 0L))
+    val sessionState = _sessionState.asStateFlow()
+
+    /** Serializes session transitions with session-bound remote work (see [withBoundRemoteSession]). */
+    private val boundRemoteGate = Mutex()
+
+    /**
+     * Background work is cancellable when possible, but generation checks remain the correctness
+     * boundary because embedded JMComic calls are synchronous Java/OkHttp operations.
+     */
+    @Volatile
+    private var backgroundJob: Job? = null
+
+    fun currentSessionSnapshot(): UserSessionSnapshot = _sessionState.value
+
+    fun isCurrentSession(accountId: Int, generation: Long): Boolean {
+        val currentUser = _userState.value.data ?: return false
+        return sessionGeneration.get() == generation && currentUser.id == accountId
+    }
+
+    suspend fun <T> withCurrentSession(
+        accountId: Int,
+        generation: Long,
+        block: suspend () -> T,
+    ): T? = loginMutex.withLock {
+        if (!isCurrentSession(accountId, generation)) return@withLock null
+        block()
+    }
+
+    /**
+     * Every session transition takes locks in exactly this order. Bound Favorites work already
+     * owns [boundRemoteGate] when it performs its guarded local commit through [loginMutex], so
+     * every path follows the same `bound -> login` order.
+     */
+    private suspend fun <T> withSessionTransition(block: suspend () -> T): T =
+        boundRemoteGate.withLock {
+            loginMutex.withLock { block() }
+        }
+
+    /**
+     * 会话绑定的远程执行原语：把“快照仍是当前会话”校验与“远程能力归属于该会话”合并为
+     * 一个正确性边界。会话转换（[beginManualLogin] / [clearUser] / [commitLoginResult]）与
+     * 绑定远程工作在同一把 [boundRemoteGate] 上串行化：
+     *
+     *  - 快照已过期 → 远程块一次都不会启动；
+     *  - 快照有效   → 远程块独占执行直到返回；并发会话转换必须等它结束后才推进 generation，
+     *    因此不会出现“共享客户端已经变成 B，A 的调用仍在半路排队”的交错。
+     *
+     * 注意：不再依赖协程取消去中断阻塞式 JMComic 调用 —— 同步请求要么完整地跑在 A 的
+     * 会话内（B 的登录在锁外等待），要么根本没有开始。loginMutex 不被长网络请求占用。
+     */
+    suspend fun <T> withBoundRemoteSession(
+        accountId: Int,
+        generation: Long,
+        block: suspend () -> T,
+    ): T? {
+        if (!isCurrentSession(accountId, generation)) return null
+        // Restoration commits need boundRemoteGate too; wait before taking that gate.
+        if (sessionReadinessHolder.awaitReady() != SessionReadiness.Authenticated) return null
+        return boundRemoteGate.withLock {
+            if (!isCurrentSession(accountId, generation)) return@withLock null
+            withContext(BoundAuthenticatedRequest) { block() }
+        }
+    }
+
+    init {
+        // Restoring the local identity is cheap and keeps the first frame consistent with the
+        // last session. Network verification is deliberately started after the UI is ready.
+        _userState.value = _userState.value.copy(data = runCatching { userStorage.get() }.getOrNull())
+        publishSession()
+        sessionReadinessHolder.set(readinessForCachedUser(_userState.value.data))
+        sessionReadinessHolder.requestExecutor = this
+    }
+
+    override suspend fun <T> execute(block: suspend () -> T): T {
+        val snapshot = currentSessionSnapshot()
+        if (snapshot.accountId <= 0) throw AuthenticatedSessionRequiredException()
+        fun isCurrent() = isCurrentSession(snapshot.accountId, snapshot.generation)
+        val result = withAuthenticationRecovery(
+            isCurrent = ::isCurrent,
+            recover = { recoverExpiredSession(snapshot.accountId, snapshot.generation) },
+        ) {
+            try {
+                // Wrapping in Success keeps a legitimate nullable SDK result distinct from a
+                // stale session. The same identity/generation owns both attempts.
+                withBoundRemoteSession(snapshot.accountId, snapshot.generation) {
+                    NetWorkResult.Success(block())
+                } ?: if (isCurrent()) {
+                    throw AuthenticatedSessionRequiredException()
+                } else {
+                    throw CancellationException("Authenticated request session changed")
+                }
+            } catch (error: AuthenticatedSessionRequiredException) {
+                NetWorkResult.Error(error.message.orEmpty(), kind = NetworkErrorKind.Authentication, cause = error)
+            }
+        }
+        coroutineContext.ensureActive()
+        // Invalid credentials clear the identity without advancing generation, just like the
+        // startup verifier. Deliver that error, but discard results across manual transitions.
+        val invalidatedHere = result is NetWorkResult.Error &&
+            result.authFailure == AuthFailure.InvalidCredentials &&
+            currentSessionSnapshot() == UserSessionSnapshot(0, snapshot.generation)
+        if (!isCurrent() && !invalidatedHere) throw CancellationException("Authenticated request session changed")
+        return when (result) {
+            is NetWorkResult.Success -> result.data
+            is NetWorkResult.Error -> throw SessionRecoveryException(result)
+        }
+    }
+
+    suspend fun clearUser() {
+        cancelBackgroundJob()
+        withSessionTransition {
+            sessionGeneration.incrementAndGet()
+            clearIdentityWhileLocked()
+            sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
+        }
+    }
+
+    /** Refresh cookies for a rejected session without changing identity or invalidating Favorites. */
+    suspend fun recoverExpiredSession(accountId: Int, generation: Long): NetWorkResult<Unit>? {
+        val snapshot = loginMutex.withLock {
+            if (!isCurrentSession(accountId, generation) || _userState.value.isLoading) {
+                return@withLock null
+            }
+            val user = _userState.value.data?.takeIf {
+                it.username.isNotBlank() && it.password.isNotEmpty()
+            } ?: return@withLock null
+            SessionSnapshot(generation, user)
+        } ?: return null
+
+        // Do not hold either session lock across the isolated login request. Logout and manual
+        // account changes must remain possible even when the SDK call cannot be cancelled.
+        val result = userRepository.verifyLogin(snapshot.user.username, snapshot.user.password)
+        coroutineContext.ensureActive()
+        return withSessionTransition {
+            if (!isCurrentSession(snapshot)) return@withSessionTransition null
+            when (result) {
+                is NetWorkResult.Error -> {
+                    if (result.authFailure == AuthFailure.InvalidCredentials) {
+                        clearIdentityWhileLocked(result.message)
+                        sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
+                    }
+                    result.copy(
+                        message = if (result.authFailure == AuthFailure.InvalidCredentials) {
+                            "登录会话已失效，请重新登录"
+                        } else result.message,
+                        kind = when (result.authFailure) {
+                            AuthFailure.InvalidCredentials -> NetworkErrorKind.Authentication
+                            AuthFailure.TemporaryFailure -> NetworkErrorKind.Network
+                            else -> result.kind
+                        },
+                    )
+                }
+                is NetWorkResult.Success -> {
+                    if (result.data.loginResponse.uid != snapshot.user.id) {
+                        return@withSessionTransition NetWorkResult.Error(
+                            "恢复的登录账号不一致，请重新登录",
+                            kind = NetworkErrorKind.Authentication,
+                        )
+                    }
+                    userRepository.activateVerifiedSession(result.data)
+                    sessionReadinessHolder.set(SessionReadiness.Authenticated)
+                    NetWorkResult.Success(Unit)
+                }
+            }
+        }
+    }
+
+    /** Performs a user-requested login without discarding the previous local identity on error. */
+    suspend fun login(username: String, password: String): NetWorkResult<CandidateSession> {
+        cancelBackgroundJob()
+        val generation = beginManualLogin()
+        val result = userRepository.login(username, password)
+        return commitLoginResult(
+            generation = generation,
+            password = password,
+            result = result,
+            clearUserOnError = false,
+        )
+    }
+
+    /**
+     * Verifies the saved credentials after the first screen is interactive.
+     * 只有认证分类明确为 InvalidCredentials 才注销本地身份；离线、超时等临时错误保留缓存身份，
+     * 避免“秒开时暂时没网 → 后台验证失败 → 用户被突然登出”。
+     *
+     * 网络验证在 loginMutex 外运行；提交（cookie 持久化、用户写入、读就绪状态）在锁内
+     * 做 generation + 身份校验，陈旧候选结果（验证 A 期间手动登录 B / 登出）一律丢弃。
+     */
+    suspend fun verifyStoredLogin() {
+        val snapshot = loginMutex.withLock {
+            if (_userState.value.isLoading) return@withLock null
+            val user = _userState.value.data?.takeIf {
+                it.username.isNotEmpty() && it.password.isNotEmpty()
+            } ?: return@withLock null
+            SessionSnapshot(sessionGeneration.get(), user)
+        } ?: return
+
+        log("检测到已保存了用户登录信息，后台验证登录状态")
+        runInBackground {
+            if (!isCurrentSession(snapshot)) return@runInBackground
+            loginMutex.withLock {
+                if (isCurrentSession(snapshot)) {
+                    _userState.update {
+                        it.copy(isLoading = true, isError = false, errorMsg = "")
+                    }
+                }
+            }
+
+            // This request intentionally runs outside loginMutex. The repository uses an
+            // isolated cookie jar/client so it cannot mutate a newer active session.
+            val result = userRepository.verifyLogin(snapshot.user.username, snapshot.user.password)
+            coroutineContext.ensureActive()
+
+            withSessionTransition {
+                if (!isCurrentSession(snapshot)) return@withSessionTransition
+                when (result) {
+                    is NetWorkResult.Error -> {
+                        if (result.authFailure == AuthFailure.InvalidCredentials) {
+                            clearIdentityWhileLocked(result.message)
+                            sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
+                        } else {
+                            // 临时失败保留缓存身份与已持久化的会话；仍按“已认证”对待，
+                            // 避免收藏等请求在验证失败后一直空等。
+                            sessionReadinessHolder.set(SessionReadiness.Authenticated)
+                            _userState.update {
+                                it.copy(isError = true, errorMsg = result.message, isLoading = false)
+                            }
+                        }
+                    }
+
+                    is NetWorkResult.Success<CandidateSession> -> {
+                        persistUserWhileLocked(
+                            result.data.loginResponse.toUser(
+                                password = snapshot.user.password
+                            )
+                        )
+                        userRepository.activateVerifiedSession(result.data)
+                        sessionReadinessHolder.set(SessionReadiness.Authenticated)
+                        _userState.update { it.copy(isLoading = false) }
+                    }
+                }
+            }
+        }
+    }
+
+    /** Runs automatic sign-in with the same generation guard as saved-login verification. */
+    suspend fun autoSignInIfNeeded(enabled: Boolean, toastManager: ToastManager) = runInBackground {
+        if (!enabled) return@runInBackground
+        val snapshot = loginMutex.withLock {
+            if (_userState.value.isLoading) return@withLock null
+            _userState.value.data
+                ?.takeIf { it.id > 0 }
+                ?.let { SessionSnapshot(sessionGeneration.get(), it) }
+        } ?: return@runInBackground
+        if (!isCurrentSession(snapshot)) return@runInBackground
+
+        val signData = when (val result = userRepository.getSignData(snapshot.user.id)) {
+            is NetWorkResult.Error -> return@runInBackground
+            is NetWorkResult.Success<SignInDataResponse> -> result.data.toSignData()
+        }
+        coroutineContext.ensureActive()
+        if (!isCurrentSession(snapshot)) return@runInBackground
+        val today = java.util.Calendar.getInstance().get(java.util.Calendar.DAY_OF_MONTH)
+        if (signData.dateMap[today]?.isSign == true) return@runInBackground
+
+        when (val result = userRepository.signIn(snapshot.user.id, signData.dailyId)) {
+            is NetWorkResult.Success -> {
+                coroutineContext.ensureActive()
+                if (isCurrentSession(snapshot)) toastManager.showAsync(result.data.msg)
+            }
+
+            is NetWorkResult.Error -> log("自动签到", "签到失败：" + result.message)
+        }
+    }
+
+    /** Refreshes the active account and clears it only when the server rejects its credentials. */
+    suspend fun refreshAuthenticatedUser(username: String, password: String) {
+        cancelBackgroundJob()
+        val generation = beginManualLogin()
+        val result = userRepository.login(username, password)
+        commitLoginResult(
+            generation = generation,
+            password = password,
+            result = result,
+            clearUserOnError = true,
+        )
+    }
+
+    /**
+     * Runs [block] as the tracked background job and suspends until it finishes. The caller that
+     * cancels this job does not join it, so a blocking embedded call cannot delay manual actions.
+     */
+    private suspend fun runInBackground(block: suspend () -> Unit) {
+        coroutineScope {
+            // LAZY 启动保证 cancel 与启动之间不存在“任务已跑起来但句柄还没登记”的窗口
+            val job = launch(start = CoroutineStart.LAZY) { block() }
+            backgroundJob = job
+            job.invokeOnCompletion {
+                if (backgroundJob === job) backgroundJob = null
+            }
+            job.start()
+            job.join()
+        }
+    }
+
+    private fun cancelBackgroundJob() {
+        backgroundJob?.cancel()
+    }
+
+    private suspend fun beginManualLogin(): Long = withSessionTransition {
+        val generation = sessionGeneration.incrementAndGet()
+        publishSession()
+        _userState.update {
+            it.copy(
+                isLoading = true,
+                isError = false,
+                errorMsg = ""
+            )
+        }
+        generation
+    }
+
+    private suspend fun commitLoginResult(
+        generation: Long,
+        password: String,
+        result: NetWorkResult<CandidateSession>,
+        clearUserOnError: Boolean,
+    ): NetWorkResult<CandidateSession> {
+        coroutineContext.ensureActive()
+        return withSessionTransition {
+            if (sessionGeneration.get() != generation) return@withSessionTransition result
+            when (result) {
+                is NetWorkResult.Error -> {
+                    if (clearUserOnError && result.authFailure == AuthFailure.InvalidCredentials) {
+                        clearIdentityWhileLocked(result.message)
+                        sessionReadinessHolder.set(SessionReadiness.Unauthenticated)
+                    } else {
+                        _userState.update {
+                            it.copy(
+                                isError = true,
+                                errorMsg = result.message,
+                            )
+                        }
+                    }
+                }
+
+                is NetWorkResult.Success<CandidateSession> -> {
+                    persistUserWhileLocked(
+                        result.data.loginResponse.toUser(
+                            password = password
+                        )
+                    )
+                    // 提交完整会话（内置 API 含 AVS；网络 API 登录响应已由活动 CookieJar
+                    // 自行持久化，此处为空操作）。generation 校验保证陈旧的登录/验证结果
+                    // 无法覆盖更新的会话。
+                    userRepository.activateVerifiedSession(result.data)
+                    sessionReadinessHolder.set(SessionReadiness.Authenticated)
+                }
+            }
+            if (result !is NetWorkResult.Error || result.authFailure != AuthFailure.InvalidCredentials || !clearUserOnError) {
+                _userState.update { it.copy(isLoading = false) }
+            }
+            result
+        }
+    }
+
+    private fun persistUserWhileLocked(user: User) {
+        _userState.update {
+            it.copy(
+                data = user,
+                isError = false,
+                errorMsg = ""
+            )
+        }
+        userStorage.set(user)
+        publishSession()
+    }
+
+    private fun clearIdentityWhileLocked(errorMsg: String? = null) {
+        _userState.update {
+            it.copy(
+                data = User.create(),
+                isLoading = false,
+                isError = errorMsg != null,
+                errorMsg = errorMsg.orEmpty(),
+            )
+        }
+        retrofit.clearCookie()
+        userRepository.clearSession()
+        userStorage.remove()
+        cookieStorage.remove()
+        publishSession()
+    }
+
+    private fun publishSession() {
+        _sessionState.value = UserSessionSnapshot(
+            accountId = _userState.value.data?.id ?: 0,
+            generation = sessionGeneration.get(),
+        )
+    }
+
+    private fun readinessForCachedUser(user: User?): SessionReadiness {
+        val hasIdentity = user != null &&
+            user.id > 0 &&
+            user.username.isNotEmpty() &&
+            user.password.isNotEmpty()
+        if (!hasIdentity) return SessionReadiness.Unauthenticated
+        val hasEmbeddedAuthCookie = cookieStorage.get().any {
+            it.name.equals("AVS", ignoreCase = true)
+        }
+        return if (hasEmbeddedAuthCookie) {
+            SessionReadiness.Authenticated
+        } else {
+            SessionReadiness.Restoring
+        }
+    }
+
+    private fun isCurrentSession(snapshot: SessionSnapshot): Boolean {
+        val currentUser = _userState.value.data ?: return false
+        return sessionGeneration.get() == snapshot.generation &&
+            currentUser.id == snapshot.user.id &&
+            currentUser.username == snapshot.user.username
+    }
+
+    private data class SessionSnapshot(
+        val generation: Long,
+        val user: User,
+    )
+}
+
+data class UserSessionSnapshot(
+    val accountId: Int,
+    val generation: Long,
+)

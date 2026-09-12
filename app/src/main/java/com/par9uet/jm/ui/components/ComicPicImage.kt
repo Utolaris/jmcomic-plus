@@ -1,4 +1,6 @@
 package com.par9uet.jm.ui.components
+import com.par9uet.jm.reader.readerPageKey
+import com.par9uet.jm.reader.toReaderPage
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -39,8 +41,8 @@ fun ComicPicImage(
     contentScale: ContentScale = ContentScale.FillBounds,
     readerImagePipeline: ReaderImagePipeline = getKoin().get(),
 ) {
-    var retryToken by remember(comicPicImageState.pageKey) { mutableIntStateOf(0) }
-    val page = remember(comicPicImageState.pageKey) { comicPicImageState.toReaderPage() }
+    var retryToken by remember(comicPicImageState.readerPageKey()) { mutableIntStateOf(0) }
+    val page = remember(comicPicImageState.readerPageKey()) { comicPicImageState.toReaderPage() }
     val imageState by produceState<ReaderImageUiState>(
         initialValue = ReaderImageUiState.Loading,
         key1 = page.key,

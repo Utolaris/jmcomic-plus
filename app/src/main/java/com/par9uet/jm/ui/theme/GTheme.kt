@@ -19,7 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_MONET
-import com.par9uet.jm.store.AppearancePreferences
+import com.par9uet.jm.storage.AppearancePreferences
 import org.koin.compose.getKoin
 
 val LocalExtendedColors = staticCompositionLocalOf<ExtendedColorScheme> {

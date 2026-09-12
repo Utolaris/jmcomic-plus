@@ -54,7 +54,7 @@ import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.SearchViewModel
 import com.par9uet.jm.contentfilter.serializeExcludedTags
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingManager
 import kotlinx.coroutines.flow.distinctUntilChanged
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel

@@ -50,8 +50,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.par9uet.jm.data.models.BlockedTagTemplate
-import com.par9uet.jm.store.HistorySearchManager
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.HistorySearchManager
+import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.ui.components.ComicSearchHistoryTag
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SearchExclusionEditor

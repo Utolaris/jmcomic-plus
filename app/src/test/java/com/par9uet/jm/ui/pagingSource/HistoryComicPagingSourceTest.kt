@@ -2,9 +2,9 @@ package com.par9uet.jm.ui.pagingSource
 
 import androidx.paging.PagingSource
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.repository.CandidateSession
-import com.par9uet.jm.repository.UserRepository
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.session.CandidateSession
+import com.par9uet.jm.session.UserRepository
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse

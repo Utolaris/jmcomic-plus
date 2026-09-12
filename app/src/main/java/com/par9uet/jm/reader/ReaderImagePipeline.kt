@@ -11,7 +11,7 @@ import com.par9uet.jm.reader.atom.ReaderImageDiskCache
 import com.par9uet.jm.reader.atom.readerBitmapCacheBudgetBytes
 import com.par9uet.jm.reader.coordinator.ReaderRemoteTelemetry
 import com.par9uet.jm.reader.molecule.ReaderSourceLoader
-import com.par9uet.jm.store.ReaderPreferences
+import com.par9uet.jm.storage.ReaderPreferences
 import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException

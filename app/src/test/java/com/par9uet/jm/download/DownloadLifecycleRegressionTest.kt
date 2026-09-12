@@ -7,7 +7,7 @@ import com.par9uet.jm.download.coordinator.DownloadFeedback
 import com.par9uet.jm.download.coordinator.DownloadOutcome
 import com.par9uet.jm.download.molecule.DownloadContentOperations
 import com.par9uet.jm.download.molecule.downloadPageWithinTimeout
-import com.par9uet.jm.store.RemoteConfigPreferences
+import com.par9uet.jm.storage.RemoteConfigPreferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest

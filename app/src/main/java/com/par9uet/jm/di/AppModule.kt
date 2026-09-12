@@ -16,32 +16,32 @@ import com.par9uet.jm.storage.SecureStorage
 import com.par9uet.jm.storage.SecureUserStorage
 import com.par9uet.jm.storage.UserStorage
 import com.par9uet.jm.startup.PostStartupCoordinator
-import com.par9uet.jm.store.ApiEndpointPreference
-import com.par9uet.jm.store.AppExperiencePreferences
-import com.par9uet.jm.store.AppSecurityEditor
-import com.par9uet.jm.store.AppSecurityPreferences
+import com.par9uet.jm.storage.ApiEndpointPreference
+import com.par9uet.jm.storage.AppExperiencePreferences
+import com.par9uet.jm.storage.AppSecurityEditor
+import com.par9uet.jm.storage.AppSecurityPreferences
 import com.par9uet.jm.update.AppUpdateDownloadManager
-import com.par9uet.jm.store.AppearanceEditor
-import com.par9uet.jm.store.AppearancePreferences
-import com.par9uet.jm.store.CacheNotificationPreferences
-import com.par9uet.jm.store.BlockedTagTemplatePreferences
-import com.par9uet.jm.store.ContentPreferences
-import com.par9uet.jm.store.DohPreferences
-import com.par9uet.jm.store.DohPreferencesEditor
-import com.par9uet.jm.store.ReaderPreferences
-import com.par9uet.jm.store.RecommendationPreferences
-import com.par9uet.jm.store.RemoteConfigPreferences
-import com.par9uet.jm.store.RemoteConfigManager
+import com.par9uet.jm.storage.AppearanceEditor
+import com.par9uet.jm.storage.AppearancePreferences
+import com.par9uet.jm.storage.CacheNotificationPreferences
+import com.par9uet.jm.storage.BlockedTagTemplatePreferences
+import com.par9uet.jm.storage.ContentPreferences
+import com.par9uet.jm.storage.DohPreferences
+import com.par9uet.jm.storage.DohPreferencesEditor
+import com.par9uet.jm.storage.ReaderPreferences
+import com.par9uet.jm.storage.RecommendationPreferences
+import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.network.RemoteConfigManager
 import com.par9uet.jm.download.coordinator.DownloadToastAggregator
-import com.par9uet.jm.store.HistorySearchManager
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.LocalSettingSnapshotProvider
-import com.par9uet.jm.store.MiscSettingsPreferences
-import com.par9uet.jm.store.ReadHistoryManager
-import com.par9uet.jm.store.ReaderResumeManager
-import com.par9uet.jm.store.SessionReadinessHolder
-import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.storage.HistorySearchManager
+import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingSnapshotProvider
+import com.par9uet.jm.storage.MiscSettingsPreferences
+import com.par9uet.jm.storage.ReadHistoryManager
+import com.par9uet.jm.storage.ReaderResumeManager
+import com.par9uet.jm.session.SessionReadinessHolder
+import com.par9uet.jm.core.ToastManager
+import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.launcher.LauncherDisguiseApplier
 import com.par9uet.jm.launcher.LauncherIdentityApplier
@@ -108,8 +108,16 @@ val appModule = module {
 
     single { SessionReadinessHolder() }
     single { UserManager(get(), get(), get(), get(), get()) }
-    single { com.par9uet.jm.store.SecureRemoteConfigStore(get()) } bind com.par9uet.jm.store.RemoteConfigStore::class
-    single { RemoteConfigManager(get(), get()) } bind RemoteConfigPreferences::class
+    single { com.par9uet.jm.network.SecureRemoteConfigStore(get()) } bind com.par9uet.jm.network.RemoteConfigStore::class
+    single {
+        val remoteSettingRepository = get<RemoteSettingRepository>()
+        RemoteConfigManager(
+            remoteSettingFetch = com.par9uet.jm.network.RemoteSettingFetch {
+                remoteSettingRepository.getRemoteSetting()
+            },
+            store = get(),
+        )
+    } bind RemoteConfigPreferences::class
     // All interface aliases resolve to the same LocalSettingManager singleton.
     single { LocalSettingManager(get<LocalSettingStorage>(), get()) } binds LOCAL_SETTING_MANAGER_ALIASES
     single { HistorySearchManager(get()) }
@@ -130,7 +138,7 @@ val appModule = module {
     single { com.par9uet.jm.update.GithubReleaseSource() } bind com.par9uet.jm.update.ReleaseSource::class
     single { com.par9uet.jm.update.ApkInstaller(get()) } bind com.par9uet.jm.update.AppUpdateInstaller::class
     viewModel { com.par9uet.jm.ui.viewModel.AppUpdateViewModel(get(), get(), get(), get()) }
-    single { com.par9uet.jm.store.BackupManager() }
+    single { com.par9uet.jm.backup.BackupManager() }
     single<com.par9uet.jm.backup.BackupTaskScheduler> {
         val downloadManager = get<com.par9uet.jm.download.coordinator.DownloadManager>()
         object : com.par9uet.jm.backup.BackupTaskScheduler {

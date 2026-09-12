@@ -32,7 +32,7 @@ import com.par9uet.jm.ui.interaction.rememberPullDownActionState
 import com.par9uet.jm.ui.screens.tabScreen.FavoritesMaterialTopBar
 import com.par9uet.jm.favorites.model.FavoritesIntent
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.utils.log
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel

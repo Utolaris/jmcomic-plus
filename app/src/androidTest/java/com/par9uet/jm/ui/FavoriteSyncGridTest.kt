@@ -30,9 +30,9 @@ import com.par9uet.jm.coil.CoverImageHostResolver
 import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.favorites.presentation.CollectComicPagingSource
-import com.par9uet.jm.store.FavoriteMetadataPayload
-import com.par9uet.jm.store.FavoriteRemoteItem
-import com.par9uet.jm.store.FavoriteStore
+import com.par9uet.jm.favorites.data.FavoriteMetadataPayload
+import com.par9uet.jm.favorites.data.FavoriteRemoteItem
+import com.par9uet.jm.favorites.data.FavoriteStore
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.glass.GlassCaptureHost

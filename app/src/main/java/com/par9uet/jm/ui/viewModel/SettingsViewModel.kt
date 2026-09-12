@@ -8,19 +8,19 @@ import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.favorites.model.FavoriteSyncUiState
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequestKind
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequester
-import com.par9uet.jm.store.ApiEndpointPreference
-import com.par9uet.jm.store.AppSecurityPreferences
-import com.par9uet.jm.store.AppearancePreferences
-import com.par9uet.jm.store.CacheNotificationPreferences
-import com.par9uet.jm.store.CacheNotificationSetting
-import com.par9uet.jm.store.ColorPaletteState
-import com.par9uet.jm.store.ContentPreferences
-import com.par9uet.jm.store.DohPreferences
-import com.par9uet.jm.store.DohSettingsState
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.MiscSettingsState
-import com.par9uet.jm.store.ReaderPreferences
-import com.par9uet.jm.store.RecommendationPreferences
+import com.par9uet.jm.storage.ApiEndpointPreference
+import com.par9uet.jm.storage.AppSecurityPreferences
+import com.par9uet.jm.storage.AppearancePreferences
+import com.par9uet.jm.storage.CacheNotificationPreferences
+import com.par9uet.jm.storage.CacheNotificationSetting
+import com.par9uet.jm.storage.ColorPaletteState
+import com.par9uet.jm.storage.ContentPreferences
+import com.par9uet.jm.storage.DohPreferences
+import com.par9uet.jm.storage.DohSettingsState
+import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.MiscSettingsState
+import com.par9uet.jm.storage.ReaderPreferences
+import com.par9uet.jm.storage.RecommendationPreferences
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -85,9 +85,9 @@ private data class ReaderSnapshot(
 private data class CombinedMiscSnapshot(
     val apiEndpoint: String,
     val homeExcludedTags: List<String>,
-    val appLock: com.par9uet.jm.store.AppLockState,
+    val appLock: com.par9uet.jm.storage.AppLockState,
     val doh: DohSettingsState,
-    val misc: com.par9uet.jm.store.MiscSettingsState,
+    val misc: com.par9uet.jm.storage.MiscSettingsState,
 )
 /**
  * Control owner for the Settings home screen only; sub-screens keep their own narrow facades
@@ -103,7 +103,7 @@ class SettingsViewModel(
     securityPreferences: AppSecurityPreferences,
     dohPreferences: DohPreferences,
     apiEndpointPreference: ApiEndpointPreference,
-    miscSettings: com.par9uet.jm.store.MiscSettingsPreferences,
+    miscSettings: com.par9uet.jm.storage.MiscSettingsPreferences,
     private val localSettingManager: LocalSettingManager,
     private val favoriteSyncRequester: FavoriteSyncRequester,
 ) : ViewModel() {

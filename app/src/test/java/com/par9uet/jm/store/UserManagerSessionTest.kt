@@ -1,18 +1,28 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.session.AuthenticatedSessionGate
+import com.par9uet.jm.session.AuthenticatedSessionRequiredException
+import com.par9uet.jm.session.SessionReadiness
+import com.par9uet.jm.session.SessionReadinessHolder
+import com.par9uet.jm.core.SessionRecoveryException
+import com.par9uet.jm.session.UserManager
+import com.par9uet.jm.session.UserSessionSnapshot
+import com.par9uet.jm.session.withAuthenticationRecovery
+import com.par9uet.jm.favorites.sync.FavoriteSyncReport
 
-import com.par9uet.jm.data.models.User
-import com.par9uet.jm.repository.CandidateSession
-import com.par9uet.jm.repository.UserRepository
+import com.par9uet.jm.core.model.User
+import com.par9uet.jm.session.CandidateSession
+import com.par9uet.jm.session.UserRepository
 import com.par9uet.jm.retrofit.ActiveSessionCookieStore
-import com.par9uet.jm.retrofit.model.AuthFailure
+import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
 import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.storage.CookieStorage
 import com.par9uet.jm.storage.UserStorage
+import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -125,7 +135,7 @@ class UserManagerSessionTest {
             assertEquals(1, calls)
             if (failure == AuthFailure.TemporaryFailure) {
                 assertEquals("offline", error.message)
-                assertEquals(com.par9uet.jm.retrofit.model.NetworkErrorKind.Network, error.kind)
+                assertEquals(com.par9uet.jm.core.network.NetworkErrorKind.Network, error.kind)
                 assertEquals(1, manager.currentSessionSnapshot().accountId)
                 assertEquals("expired", cookies.get().single().value)
             } else {
@@ -217,7 +227,7 @@ class UserManagerSessionTest {
                         }
                     }!!
                 } catch (error: AuthenticatedSessionRequiredException) {
-                    NetWorkResult.Error("expired", kind = com.par9uet.jm.retrofit.model.NetworkErrorKind.Authentication)
+                    NetWorkResult.Error("expired", kind = com.par9uet.jm.core.network.NetworkErrorKind.Authentication)
                 }
             }
         }
@@ -260,8 +270,8 @@ class UserManagerSessionTest {
             assertTrue(recovered is NetWorkResult.Error)
             assertEquals(
                 if (result is NetWorkResult.Error && result.authFailure == AuthFailure.TemporaryFailure)
-                    com.par9uet.jm.retrofit.model.NetworkErrorKind.Network
-                else com.par9uet.jm.retrofit.model.NetworkErrorKind.Authentication,
+                    com.par9uet.jm.core.network.NetworkErrorKind.Network
+                else com.par9uet.jm.core.network.NetworkErrorKind.Authentication,
                 (recovered as NetWorkResult.Error).kind,
             )
             assertTrue(repository.activated.isEmpty())
@@ -295,7 +305,7 @@ class UserManagerSessionTest {
                 { _, _, _, _ ->
                     calls++
                     if (cookies.get().single().value == "expired") {
-                        NetWorkResult.Error("登录会话已失效", kind = com.par9uet.jm.retrofit.model.NetworkErrorKind.Authentication)
+                        NetWorkResult.Error("登录会话已失效", kind = com.par9uet.jm.core.network.NetworkErrorKind.Authentication)
                     } else {
                         NetWorkResult.Success(FavoriteSyncReport(0, 0, 0, 0, 0))
                     }

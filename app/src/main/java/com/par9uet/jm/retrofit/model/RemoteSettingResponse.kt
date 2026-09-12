@@ -1,6 +1,6 @@
 package com.par9uet.jm.retrofit.model
 
-import com.par9uet.jm.data.models.RemoteSetting
+import com.par9uet.jm.core.model.RemoteSetting
 
 data class RemoteSettingResponse(
 //    val logo_path: String,

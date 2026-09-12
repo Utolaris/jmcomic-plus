@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.viewModel
 
+import com.par9uet.jm.data.comic.mapper.toComic
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.paging.Pager
@@ -17,8 +18,8 @@ import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.ui.pagingSource.ComicCommentPagingSource
 import com.par9uet.jm.ui.state.CommentSubmissionGate

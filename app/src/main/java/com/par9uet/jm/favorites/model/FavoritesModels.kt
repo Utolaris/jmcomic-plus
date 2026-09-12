@@ -1,7 +1,7 @@
 package com.par9uet.jm.favorites.model
 
 import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.retrofit.model.NetworkErrorKind
+import com.par9uet.jm.core.network.NetworkErrorKind
 
 data class FavoritesFilter(
     val searchText: String = "",

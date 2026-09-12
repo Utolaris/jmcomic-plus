@@ -1,4 +1,7 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.favorites.data.FAVORITE_SCOPE_ALL
+import com.par9uet.jm.favorites.data.nextTemporaryRemoteOrder
+import com.par9uet.jm.favorites.data.resolveGlobalOrderAfterScopeSync
 
 import org.junit.Assert.assertEquals
 import org.junit.Test

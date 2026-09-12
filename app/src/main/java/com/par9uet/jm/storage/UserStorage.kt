@@ -1,7 +1,7 @@
 package com.par9uet.jm.storage
 
 import com.google.gson.reflect.TypeToken
-import com.par9uet.jm.data.models.User
+import com.par9uet.jm.core.model.User
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update

@@ -8,7 +8,7 @@ import com.par9uet.jm.database.model.UpdateComicProgress
 import com.par9uet.jm.database.model.UpdateComicStatus
 import com.par9uet.jm.download.molecule.DownloadContentOperations
 import com.par9uet.jm.image.cancellationExceptionOrNull
-import com.par9uet.jm.store.RemoteConfigPreferences
+import com.par9uet.jm.storage.RemoteConfigPreferences
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable

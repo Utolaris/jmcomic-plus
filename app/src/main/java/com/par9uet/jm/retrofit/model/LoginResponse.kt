@@ -1,6 +1,6 @@
 package com.par9uet.jm.retrofit.model
 
-import com.par9uet.jm.data.models.User
+import com.par9uet.jm.core.model.User
 
 data class LoginResponse(
     val uid: Int,

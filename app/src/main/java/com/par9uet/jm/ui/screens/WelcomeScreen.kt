@@ -63,10 +63,10 @@ import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
-import com.par9uet.jm.store.AppSecurityEditor
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.SessionReadiness
-import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.storage.AppSecurityEditor
+import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.session.SessionReadiness
+import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel

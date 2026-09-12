@@ -2,7 +2,7 @@ package com.par9uet.jm.download.coordinator
 
 import android.content.Context
 import com.par9uet.jm.database.model.DownloadComic
-import com.par9uet.jm.store.CacheNotificationPreferences
+import com.par9uet.jm.storage.CacheNotificationPreferences
 import com.par9uet.jm.utils.COMIC_CACHE_NOTIFICATION_ID_BASE
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.cancelProgressNotification

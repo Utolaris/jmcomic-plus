@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
-import com.par9uet.jm.store.RecommendationPreferences
+import com.par9uet.jm.core.network.NetWorkResult
+import com.par9uet.jm.storage.RecommendationPreferences
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update

@@ -5,8 +5,8 @@ import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
-import com.par9uet.jm.retrofit.model.AuthFailure
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.AuthFailure
+import com.par9uet.jm.core.network.NetWorkResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest

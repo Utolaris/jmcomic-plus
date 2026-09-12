@@ -1,12 +1,12 @@
 package com.par9uet.jm.startup
 
 import com.par9uet.jm.network.DohManager
-import com.par9uet.jm.store.HistorySearchManager
-import com.par9uet.jm.store.LocalSettingManager
-import com.par9uet.jm.store.ReadHistoryManager
-import com.par9uet.jm.store.RemoteConfigManager
-import com.par9uet.jm.store.ToastManager
-import com.par9uet.jm.store.UserManager
+import com.par9uet.jm.storage.HistorySearchManager
+import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.ReadHistoryManager
+import com.par9uet.jm.network.RemoteConfigManager
+import com.par9uet.jm.core.ToastManager
+import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.utils.ensureAppNotificationChannels
 import com.par9uet.jm.utils.log
 import java.util.concurrent.atomic.AtomicBoolean

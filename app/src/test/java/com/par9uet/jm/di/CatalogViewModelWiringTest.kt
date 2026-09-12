@@ -2,10 +2,10 @@ package com.par9uet.jm.di
 
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekResponse
-import com.par9uet.jm.store.ContentPreferences
-import com.par9uet.jm.store.RecommendationPreferences
+import com.par9uet.jm.storage.ContentPreferences
+import com.par9uet.jm.storage.RecommendationPreferences
 import com.par9uet.jm.ui.viewModel.HomeViewModel
 import com.par9uet.jm.ui.viewModel.SearchViewModel
 import com.par9uet.jm.ui.viewModel.WeekViewModel

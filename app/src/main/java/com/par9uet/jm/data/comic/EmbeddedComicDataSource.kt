@@ -6,9 +6,9 @@ import com.par9uet.jm.data.comic.mapper.toComicListResponse
 import com.par9uet.jm.data.comic.mapper.toContentListItem
 import com.par9uet.jm.data.comic.mapper.toHomeListItem
 import com.par9uet.jm.data.models.ComicSearchOrderFilter
-import com.par9uet.jm.repository.BaseRepository
-import com.par9uet.jm.repository.impl.AuthenticatedEmbeddedClient
-import com.par9uet.jm.repository.impl.EmbeddedClientManager
+import com.par9uet.jm.core.BaseRepository
+import com.par9uet.jm.network.AuthenticatedEmbeddedClient
+import com.par9uet.jm.network.EmbeddedClientManager
 import com.par9uet.jm.retrofit.model.CollectComicResponse
 import com.par9uet.jm.retrofit.model.ComicDetailResponse
 import com.par9uet.jm.retrofit.model.ComicListResponse
@@ -16,7 +16,7 @@ import com.par9uet.jm.retrofit.model.ComicPicListResponse
 import com.par9uet.jm.retrofit.model.CommentComicResponse
 import com.par9uet.jm.retrofit.model.CommentListResponse
 import com.par9uet.jm.retrofit.model.HomeSwiperComicListItemResponse
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
 import com.par9uet.jm.utils.log

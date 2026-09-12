@@ -1,8 +1,9 @@
 package com.par9uet.jm.repository
+import com.par9uet.jm.core.BaseRepository
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.runBlocking
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -25,10 +26,10 @@ class CancellationPropagationTest {
     fun recoveryFailureKeepsItsNetworkClassificationAndMessage() = runBlocking {
         val failure = NetWorkResult.Error(
             "网络不可用",
-            authFailure = com.par9uet.jm.retrofit.model.AuthFailure.TemporaryFailure,
-            kind = com.par9uet.jm.retrofit.model.NetworkErrorKind.Network,
+            authFailure = com.par9uet.jm.core.network.AuthFailure.TemporaryFailure,
+            kind = com.par9uet.jm.core.network.NetworkErrorKind.Network,
         )
-        val result = subject.capture { throw com.par9uet.jm.store.SessionRecoveryException(failure) }
+        val result = subject.capture { throw com.par9uet.jm.core.SessionRecoveryException(failure) }
         assertEquals(failure, result)
     }
 

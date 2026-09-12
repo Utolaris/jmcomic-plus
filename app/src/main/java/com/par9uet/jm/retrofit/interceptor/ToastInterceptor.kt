@@ -1,6 +1,6 @@
 package com.par9uet.jm.retrofit.interceptor
 
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 import okhttp3.Interceptor
 import okhttp3.Response
 

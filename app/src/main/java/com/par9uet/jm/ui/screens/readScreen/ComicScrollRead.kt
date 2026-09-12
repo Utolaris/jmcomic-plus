@@ -20,7 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import com.par9uet.jm.store.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.ui.components.ComicPicImage
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
 import com.par9uet.jm.utils.log

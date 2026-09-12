@@ -1,4 +1,7 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.favorites.data.FavoriteStore
+import com.par9uet.jm.favorites.data.FavoriteMetadataPayload
+import com.par9uet.jm.favorites.data.FavoriteRemoteItem
 
 import androidx.paging.PagingSource
 import androidx.room.Room
@@ -11,7 +14,7 @@ import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
 import com.par9uet.jm.favorites.data.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.usecase.SyncFavorites
-import com.par9uet.jm.retrofit.model.NetWorkResult
+import com.par9uet.jm.core.network.NetWorkResult
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import org.junit.After

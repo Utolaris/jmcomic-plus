@@ -1,6 +1,6 @@
 package com.par9uet.jm.download.coordinator
 
-import com.par9uet.jm.store.ToastManager
+import com.par9uet.jm.core.ToastManager
 
 class DownloadToastAggregator(
     private val toastManager: ToastManager
