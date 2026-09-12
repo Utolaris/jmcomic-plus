@@ -47,7 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -464,13 +465,14 @@ private fun CompletedGrid(
     onClick: (DownloadItemGroup) -> Unit,
     onLongClick: (DownloadItemGroup) -> Unit
 ) {
-    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenWidthDp = with(density) { LocalWindowInfo.current.containerSize.width.toDp() }
     val columns = if (gridColumns > 0) {
         gridColumns
     } else {
         when {
-            configuration.screenWidthDp >= 600 -> 4
-            configuration.screenWidthDp >= 400 -> 3
+            screenWidthDp >= 600.dp -> 4
+            screenWidthDp >= 400.dp -> 3
             else -> 2
         }
     }

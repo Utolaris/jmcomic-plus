@@ -16,7 +16,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.data.models.Comic
@@ -39,7 +38,6 @@ fun Comic(
     comicDetailViewModel: ComicDetailViewModel = koinActivityViewModel()
 ) {
     val mainNavController = LocalMainNavController.current
-    val clipboardManager = LocalClipboardManager.current
     val toastManager: ToastManager = getKoin().get()
 
     Card(

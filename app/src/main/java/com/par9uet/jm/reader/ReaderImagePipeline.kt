@@ -3,6 +3,7 @@ package com.par9uet.jm.reader
 import android.app.ActivityManager
 import android.content.Context
 import android.os.SystemClock
+import androidx.core.net.toUri
 import com.par9uet.jm.BuildConfig
 import com.par9uet.jm.image.JmImageHostHealthManager
 import com.par9uet.jm.network.DohManager
@@ -265,7 +266,7 @@ class ReaderImagePipeline internal constructor(
         if (page.originSrc.startsWith("content://")) {
             val temporary = diskCache.createSourceTempFile()
             try {
-                val uri = android.net.Uri.parse(page.originSrc)
+                val uri = page.originSrc.toUri()
                 requireNotNull(appContext.contentResolver.openInputStream(uri)).use { input ->
                     temporary.outputStream().use { output -> input.copyTo(output) }
                 }

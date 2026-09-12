@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      Keep adaptive icons in mipmap-anydpi-v26: moving them to mipmap-anydpi
+      makes lint flag IconXmlAndPng against the density-specific launcher
+      bitmaps. minSdk 30 makes the v26 qualifier a no-op at runtime, so this
+      is layout hygiene only.
+    -->
+    <issue id="ObsoleteSdkInt" severity="ignore">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>

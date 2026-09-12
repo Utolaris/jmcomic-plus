@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.R
 import com.par9uet.jm.ui.glass.GlassSurface
@@ -111,7 +112,7 @@ fun PrimaryGlassBottomBar(
 
                 Box(
                     modifier = Modifier
-                        .offset(x = itemWidth * selectedIndex)
+                        .offset { IntOffset(x = (itemWidth * selectedIndex).roundToPx(), y = 0) }
                         .width(itemWidth)
                         .fillMaxHeight()
                         .padding(4.dp)

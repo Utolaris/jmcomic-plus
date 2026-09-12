@@ -16,7 +16,7 @@ data class LogEntry(
 object LogBuffer {
     private const val MAX_ENTRIES = 500
     private val entries = mutableListOf<LogEntry>()
-    private val dateFormatter = SimpleDateFormat("MM-dd HH:mm:ss", Locale.getDefault())
+    private val dateFormatter = SimpleDateFormat("MM-dd HH:mm:ss", Locale.ROOT)
 
     @Synchronized
     fun append(tag: String, message: String, level: String = "D") {

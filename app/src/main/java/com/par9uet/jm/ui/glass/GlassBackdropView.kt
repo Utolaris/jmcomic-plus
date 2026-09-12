@@ -10,6 +10,9 @@ import android.graphics.RectF
 import android.os.Build
 import android.view.View
 import androidx.annotation.RequiresApi
+import androidx.core.graphics.withClip
+import androidx.core.graphics.withSave
+import androidx.core.graphics.withTranslation
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -201,23 +204,24 @@ internal class GlassBackdropView(
     private fun drawNativeBackdrop(canvas: Canvas) {
         val nativeState = nativeRenderState ?: return
         val padding = style.material.blurRadiusPx()
-        canvas.save()
-        canvas.clipPath(glassPath)
-        canvas.translate(-padding, -padding)
-        canvas.drawRenderNode(nativeState.renderNode)
-        canvas.restore()
+        canvas.withSave {
+            clipPath(glassPath)
+            translate(-padding, -padding)
+            drawRenderNode(nativeState.renderNode)
+        }
     }
 
     private fun drawDirectionalStroke(canvas: Canvas, paint: Paint, clipTop: Boolean) {
-        canvas.save()
         val split = surfaceRect.top + surfaceRect.height() / 2f
         if (clipTop) {
-            canvas.clipRect(surfaceRect.left, surfaceRect.top, surfaceRect.right, split)
+            canvas.withClip(surfaceRect.left, surfaceRect.top, surfaceRect.right, split) {
+                drawRoundRect(surfaceRect, cornerRadiusPx(), cornerRadiusPx(), paint)
+            }
         } else {
-            canvas.clipRect(surfaceRect.left, split, surfaceRect.right, surfaceRect.bottom)
+            canvas.withClip(surfaceRect.left, split, surfaceRect.right, surfaceRect.bottom) {
+                drawRoundRect(surfaceRect, cornerRadiusPx(), cornerRadiusPx(), paint)
+            }
         }
-        canvas.drawRoundRect(surfaceRect, cornerRadiusPx(), cornerRadiusPx(), paint)
-        canvas.restore()
     }
 
     private fun updatePaintMetrics() {
@@ -275,10 +279,9 @@ internal class GlassBackdropView(
         ) {
             renderNode.setPosition(0, 0, width, height)
             val recordingCanvas = renderNode.beginRecording(width, height)
-            recordingCanvas.save()
-            recordingCanvas.translate(-sourceLeft, -sourceTop)
-            recordingCanvas.drawRenderNode(sourceNode)
-            recordingCanvas.restore()
+            recordingCanvas.withTranslation(-sourceLeft, -sourceTop) {
+                drawRenderNode(sourceNode)
+            }
             renderNode.endRecording()
         }
     }

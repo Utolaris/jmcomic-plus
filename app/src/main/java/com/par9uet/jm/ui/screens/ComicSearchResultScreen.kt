@@ -34,7 +34,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -104,7 +105,10 @@ fun ComicSearchResultScreen(
     val searchComicIdState by searchViewModel.searchComicIdState.collectAsState()
     val savedViewport by searchViewModel.searchViewportState.collectAsState()
     val sortMenuState = rememberGlassAnchoredMenuState()
-    val sortMenuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
+    val density = LocalDensity.current
+    val sortMenuMaxHeight = with(density) {
+        LocalWindowInfo.current.containerSize.height.toDp() * 0.56f
+    }
     val gridState = rememberLazyGridState(
         initialFirstVisibleItemIndex = savedViewport.firstVisibleItemIndex,
         initialFirstVisibleItemScrollOffset = savedViewport.firstVisibleItemScrollOffset,

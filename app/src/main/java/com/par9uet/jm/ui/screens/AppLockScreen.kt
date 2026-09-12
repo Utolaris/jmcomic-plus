@@ -49,6 +49,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.data.models.APP_LOCK_TYPE_PASSWORD
@@ -162,9 +163,9 @@ fun PasswordLockInput(
     title: String,
     correctPassword: String?,
     onUnlock: () -> Unit,
+    modifier: Modifier = Modifier,
     onInputComplete: ((String) -> Unit)? = null,
     passwordLength: Int = 4,
-    modifier: Modifier = Modifier
 ) {
     val len = passwordLength.coerceIn(4, 8)
     val scope = rememberCoroutineScope()
@@ -226,7 +227,7 @@ fun PasswordLockInput(
         Spacer(modifier = Modifier.height(24.dp))
         Row(
             horizontalArrangement = Arrangement.spacedBy(20.dp),
-            modifier = Modifier.offset(x = shakeOffset.value.dp)
+            modifier = Modifier.offset { IntOffset(x = shakeOffset.value.dp.roundToPx(), y = 0) }
         ) {
             repeat(len) { index ->
                 val filled = index < digits.size
@@ -341,8 +342,8 @@ fun PatternLockInput(
     title: String,
     correctPassword: String?,
     onUnlock: () -> Unit,
+    modifier: Modifier = Modifier,
     onInputComplete: ((String) -> Unit)? = null,
-    modifier: Modifier = Modifier
 ) {
     val selectedDots = remember { mutableStateListOf<Int>() }
     var currentTouch by remember { mutableStateOf<Offset?>(null) }
@@ -407,7 +408,7 @@ fun PatternLockInput(
         Box(
             modifier = Modifier
                 .size(280.dp)
-                .offset(x = shakeOffset.value.dp)
+                .offset { IntOffset(x = shakeOffset.value.dp.roundToPx(), y = 0) }
                 .pointerInput(Unit) {
                     detectDragGestures(
                         onDragStart = { offset ->

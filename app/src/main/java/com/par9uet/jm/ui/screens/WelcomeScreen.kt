@@ -21,10 +21,10 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Login
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.Login
 import androidx.compose.material.icons.rounded.Notifications
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.WarningAmber
@@ -49,6 +49,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -102,7 +103,7 @@ fun WelcomeScreen(
     val isLogin = authState != SessionReadiness.Unauthenticated
     val loginState by userViewModel.loginState.collectAsState()
 
-    var step by remember { mutableStateOf(0) }
+    var step by remember { mutableIntStateOf(0) }
 
     // 提升到顶层的状态，供内容区和按钮区共享
     var appLockEnabled by remember { mutableStateOf(appLock.enabled) }
@@ -610,7 +611,7 @@ private fun LoginStepContent(
     onPasswordChange: (String) -> Unit,
 ) {
     StepHeader(
-        icon = Icons.Rounded.Login,
+        icon = Icons.AutoMirrored.Rounded.Login,
         title = "登录账号（可选）",
         description = if (isLogin) {
             "已成功登录，可以完成首次设置。"

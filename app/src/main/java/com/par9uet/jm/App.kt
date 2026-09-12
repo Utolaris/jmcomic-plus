@@ -26,8 +26,10 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -35,7 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -63,6 +66,7 @@ import com.par9uet.jm.ui.screens.AppScreen
 import com.par9uet.jm.ui.screens.NsfwWarningDialog
 import com.par9uet.jm.ui.screens.WelcomeScreen
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.withContext
 import org.koin.compose.getKoin
@@ -159,12 +163,13 @@ private fun MainAppContent(
     onNsfwDismissed: () -> Unit,
 ) {
     val lifecycleOwner = LocalLifecycleOwner.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     val koin = getKoin()
     var lastClipboardText by remember { mutableStateOf("") }
     var clipboardDetectedComicId by remember { mutableStateOf<Int?>(null) }
     var clipboardDetectedComic by remember { mutableStateOf<Comic?>(null) }
-    var pendingNavComicId by remember { mutableStateOf(-1) }
+    var pendingNavComicId by remember { mutableIntStateOf(-1) }
 
     // Process death while reading never runs onDispose. If Navigation could not restore the
     // back stack (HyperOS cold start), fall back to the durable reader resume mark.
@@ -189,12 +194,15 @@ private fun MainAppContent(
         } else {
             val observer = LifecycleEventObserver { _, event ->
                 if (event == Lifecycle.Event.ON_RESUME) {
-                    val clipText = clipboardManager.getText()?.text ?: ""
-                    if (clipText.isNotBlank() && clipText != lastClipboardText) {
-                        lastClipboardText = clipText
-                        val digits = clipText.filter { it.isDigit() }
-                        if (digits.length in 3..12) {
-                            clipboardDetectedComicId = digits.toIntOrNull()
+                    clipboardScope.launch {
+                        val clipEntry = clipboard.getClipEntry()
+                        val clipText = clipEntry?.clipData?.getItemAt(0)?.text?.toString() ?: ""
+                        if (clipText.isNotBlank() && clipText != lastClipboardText) {
+                            lastClipboardText = clipText
+                            val digits = clipText.filter { it.isDigit() }
+                            if (digits.length in 3..12) {
+                                clipboardDetectedComicId = digits.toIntOrNull()
+                            }
                         }
                     }
                 }

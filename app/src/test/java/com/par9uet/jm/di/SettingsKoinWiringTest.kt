@@ -114,6 +114,7 @@ class SettingsKoinWiringTest {
 
     private class InMemoryRemoteConfigStore : com.par9uet.jm.network.RemoteConfigStore {
         private val map = mutableMapOf<String, Any>()
+        @Suppress("UNCHECKED_CAST") // Fake stores Any and returns it as T; Type token is unused.
         override fun <T> get(key: String, type: java.lang.reflect.Type): T? = map[key] as? T
         override fun <T> set(key: String, value: T) { map[key] = value as Any }
     }

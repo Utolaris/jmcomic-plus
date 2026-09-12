@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.screens
 
+import android.content.ClipData
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -45,12 +46,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -63,6 +65,7 @@ import kotlin.math.roundToInt
 import com.par9uet.jm.update.GithubRelease
 import com.par9uet.jm.update.UpdateState
 import com.par9uet.jm.ui.viewModel.AppUpdateViewModel
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -71,7 +74,8 @@ fun CheckUpdateScreen(
     viewModel: AppUpdateViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     val appIcon = remember(context) { loadAppIconBitmap(context) }
     val appVersion = remember(context) { appVersionName(context) }
     val versionCode = remember(context) { appVersionCode(context) }
@@ -91,7 +95,16 @@ fun CheckUpdateScreen(
                     visible = releaseDialogVisible,
                     release = release,
                     onCopyDownloadUrl = {
-                        clipboardManager.setText(AnnotatedString(release.downloadUrl.ifBlank { release.url }))
+                        clipboardScope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(
+                                    ClipData.newPlainText(
+                                        "text",
+                                        release.downloadUrl.ifBlank { release.url },
+                                    ),
+                                ),
+                            )
+                        }
                     },
                     onDismiss = viewModel::dismissRelease,
                     onDownload = viewModel::downloadRelease,

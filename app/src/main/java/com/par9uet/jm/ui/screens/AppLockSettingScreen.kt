@@ -32,6 +32,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -73,7 +74,7 @@ fun AppLockSettingScreen(
     var showSetPasswordDialog by remember { mutableStateOf(false) }
     var showSetPatternDialog by remember { mutableStateOf(false) }
     // 设置密码时的临时长度（仅在选择完长度后弹出输入框时使用）
-    var pendingPasswordLength by remember { mutableStateOf(appLock.passwordLength) }
+    var pendingPasswordLength by remember { mutableIntStateOf(appLock.passwordLength) }
 
     CommonScaffold(
         title = "应用锁",

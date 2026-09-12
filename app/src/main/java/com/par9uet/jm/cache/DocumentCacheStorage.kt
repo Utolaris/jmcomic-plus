@@ -3,6 +3,7 @@ package com.par9uet.jm.cache
 import android.content.Context
 import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.core.net.toUri
 import com.google.gson.Gson
 import com.par9uet.jm.database.model.DownloadComic
 import java.io.File
@@ -12,7 +13,7 @@ fun isDocumentCachePath(path: String): Boolean = path.startsWith("content://")
 
 fun getTreeUriForCachePath(path: String): Uri? = runCatching {
     if (!isDocumentCachePath(path)) return@runCatching null
-    val uri = Uri.parse(path)
+    val uri = path.toUri()
     DocumentsContract.buildTreeDocumentUri(
         uri.authority ?: return@runCatching null,
         DocumentsContract.getTreeDocumentId(uri),
@@ -39,7 +40,7 @@ fun getComicChapterDownloadPath(context: Context, comic: DownloadComic): String 
     if (!isDocumentCachePath(root)) return File(root, getChapterCacheName(comic)).also { it.mkdirs() }.absolutePath
     return requireNotNull(findOrCreateCacheDocument(
         context,
-        Uri.parse(root),
+        root.toUri(),
         getChapterCacheName(comic),
         DocumentsContract.Document.MIME_TYPE_DIR,
     )).toString()
@@ -82,7 +83,7 @@ fun findExistingComicChapterPath(context: Context, root: String, comic: Download
             .firstOrNull { it.isDirectory && listComicImageFiles(it).isNotEmpty() }
             ?.absolutePath
     }
-    val parent = Uri.parse(root)
+    val parent = root.toUri()
     val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
     val candidates = context.contentResolver.query(
         children,
@@ -109,7 +110,7 @@ fun getOrCreateCacheFile(
     mimeType: String,
 ): String {
     if (!isDocumentCachePath(directoryPath)) return File(directoryPath, name).absolutePath
-    return requireNotNull(findOrCreateCacheDocument(context, Uri.parse(directoryPath), name, mimeType)).toString()
+    return requireNotNull(findOrCreateCacheDocument(context, directoryPath.toUri(), name, mimeType)).toString()
 }
 
 fun getComicCoverDownloadPath(context: Context, comic: DownloadComic): String =
@@ -117,7 +118,7 @@ fun getComicCoverDownloadPath(context: Context, comic: DownloadComic): String =
 
 fun openCacheOutputStream(context: Context, path: String): OutputStream =
     if (isDocumentCachePath(path)) {
-        requireNotNull(context.contentResolver.openOutputStream(Uri.parse(path), "wt"))
+        requireNotNull(context.contentResolver.openOutputStream(path.toUri(), "wt"))
     } else {
         File(path).also { it.parentFile?.mkdirs() }.outputStream()
     }
@@ -125,7 +126,7 @@ fun openCacheOutputStream(context: Context, path: String): OutputStream =
 fun cachePathExists(context: Context, path: String): Boolean = if (isDocumentCachePath(path)) {
     runCatching {
         context.contentResolver.query(
-            Uri.parse(path),
+            path.toUri(),
             arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
             null, null, null,
         )?.use { it.moveToFirst() } == true
@@ -155,7 +156,7 @@ fun inspectCachePath(context: Context, path: String): CachePathAccess {
     }
     return try {
         context.contentResolver.query(
-            Uri.parse(path),
+            path.toUri(),
             arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID),
             null,
             null,
@@ -170,7 +171,7 @@ fun inspectCachePath(context: Context, path: String): CachePathAccess {
 fun cachePathIsDirectory(context: Context, path: String): Boolean {
     if (!isDocumentCachePath(path)) return File(path).isDirectory
     return context.contentResolver.query(
-        Uri.parse(path), arrayOf(DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null,
+        path.toUri(), arrayOf(DocumentsContract.Document.COLUMN_MIME_TYPE), null, null, null,
     )?.use {
         it.moveToFirst() && it.getString(0) == DocumentsContract.Document.MIME_TYPE_DIR
     } ?: error("无法读取缓存文件类型")
@@ -179,7 +180,7 @@ fun cachePathIsDirectory(context: Context, path: String): Boolean {
 fun cachePathLength(context: Context, path: String): Long = if (isDocumentCachePath(path)) {
     runCatching {
         context.contentResolver.query(
-            Uri.parse(path),
+            path.toUri(),
             arrayOf(DocumentsContract.Document.COLUMN_SIZE),
             null, null, null,
         )?.use { if (it.moveToFirst()) it.getLong(0) else 0L } ?: 0L
@@ -208,7 +209,7 @@ fun cachePathContentStatus(context: Context, path: String): CachePathContent {
         }
     }
     return try {
-        val result = context.contentResolver.openInputStream(Uri.parse(path))
+        val result = context.contentResolver.openInputStream(path.toUri())
             ?: return CachePathContent.UNREADABLE
         result.use { if (it.read() >= 0) CachePathContent.HAS_CONTENT else CachePathContent.EMPTY }
     } catch (_: Exception) {
@@ -225,7 +226,7 @@ fun cachePathSize(context: Context, path: String): Long {
             file.length()
         }
     }
-    return runCatching { documentPathSize(context, Uri.parse(path)) }.getOrDefault(0L)
+    return runCatching { documentPathSize(context, path.toUri()) }.getOrDefault(0L)
 }
 
 data class CacheImageEntry(
@@ -255,7 +256,7 @@ fun listComicImageEntriesOrThrow(context: Context, directoryPath: String): List<
             .sortedWith(compareBy<File> { it.nameWithoutExtension.toIntOrNull() ?: Int.MAX_VALUE }.thenBy { it.name })
             .map { CacheImageEntry(it.name, it.absolutePath) }
     }
-    val parent = Uri.parse(directoryPath)
+    val parent = directoryPath.toUri()
     val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
     val cursor = context.contentResolver.query(
         children,
@@ -282,7 +283,7 @@ fun getCacheParentPath(path: String): String? = runCatching {
     if (!isDocumentCachePath(path)) {
         File(path).parentFile?.absolutePath
     } else {
-        val uri = Uri.parse(path)
+        val uri = path.toUri()
         val documentId = DocumentsContract.getDocumentId(uri)
         documentId.substringBeforeLast('/', "").takeIf(String::isNotBlank)
             ?.let { DocumentsContract.buildDocumentUriUsingTree(uri, it).toString() }
@@ -298,7 +299,7 @@ fun findCacheChildPathOrThrow(context: Context, parentPath: String, name: String
     if (!isDocumentCachePath(parentPath)) {
         return File(parentPath, name).takeIf(File::exists)?.absolutePath
     }
-    val parent = Uri.parse(parentPath)
+    val parent = parentPath.toUri()
     val children = DocumentsContract.buildChildDocumentsUriUsingTree(parent, DocumentsContract.getDocumentId(parent))
     val cursor = context.contentResolver.query(
         children,
@@ -316,7 +317,7 @@ fun findCacheChildPathOrThrow(context: Context, parentPath: String, name: String
 }
 
 fun openCacheInputStream(context: Context, path: String) =
-    if (isDocumentCachePath(path)) context.contentResolver.openInputStream(Uri.parse(path)) else File(path).inputStream()
+    if (isDocumentCachePath(path)) context.contentResolver.openInputStream(path.toUri()) else File(path).inputStream()
 
 fun writeDocumentComicCacheConfig(
     context: Context,
@@ -347,7 +348,7 @@ fun writeDocumentComicCacheConfigAtPath(
 }
 
 fun deleteCachePath(context: Context, path: String): Boolean = if (isDocumentCachePath(path)) {
-    runCatching { DocumentsContract.deleteDocument(context.contentResolver, Uri.parse(path)) }.getOrDefault(false)
+    runCatching { DocumentsContract.deleteDocument(context.contentResolver, path.toUri()) }.getOrDefault(false)
 } else {
     File(path).let { if (it.isDirectory) it.deleteRecursively() else it.delete() }
 }

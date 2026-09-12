@@ -35,12 +35,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import coil.ImageLoader
@@ -52,6 +54,7 @@ import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.getKoin
 
@@ -70,7 +73,8 @@ fun ExtractCodeScreen(
     imageLoader: ImageLoader = getKoin().get(),
 ) {
     val mainNavController = LocalMainNavController.current
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
 
     var inputText by remember { mutableStateOf("") }
@@ -149,12 +153,15 @@ fun ExtractCodeScreen(
             ) {
                 OutlinedButton(
                     onClick = {
-                        val clipText = clipboardManager.getText()?.text ?: ""
-                        if (clipText.isNotBlank()) {
-                            inputText = clipText
-                            extractAndFetch(clipText)
-                        } else {
-                            toastManager.showAsync("剪切板为空")
+                        clipboardScope.launch {
+                            val clipEntry = clipboard.getClipEntry()
+                            val clipText = clipEntry?.clipData?.getItemAt(0)?.text?.toString() ?: ""
+                            if (clipText.isNotBlank()) {
+                                inputText = clipText
+                                extractAndFetch(clipText)
+                            } else {
+                                toastManager.showAsync("剪切板为空")
+                            }
                         }
                     },
                     modifier = Modifier.weight(1f)

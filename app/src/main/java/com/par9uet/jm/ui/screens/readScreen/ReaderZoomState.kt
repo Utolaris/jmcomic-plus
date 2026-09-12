@@ -8,6 +8,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -30,12 +32,12 @@ private const val ORIGINAL_SIZE_SNAP_THRESHOLD = 1.01f
 
 @Stable
 class ReaderZoomState {
-    var scale by mutableStateOf(MIN_ZOOM)
+    var scale by mutableFloatStateOf(MIN_ZOOM)
         private set
     var offset by mutableStateOf(Offset.Zero)
         private set
-    private var viewportWidth by mutableStateOf(0)
-    private var viewportHeight by mutableStateOf(0)
+    private var viewportWidth by mutableIntStateOf(0)
+    private var viewportHeight by mutableIntStateOf(0)
 
     val isZoomed: Boolean
         get() = scale > ORIGINAL_SIZE_SNAP_THRESHOLD || offset != Offset.Zero

@@ -1,6 +1,7 @@
 package com.par9uet.jm.cache
 
 import android.content.Context
+import androidx.core.content.edit
 import com.par9uet.jm.utils.tryCreateDir
 import java.io.File
 
@@ -20,9 +21,9 @@ fun getDownloadTreeUri(context: Context): android.net.Uri? =
 
 fun setDownloadTreeUri(context: Context, uri: String) {
     context.getSharedPreferences(DOWNLOAD_TREE_PREFERENCES, Context.MODE_PRIVATE)
-        .edit()
-        .putString(DOWNLOAD_TREE_URI_KEY, uri)
-        .apply()
+        .edit {
+            putString(DOWNLOAD_TREE_URI_KEY, uri)
+        }
 }
 
 /**
@@ -35,7 +36,7 @@ fun getCacheMigrationRequestId(context: Context): String? =
 
 fun setCacheMigrationRequestId(context: Context, requestId: String) {
     context.getSharedPreferences(DOWNLOAD_TREE_PREFERENCES, Context.MODE_PRIVATE)
-        .edit()
-        .putString(CACHE_MIGRATION_REQUEST_ID_KEY, requestId)
-        .apply()
+        .edit {
+            putString(CACHE_MIGRATION_REQUEST_ID_KEY, requestId)
+        }
 }

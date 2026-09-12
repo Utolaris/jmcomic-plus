@@ -46,8 +46,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -94,7 +95,10 @@ internal fun HomeMaterialCategoryTitleSelector(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val hapticFeedback = LocalHapticFeedback.current
-    val menuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
+    val density = LocalDensity.current
+    val menuMaxHeight = with(density) {
+        LocalWindowInfo.current.containerSize.height.toDp() * 0.56f
+    }
 
     Box(
         modifier = modifier.combinedClickable(

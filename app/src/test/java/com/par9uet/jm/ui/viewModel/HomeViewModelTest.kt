@@ -61,11 +61,11 @@ class HomeViewModelTest {
         constructor()
 
         constructor(recommendEnabled: Boolean) {
-            (_preferenceRecommendEnabled as MutableStateFlow).value = recommendEnabled
+            _preferenceRecommendEnabled.value = recommendEnabled
         }
 
         fun setRecommendEnabled(enabled: Boolean) {
-            (_preferenceRecommendEnabled as MutableStateFlow).value = enabled
+            _preferenceRecommendEnabled.value = enabled
         }
 
         private val _blockedTags = MutableStateFlow(emptyList<String>())

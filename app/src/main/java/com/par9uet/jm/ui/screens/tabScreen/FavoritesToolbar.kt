@@ -60,9 +60,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -188,7 +189,10 @@ private fun FavoritesMaterialFolderTitle(
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
     val hapticFeedback = LocalHapticFeedback.current
-    val menuMaxHeight = LocalConfiguration.current.screenHeightDp.dp * 0.56f
+    val density = LocalDensity.current
+    val menuMaxHeight = with(density) {
+        LocalWindowInfo.current.containerSize.height.toDp() * 0.56f
+    }
     val folders = remember(folderList) {
         buildList {
             add(0 to "全部收藏")

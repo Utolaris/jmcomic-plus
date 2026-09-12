@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.screens
 
+import android.content.ClipData
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -31,20 +32,23 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.utils.LogBuffer
 import com.par9uet.jm.utils.LogEntry
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @Composable
 fun LogViewerScreen() {
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     val listState = rememberLazyListState()
     var logs by remember { mutableStateOf(LogBuffer.getLogs()) }
     var autoScroll by remember { mutableStateOf(true) }
@@ -84,7 +88,11 @@ fun LogViewerScreen() {
                 }
                 Button(
                     onClick = {
-                        clipboardManager.setText(AnnotatedString(LogBuffer.getLogText()))
+                        clipboardScope.launch {
+                            clipboard.setClipEntry(
+                                ClipEntry(ClipData.newPlainText("text", LogBuffer.getLogText())),
+                            )
+                        }
                     },
                     shape = RoundedCornerShape(12.dp)
                 ) {

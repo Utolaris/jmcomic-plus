@@ -1,5 +1,6 @@
 package com.par9uet.jm.ui.components
 
+import android.content.ClipData
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -26,8 +27,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,7 +48,7 @@ import org.koin.compose.getKoin
 @Composable
 fun ComicCoverImage(
     comic: Comic,
-    modifier: Modifier = Modifier.fillMaxWidth(),
+    modifier: Modifier = Modifier,
     showIdChip: Boolean = false,
     isScrolling: Boolean = false,
     remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
@@ -55,7 +56,7 @@ fun ComicCoverImage(
     toastManager: ToastManager = getKoin().get(),
 ) {
     val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
-    val clipboardManager = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
     val comicRepository: ComicRepository = getKoin().get()
     val scope = rememberCoroutineScope()
     var showDetailDialog by remember { mutableStateOf(false) }
@@ -87,8 +88,12 @@ fun ComicCoverImage(
                     .padding(end = 10.dp, top = 10.dp)
                     .combinedClickable(
                         onClick = {
-                            clipboardManager.setText(AnnotatedString(comic.id.toString()))
-                            toastManager.showAsync("已复制漫画编码：${comic.id}")
+                            scope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(ClipData.newPlainText("text", comic.id.toString()))
+                                )
+                                toastManager.showAsync("已复制漫画编码：${comic.id}")
+                            }
                         },
                         onLongClick = {
                             detailLoading = true
@@ -132,8 +137,12 @@ fun ComicCoverImage(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    clipboardManager.setText(AnnotatedString(detailInfoText))
-                    toastManager.showAsync("已复制详情信息")
+                    scope.launch {
+                        clipboard.setClipEntry(
+                            ClipEntry(ClipData.newPlainText("text", detailInfoText))
+                        )
+                        toastManager.showAsync("已复制详情信息")
+                    }
                 }) { Text("复制") }
             },
             dismissButton = {

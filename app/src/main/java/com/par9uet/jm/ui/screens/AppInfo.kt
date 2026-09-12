@@ -1,6 +1,7 @@
 package com.par9uet.jm.ui.screens
 
 import android.content.Context
+import androidx.core.graphics.createBitmap
 
 @Suppress("DEPRECATION")
 internal fun appVersionName(context: Context): String {
@@ -21,7 +22,7 @@ internal fun loadAppIconBitmap(context: Context) = runCatching {
     val drawable = context.packageManager.getApplicationIcon(context.packageName)
     val width = drawable.intrinsicWidth.takeIf { it > 0 } ?: 128
     val height = drawable.intrinsicHeight.takeIf { it > 0 } ?: 128
-    val bitmap = android.graphics.Bitmap.createBitmap(
+    val bitmap = createBitmap(
         width,
         height,
         android.graphics.Bitmap.Config.ARGB_8888

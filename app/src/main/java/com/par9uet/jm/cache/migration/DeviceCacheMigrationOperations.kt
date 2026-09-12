@@ -1,8 +1,8 @@
 package com.par9uet.jm.cache.migration
 
 import android.content.Context
-import android.net.Uri
 import android.provider.DocumentsContract
+import androidx.core.net.toUri
 import androidx.room.withTransaction
 import com.par9uet.jm.cache.CachePathAccess
 import com.par9uet.jm.cache.CachePathContent
@@ -41,8 +41,8 @@ class DeviceCacheMigrationOperations(
     override fun sourceTreeUri(): String = getDownloadTreeUri(appContext)?.toString().orEmpty()
 
     override fun treesOverlap(sourceTreeUri: String, targetTreeUri: String): Boolean {
-        val source = Uri.parse(sourceTreeUri)
-        val target = Uri.parse(targetTreeUri)
+        val source = sourceTreeUri.toUri()
+        val target = targetTreeUri.toUri()
         return source.authority == target.authority && cacheDocumentTreesOverlap(
             DocumentsContract.getTreeDocumentId(source),
             DocumentsContract.getTreeDocumentId(target),
@@ -214,10 +214,10 @@ class DeviceCacheMigrationOperations(
             }
             return
         }
-        val target = Uri.parse(targetTreeUri)
+        val target = targetTreeUri.toUri()
         val targetId = DocumentsContract.getTreeDocumentId(target)
         sourcePaths.filter(::isDocumentCachePath).forEach { sourcePath ->
-            val source = Uri.parse(sourcePath)
+            val source = sourcePath.toUri()
             if (source.authority == target.authority) {
                 val sourceId = DocumentsContract.getDocumentId(source)
                 check(!cacheDocumentTreesOverlap(sourceId, targetId)) {
@@ -232,7 +232,7 @@ class DeviceCacheMigrationOperations(
     private fun destinationComicRoot(record: DownloadComic, treeUri: String): String {
         val comicName = getComicCacheRootName(record)
         if (treeUri.isBlank()) return File(getDownloadDir(appContext), comicName).also(File::mkdirs).absolutePath
-        val tree = Uri.parse(treeUri)
+        val tree = treeUri.toUri()
         val root = DocumentsContract.buildDocumentUriUsingTree(tree, DocumentsContract.getTreeDocumentId(tree))
         return requireNotNull(findOrCreateCacheDocument(appContext, root, comicName, DocumentsContract.Document.MIME_TYPE_DIR)).toString()
     }
@@ -252,12 +252,12 @@ class DeviceCacheMigrationOperations(
 
     private fun destinationDirectory(parentPath: String, name: String): String {
         if (!isDocumentCachePath(parentPath)) return File(parentPath, name).also(File::mkdirs).absolutePath
-        return requireNotNull(findOrCreateCacheDocument(appContext, Uri.parse(parentPath), name, DocumentsContract.Document.MIME_TYPE_DIR)).toString()
+        return requireNotNull(findOrCreateCacheDocument(appContext, parentPath.toUri(), name, DocumentsContract.Document.MIME_TYPE_DIR)).toString()
     }
 
     private fun destinationFile(parentPath: String, name: String, mimeType: String): String {
         if (!isDocumentCachePath(parentPath)) return File(parentPath, name).absolutePath
-        return requireNotNull(findOrCreateCacheDocument(appContext, Uri.parse(parentPath), name, mimeType)).toString()
+        return requireNotNull(findOrCreateCacheDocument(appContext, parentPath.toUri(), name, mimeType)).toString()
     }
 
     private suspend fun copyDirectory(sourcePath: String, destinationPath: String, onBytes: suspend (Long) -> Unit) {
@@ -271,7 +271,7 @@ class DeviceCacheMigrationOperations(
             }
             return
         }
-        val source = Uri.parse(sourcePath)
+        val source = sourcePath.toUri()
         val children = DocumentsContract.buildChildDocumentsUriUsingTree(source, DocumentsContract.getDocumentId(source))
         appContext.contentResolver.query(
             children,
@@ -290,7 +290,7 @@ class DeviceCacheMigrationOperations(
 
     private suspend fun copyFile(sourcePath: String, destinationPath: String, onBytes: suspend (Long) -> Unit) {
         check(sourcePath != destinationPath) { "目标文件与原文件相同" }
-        val input = if (isDocumentCachePath(sourcePath)) requireNotNull(appContext.contentResolver.openInputStream(Uri.parse(sourcePath)))
+        val input = if (isDocumentCachePath(sourcePath)) requireNotNull(appContext.contentResolver.openInputStream(sourcePath.toUri()))
         else File(sourcePath).inputStream()
         input.use { source ->
             openCacheOutputStream(appContext, destinationPath).use { destination -> copyWithProgress(source, destination, onBytes) }
@@ -314,7 +314,7 @@ class DeviceCacheMigrationOperations(
         if (!isDocumentCachePath(path)) {
             File(path).parentFile?.absolutePath
         } else {
-            val uri = Uri.parse(path)
+            val uri = path.toUri()
             val documentId = DocumentsContract.getDocumentId(uri)
             val parentId = documentId.substringBeforeLast('/', missingDelimiterValue = "")
             parentId.takeIf(String::isNotBlank)
@@ -330,7 +330,7 @@ class DeviceCacheMigrationOperations(
             if (root.isDirectory && root.listFiles().isNullOrEmpty()) root.delete()
             return
         }
-        val root = Uri.parse(rootPath)
+        val root = rootPath.toUri()
         runCatching {
             val children = DocumentsContract.buildChildDocumentsUriUsingTree(root, DocumentsContract.getDocumentId(root))
             appContext.contentResolver.query(

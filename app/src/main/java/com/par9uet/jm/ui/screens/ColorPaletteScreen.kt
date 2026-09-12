@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -416,9 +417,9 @@ private fun ColorPickerDialog(
     onDismiss: () -> Unit,
     onConfirm: (Color) -> Unit
 ) {
-    var red by remember { mutableStateOf((initialColor.red * 255).toInt()) }
-    var green by remember { mutableStateOf((initialColor.green * 255).toInt()) }
-    var blue by remember { mutableStateOf((initialColor.blue * 255).toInt()) }
+    var red by remember { mutableIntStateOf((initialColor.red * 255).toInt()) }
+    var green by remember { mutableIntStateOf((initialColor.green * 255).toInt()) }
+    var blue by remember { mutableIntStateOf((initialColor.blue * 255).toInt()) }
     val currentColor = Color(red, green, blue)
 
     LaunchedEffect(visible, slot) {

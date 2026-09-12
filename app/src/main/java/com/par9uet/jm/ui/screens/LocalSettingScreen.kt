@@ -72,6 +72,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -517,11 +518,11 @@ private fun AllGridColumnSliderDialog(
     onConfirm: (Int, Int, Int, Int, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    var home by remember { mutableStateOf(homeColumns.toFloat()) }
-    var collect by remember { mutableStateOf(collectColumns.toFloat()) }
-    var download by remember { mutableStateOf(downloadColumns.toFloat()) }
-    var history by remember { mutableStateOf(historyColumns.toFloat()) }
-    var search by remember { mutableStateOf(searchColumns.toFloat()) }
+    var home by remember { mutableFloatStateOf(homeColumns.toFloat()) }
+    var collect by remember { mutableFloatStateOf(collectColumns.toFloat()) }
+    var download by remember { mutableFloatStateOf(downloadColumns.toFloat()) }
+    var history by remember { mutableFloatStateOf(historyColumns.toFloat()) }
+    var search by remember { mutableFloatStateOf(searchColumns.toFloat()) }
 
     LaunchedEffect(visible) {
         if (visible) {

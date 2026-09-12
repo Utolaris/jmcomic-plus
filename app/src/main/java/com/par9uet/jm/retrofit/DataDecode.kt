@@ -1,3 +1,5 @@
+@file:Suppress("GetInstance")
+
 package com.par9uet.jm.retrofit
 
 import java.nio.charset.Charset
@@ -9,6 +11,7 @@ fun decryptData(str: String): String {
     val secretKey = SecretKeySpec(decryptKey.toByteArray(Charset.forName("UTF-8")), "AES")
 
     // 配置 Cipher
+    // Remote API payload format requires AES/ECB; switching modes breaks decryptData().
     val cipher = Cipher.getInstance("AES/ECB/PKCS5Padding")
     cipher.init(Cipher.DECRYPT_MODE, secretKey)
 

@@ -457,8 +457,8 @@ private fun formatTime(value: Long): String {
 
 private fun formatSpeed(bytesPerSec: Float): String {
     return when {
-        bytesPerSec >= 1_048_576 -> String.format("%.1f MB/s", bytesPerSec / 1_048_576)
-        bytesPerSec >= 1024 -> String.format("%.0f KB/s", bytesPerSec / 1024)
+        bytesPerSec >= 1_048_576 -> String.format(Locale.ROOT, "%.1f MB/s", bytesPerSec / 1_048_576)
+        bytesPerSec >= 1024 -> String.format(Locale.ROOT, "%.0f KB/s", bytesPerSec / 1024)
         else -> "${bytesPerSec.toInt()} B/s"
     }
 }
