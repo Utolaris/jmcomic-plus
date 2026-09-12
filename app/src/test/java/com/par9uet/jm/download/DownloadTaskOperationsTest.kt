@@ -106,6 +106,30 @@ class DownloadTaskOperationsTest {
     }
 
     @Test
+    fun `redownload queues only cleaned chapters and reports failed removal`() = runTest {
+        dao.tasks[1] = task(1, DownloadStatus.COMPLETE).copy(zipPath = "denied", coverPath = "cover")
+        dao.tasks[2] = task(2, DownloadStatus.COMPLETE).copy(zipPath = "removed", coverPath = "cover2")
+        val subject = DownloadTaskOperations(dao, com.par9uet.jm.download.atom.DownloadFileRemoval { path, _ ->
+            path != "denied"
+        })
+        val result = subject.redownloadGroup(100)!!
+        assertEquals(listOf(2), result.comicIds)
+        assertTrue(result.message.contains("1 个任务清理失败"))
+        assertEquals(DownloadStatus.ERROR, dao.tasks.getValue(1).status)
+        assertEquals(0f, dao.tasks.getValue(1).progress)
+        assertEquals("cover", dao.tasks.getValue(1).coverPath)
+        assertEquals(DownloadStatus.PENDING, dao.tasks.getValue(2).status)
+        assertEquals("", dao.tasks.getValue(2).coverPath)
+        dao.tasks.remove(2)
+        assertTrue(subject.redownloadGroup(100)!!.comicIds.isEmpty())
+    }
+
+    @Test
+    fun `already absent files do not block redownload`() {
+        assertTrue(DownloadFiles().delete(File(temporaryFolder.root, "missing").path, ""))
+    }
+
+    @Test
     fun `empty and missing tasks produce no queue work`() = runTest {
         assertNull(operations.downloadComics(emptyList()))
         assertNull(operations.downloadChapters(Comic.create(id = 1, name = "漫画", authorList = emptyList()), emptyList()))

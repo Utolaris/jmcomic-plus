@@ -15,6 +15,7 @@ data class DownloadItem(
     val authorList: List<String>,
     val tagList: List<String>,
     val coverPath: String,
+    // Mirrors the persisted zipPath: directory, legacy ZIP, or document URI.
     val zipPath: String,
     val progress: Float,
     val status: DownloadItemStatus,

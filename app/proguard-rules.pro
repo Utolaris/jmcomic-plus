@@ -33,13 +33,7 @@
 -keep class com.par9uet.jm.data.models.** { *; }
 -keep class com.par9uet.jm.database.model.** { *; }
 -keep class com.par9uet.jm.ui.models.** { *; }
--keep class com.par9uet.jm.task.AppTaskInfo { *; }
 -keep class com.par9uet.jm.utils.** { *; }
--keep class com.par9uet.jm.utils.DownloadSpeedTracker { *; }
--keepclassmembers class com.par9uet.jm.utils.DownloadSpeedTracker {
-    public static ** INSTANCE;
-    <methods>;
-}
 -keepclassmembers,allowobfuscation class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }

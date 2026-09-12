@@ -6,7 +6,7 @@ import com.par9uet.jm.database.dao.DownloadComicDao
 import com.par9uet.jm.database.model.DownloadComic
 import com.par9uet.jm.database.model.DownloadStatus
 import com.par9uet.jm.database.model.UpdateComicStatus
-import com.par9uet.jm.download.atom.DownloadFiles
+import com.par9uet.jm.download.atom.DownloadFileRemoval
 
 data class DownloadTaskResult(
     val comicIds: List<Int> = emptyList(),
@@ -15,7 +15,7 @@ data class DownloadTaskResult(
 
 class DownloadTaskOperations(
     private val downloadComicDao: DownloadComicDao,
-    private val files: DownloadFiles,
+    private val files: DownloadFileRemoval,
 ) {
     suspend fun allTaskIds(): List<Int> = downloadComicDao.getAll().map { it.id }
 
@@ -170,9 +170,18 @@ class DownloadTaskOperations(
     suspend fun redownloadGroup(groupId: Int): DownloadTaskResult? {
         val items = downloadComicDao.getByGroupId(groupId)
         if (items.isEmpty()) return null
+        val queuedIds = mutableListOf<Int>()
         items.forEach { item ->
-            files.delete(item.zipPath, item.coverPath)
-            // Cover file is gone; clear the DB path so UI does not point at a missing file.
+            if (!files.delete(item.zipPath, item.coverPath)) {
+                // Deletion can be partial; the old cache must no longer appear complete.
+                downloadComicDao.updateStatus(UpdateComicStatus(item.id, DownloadStatus.ERROR))
+                downloadComicDao.updateProgress(
+                    com.par9uet.jm.database.model.UpdateComicProgress(item.id, 0f)
+                )
+                return@forEach
+            }
+            queuedIds += item.id
+            // Both paths are now absent; remove the stale cover reference.
             if (item.coverPath.isNotBlank()) {
                 downloadComicDao.updateCover(
                     com.par9uet.jm.database.model.UpdateComicCover(item.id, "")
@@ -185,7 +194,12 @@ class DownloadTaskOperations(
                 com.par9uet.jm.database.model.UpdateComicProgress(item.id, 0f)
             )
         }
-        val queuedIds = items.map { it.id }
-        return DownloadTaskResult(queuedIds, "已重新下载 ${items.size} 个任务")
+        val failedCount = items.size - queuedIds.size
+        val message = if (failedCount == 0) {
+            "已重新加入 ${queuedIds.size} 个下载任务"
+        } else {
+            "已重新加入 ${queuedIds.size} 个下载任务，${failedCount} 个任务清理失败，请检查存储权限后再次选择重新下载"
+        }
+        return DownloadTaskResult(queuedIds, message)
     }
 }

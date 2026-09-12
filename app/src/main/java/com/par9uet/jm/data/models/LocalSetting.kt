@@ -29,7 +29,7 @@ data class BlockedTagTemplate(
  * shared with backup/restore and legacy migrations, so fields are never removed casually.
  */
 data class LocalSetting(
-    // 开启后请求网络 API 获取基于登录账号的个性化推荐，可能不稳定
+    // 开启后请求公开网络 API 获取首页推荐，不携带登录会话，可能不稳定
     val preferenceRecommendEnabled: Boolean = true,
     // 选中的 API 节点（候选集合见 [AVAILABLE_APIS]）
     val api: String = AVAILABLE_APIS.first(),

@@ -117,7 +117,7 @@ class DownloadComicDetailViewModel(
         val authorItem = detailItems.firstOrNull { it.authorList.isNotEmpty() } ?: titleItem
         val tagItem = detailItems.firstOrNull { it.tagList.isNotEmpty() } ?: titleItem
         val coverItem = detailItems.firstOrNull { it.coverPath.isNotBlank() }
-        val zipItem = completeItems.firstOrNull { it.zipPath.isNotBlank() }
+        val cachedItem = completeItems.firstOrNull { it.zipPath.isNotBlank() }
             ?: detailItems.firstOrNull { it.zipPath.isNotBlank() }
         val completeSorted = completeItems.sortedBy { it.createTime }
 
@@ -127,11 +127,11 @@ class DownloadComicDetailViewModel(
             title = titleItem.groupName.ifBlank { titleItem.name },
             authorList = authorItem.authorList,
             tagList = tagItem.tagList,
-            coverPath = resolveCoverPath(coverItem?.coverPath, zipItem?.zipPath),
+            coverPath = resolveCoverPath(coverItem?.coverPath, cachedItem?.zipPath),
             remoteCoverComicId = groupId,
             createTime = detailItems.maxOf { it.createTime },
-            zipPath = zipItem?.zipPath.orEmpty(),
-            cachePath = resolveCachePath(coverItem?.coverPath, zipItem?.zipPath),
+            zipPath = cachedItem?.zipPath.orEmpty(),
+            cachePath = resolveCachePath(coverItem?.coverPath, cachedItem?.zipPath),
             allItems = allItems.sortedBy { it.createTime },
             completeItems = completeSorted,
             readableChapters = completeSorted.mapIndexed { index, item ->

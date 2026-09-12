@@ -18,6 +18,15 @@ class LocalSettingStorageCompatibilityTest {
     private val gson = com.google.gson.Gson()
 
     @Test
+    fun `null legacy tag lists normalize to empty lists`() {
+        val json = """{"blockedTagList":null,"blockedTagTemplateList":null}"""
+        val decoded = gson.fromJson(json, LocalSetting::class.java)
+        val normalized = normalizePersisted(json, decoded)
+        assertTrue(normalized.blockedTagList.isEmpty())
+        assertTrue(normalized.blockedTagTemplateList.isEmpty())
+    }
+
+    @Test
     fun `legacy json with apiList and themeList keeps selections`() {
         val legacyJson = """
             {

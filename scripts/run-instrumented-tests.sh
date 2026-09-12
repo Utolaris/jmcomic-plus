@@ -70,12 +70,12 @@ usage() {
 原始输出留在 build/instrumented-output.txt，用例数为 0 也算失败。
 
 安装默认是覆盖安装（`install -r`），应用的登录会话、设置和下载记录都会留着；
-只有覆盖失败或显式 --fresh 才会卸载重装，那时数据会丢。
+覆盖安装失败会中止；只有显式 --fresh 才会卸载重装，那时数据会丢。
 
 示例：
   ./scripts/run-instrumented-tests.sh                                  # 全量
   ./scripts/run-instrumented-tests.sh -p com.par9uet.jm.worker         # 一个包
-  ./scripts/run-instrumented-tests.sh -c com.par9uet.jm.database.FavoriteStoreRealDatabaseTest -m chineseSearch
+  ./scripts/run-instrumented-tests.sh -c com.par9uet.jm.database.FavoriteStoreRealDatabaseTest -m chineseSearchMatchesTitlesOnRealSqlite
   ./scripts/run-instrumented-tests.sh --no-build -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest
   ./scripts/run-instrumented-tests.sh --fresh                          # 干净安装后再跑（会清掉登录数据）
 USAGE
@@ -218,7 +218,7 @@ instrumentation_case_count() {
   return 0
 }
 
-# 判定一次插桩结果：成功时返回 0 并打印用例数（可能为空），失败时打印原因并返回 1。
+# 判定一次插桩结果：成功时返回 0 并打印大于零的用例数，失败时打印原因并返回 1。
 #
 # 不能只看 adb 的退出码：用例失败、筛选条件一条都没匹配到、甚至 runner 没起来，
 # `adb shell am instrument` 都可能返回 0，于是失败被报成"通过"。这里一律以输出流里的

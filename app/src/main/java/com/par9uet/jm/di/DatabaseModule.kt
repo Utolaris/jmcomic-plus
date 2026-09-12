@@ -5,6 +5,7 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.download.atom.DownloadFiles
+import com.par9uet.jm.download.atom.DownloadFileRemoval
 import com.par9uet.jm.download.atom.DownloadContentFiles
 import com.par9uet.jm.download.atom.DownloadContentStorage
 import com.par9uet.jm.download.atom.DownloadCoverImages
@@ -53,7 +54,7 @@ val databaseModule = module {
     single { get<AppDatabase>().favoriteSyncStateDao() }
     single { FavoriteStore(get(), get(), get(), get(), get(), get(), get()) }
     single<DownloadWorkScheduler> { WorkManagerDownloadWorkScheduler(androidContext()) }
-    single { DownloadFiles(androidContext()) }
+    single<DownloadFileRemoval> { DownloadFiles(androidContext()) }
     single { DownloadTaskOperations(get(), get()) }
     single { DownloadLibraryQueries(get()) }
     single { DownloadManager(get(), get(), get(), get(), get()) }

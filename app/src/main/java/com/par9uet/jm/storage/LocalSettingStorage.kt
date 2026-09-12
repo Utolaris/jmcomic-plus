@@ -80,10 +80,10 @@ internal fun normalizePersisted(savedJson: String, saved: LocalSetting): LocalSe
             else -> parseLegacyAppLockType(savedJson) ?: APP_LOCK_TYPE_PASSWORD
         }
         val legacyBlockedTags = normalizeBlockedTagList(
-            runCatching { saved.blockedTagList }.getOrNull() ?: listOf()
+            saved.blockedTagList.orEmpty()
         )
         val savedTemplates = normalizeBlockedTagTemplates(
-            runCatching { saved.blockedTagTemplateList }.getOrNull() ?: listOf()
+            saved.blockedTagTemplateList.orEmpty()
         )
         val migratedTemplates = when {
             savedJson.hasField("blockedTagTemplateList") -> savedTemplates

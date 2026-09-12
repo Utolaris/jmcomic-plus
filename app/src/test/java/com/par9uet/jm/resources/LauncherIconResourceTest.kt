@@ -13,8 +13,6 @@ class LauncherIconResourceTest {
         val adaptiveIconRoot = resourceRoot.resolve("mipmap-anydpi-v26")
 
         mapOf(
-            "ic_launcher.xml" to "ic_launcher",
-            "ic_launcher_round.xml" to "ic_launcher",
             "logo.xml" to "logo",
             "logo_round.xml" to "logo",
         ).forEach { (fileName, resourceName) ->

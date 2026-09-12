@@ -1,5 +1,5 @@
 package com.par9uet.jm.core
-import coil.network.HttpException
+import retrofit2.HttpException
 import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.core.network.ResponseWrapper
@@ -70,11 +70,7 @@ open class BaseRepository {
                 authFailure = AuthFailure.TemporaryFailure,
             )
             is HttpException -> {
-                val errMsg = when (e.response.code) {
-                    401 -> "账号或密码错误，请重新输入"
-                    else -> "网络错误：${e.response.code}"
-                }
-                NetWorkResult.Error(errMsg, e.response.code)
+                NetWorkResult.Error("网络错误：${e.code()}", e.code())
             }
 
             else -> NetWorkResult.Error(

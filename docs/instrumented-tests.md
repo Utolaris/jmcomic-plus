@@ -22,7 +22,7 @@ WorkManager 的参数解析依赖真实的 `WorkerParameters`。
 ```
 
 脚本做的是 `assembleDebug` + `assembleDebugAndroidTest` → **覆盖安装**两个 APK →
-`adb shell am instrument`。`--no-build` 可以跳过 Gradle，改一行用例后重跑只要几秒。
+`adb shell am instrument`。`--no-build` 跳过编译和安装，只适用于重跑已经安装且未改动的版本。修改应用代码或用例后，必须不带此参数运行，让两个 APK 重新编译并安装。
 
 安装默认走 `adb install -r`，**保留应用数据**：登录会话、设置和下载记录都在应用私有目录里，
 先卸载再装会把这些全清掉，装完是个没登录的干净应用——依赖登录态的 UI 用例就再也跑不起来。
@@ -46,7 +46,7 @@ adb shell am instrument -w -r \
   -e class com.par9uet.jm.worker.DownloadComicWorkerContractTest \
   jmcomic.debug.test/androidx.test.runner.AndroidJUnitRunner
 
-# 单条用例（方法名支持子串）
+# 单条用例（填写完整方法名）
 adb shell am instrument -w -r \
   -e class com.par9uet.jm.database.FavoriteStoreRealDatabaseTest#chineseSearchMatchesTitlesOnRealSqlite \
   jmcomic.debug.test/androidx.test.runner.AndroidJUnitRunner
@@ -122,7 +122,7 @@ Compose 的 `waitForIdle` / `onNode...` 要当前界面是 resumed 并且能出�
 ## 调试要点
 
 - **只跑失败的那一条**。插桩测试一轮要装两个 APK，全量跑通常几分钟；定位阶段一律用
-  `-c` / `-m` 缩小范围，改完再用 `--no-build` 复跑。
+  `-c` / `-m` 缩小范围；改完后重新编译安装，不要使用 `--no-build`。
 - **看异常堆栈用 `-l`**。`am instrument` 只打印断言摘要，完整堆栈在 logcat 里。
   脚本会把 `adb logcat -d` 的结果写到 `build/instrumented-logcat.txt`。
 - **测试数据库要清理**。`FavoriteStoreRealDatabaseTest` 用 `System.nanoTime()` 命名数据库文件，

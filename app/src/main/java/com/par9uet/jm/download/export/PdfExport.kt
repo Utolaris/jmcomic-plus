@@ -166,12 +166,11 @@ private fun decodeBitmapForPdf(context: Context, path: String): Bitmap? {
     return openCacheInputStream(context, path)?.use { BitmapFactory.decodeStream(it, null, options) }
 }
 
-private fun calculateSampleSize(width: Int, height: Int): Int {
+internal fun calculateSampleSize(width: Int, height: Int): Int {
     var sampleSize = 1
-    var maxDim = maxOf(width, height)
-    while (maxDim / sampleSize > PDF_MAX_BITMAP_DIMENSION) {
+    val maxDim = maxOf(width, height)
+    while (maxDim.toLong() > PDF_MAX_BITMAP_DIMENSION.toLong() * sampleSize) {
         sampleSize *= 2
-        maxDim /= 2
     }
     return sampleSize
 }

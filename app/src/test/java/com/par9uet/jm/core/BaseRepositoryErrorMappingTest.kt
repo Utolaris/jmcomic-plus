@@ -5,6 +5,7 @@ import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.core.network.ResponseWrapper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -23,6 +24,19 @@ class BaseRepositoryErrorMappingTest {
     private val repository = object : BaseRepository() {
         suspend fun <T> embedded(operation: String, block: suspend () -> T): NetWorkResult<T> =
             safeEmbeddedCall(operation, block)
+    }
+
+    @Test
+    fun httpExceptionsKeepTransportStatusWithoutBlamingCredentials() = runTest {
+        for (code in listOf(401, 403, 429, 500, 503)) {
+            val response = retrofit2.Response.error<String>(
+                code, "upstream error".toResponseBody()
+            )
+            val result = repository.safeApiCall<String> { throw retrofit2.HttpException(response) }
+            result as NetWorkResult.Error
+            assertEquals(code, result.code)
+            assertEquals("网络错误：$code", result.message)
+        }
     }
 
     @Test

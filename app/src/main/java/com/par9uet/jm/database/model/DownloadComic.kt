@@ -11,6 +11,7 @@ data class DownloadComic(
     val authorList: List<String>,
     val tagList: List<String> = emptyList(),
     val coverPath: String,
+    // Historical Room/backup field name: chapter directory, legacy ZIP, or document URI.
     val zipPath: String,
     val progress: Float,
     val status: DownloadStatus,
