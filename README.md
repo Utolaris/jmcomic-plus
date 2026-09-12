@@ -1,57 +1,81 @@
 # JMcomic Plus
 
-本项目是 [HongShi2333/jmcomic-next](https://github.com/HongShi2333/jmcomic-next) 的 Fork，基于上游 v1.2.3 持续维护，并加入了大量性能、稳定性和体验优化。
+[JM](https://jmcomic.plus) 第三方 Android 客户端。基于 [HongShi2333/jmcomic-next](https://github.com/HongShi2333/jmcomic-next) 持续维护，数据解析依赖 [JUKOMU/JMComic-Api-Java](https://github.com/JUKOMU/JMComic-Api-Java)。
 
-本项目的核心 API 依赖 [JUKOMU/JMComic-Api-Java](https://github.com/JUKOMU/JMComic-Api-Java)（`io.github.jukomu:jmcomic-api`），提供漫画数据解析与接口能力。
+- 系统要求：Android 11（API 30）及以上
+- 当前版本：`1.4.2`（versionCode `142`）
+- Release 包名：`jmcomic.plus`（与旧包名签名不同，系统会视为新应用，数据不会自动迁移）
 
-运行要求：Android 11（API 30）及以上；项目使用 Android API 37 编译并以 API 37 为目标版本。
+---
 
-## 开发文档
+## 功能特色
+
+### 界面与导航
+
+统一玻璃质感体系：顶栏、底部导航、菜单、弹窗、提示与页面切换动效一致。首页分类可直达常用推荐位；收藏与搜索结果会记住浏览位置；详情页点标签/作者进搜索后可原路返回详情。
+
+### 阅读器
+
+- 双指缩放与拖动：双指不再误触翻页；放大后锁定当前页，中央双击还原
+- 本地章节支持当前目录、历史目录与 ZIP 三种布局
+- 进程被系统回收后重进应用，可回到上次阅读章节
+
+### 图片与网络
+
+- 阅读图链路带优先级、去重、预加载、解码与内存/磁盘缓存
+- 多 CDN 竞速与节点健康度；全节点变慢时停止无效竞速
+- 内置 API 为主数据源，可配置 DoH；登录会话可自动恢复并重试
+
+### 收藏
+
+本地优先（Room + 分页）：文件夹、搜索筛选、后台同步与手动刷新；远端无变化时不刷新列表，避免封面闪烁。
+
+### 下载与缓存
+
+- 按漫画/章节下载，可暂停、恢复、批量重下
+- 自定义缓存目录（系统文件选择器），切换时自动迁移；迁移成功才切换，失败保留原状态
+- 支持导出 PDF（分章 / 合并）
+
+### 隐私与入口
+
+- 应用锁（密码 / 图案）
+- 启动器图标伪装（相册 / 系统工具等别名）
+- 支持设置与下载缓存的备份 / 恢复
+
+---
+
+## 开发
+
+### 文档
 
 - [四层架构约束](ARCHITECTURE.md)
-- [真机插桩测试与 adb 调试](docs/instrumented-tests.md)
+- [真机插桩测试](docs/instrumented-tests.md)
 
-## 真机跑插桩测试
+### 环境
 
-```bash
-./scripts/run-instrumented-tests.sh                                  # 全量
-./scripts/run-instrumented-tests.sh -p com.par9uet.jm.worker         # 只跑一个包
-./scripts/run-instrumented-tests.sh -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest
-./scripts/run-instrumented-tests.sh --no-build -c <类名>             # 已装包时跳过编译
-```
+- 语言级别 Java 21（构建请用标准 OpenJDK 21，不要用 GraalVM 当 Gradle daemon）
+- Gradle Wrapper 9.7.1 / AGP 9.4.0 / Kotlin 2.3.20
 
-脚本会编译安装 debug 与 androidTest 两个 APK，再用 `adb shell am instrument` 驱动；
-只连一台设备时可省略序列号。完整用法见 [docs/instrumented-tests.md](docs/instrumented-tests.md)。
-
-**HyperOS / MIUI**：需允许「后台弹出界面」（`appops 10021`），否则测试 Activity 会被压回桌面，UI 用例表现为卡死。脚本会自动 `allow`；手工跑 `am instrument` 时先执行文档里的两条 `adb` 命令。
-
-## 一键安装到手机
+### 装到手机
 
 ```bash
-./scripts/install-debug.sh           # 编译 debug APK 并装到已连接的真机（自动忽略模拟器）
-./scripts/install-debug.sh <序列号>   # 存在多台设备时指定其中一台
+./scripts/install-debug.sh          # 自动选真机（忽略模拟器）
+./scripts/install-debug.sh <序列号>
 ```
 
-脚本执行前会打印目标设备；需要手动指定时，序列号可用 `adb devices -l` 查看。
+### 真机插桩测试
 
-## v1.4.0 更新内容
+```bash
+./scripts/run-instrumented-tests.sh                      # 全量
+./scripts/run-instrumented-tests.sh -p com.par9uet.jm.ui # 一个包
+./scripts/run-instrumented-tests.sh -c <类名> -m <方法名>
+```
 
-- 全面更新界面与导航：统一玻璃质感顶栏、菜单、弹窗和底部导航，优化详情页、评论、下载、设置及页面切换动效。
-- 收藏夹改为本地优先，支持分页、文件夹、搜索筛选、后台同步与手动刷新，并修复快速切换账号、页面和操作时的同步竞态。
-- 阅读器优化双指缩放与自由拖动画面：双指操作不再误触翻页，放大后锁定当前页，中央双击可还原原始大小。
-- 优化图片加载：当前页统一加载时限、最多尝试两个来源，全节点变慢时停止无效竞速；完善预加载、解码、缓存、容错与内存保护。
-- 内置 API 成为主要数据源，加入可配置 DoH，并改善登录会话、点赞、评论、封面和详情页的加载稳定性。
-- 优化首页和搜索体验：首页原第 2 个推荐页调整为默认首屏；切换搜索排序自动回顶；从详情页标签或作者进入搜索后可直接返回原详情页。
-- 收藏夹和搜索结果会记住浏览位置；统一系统栏、提示消息、危险操作确认、主题配色、应用锁和启动器伪装行为。
-- 应用包名改为 `jmcomic.plus`，并启用新的正式发布签名。Android 会将其识别为新应用，旧版本数据不会自动迁移。
+**HyperOS / MIUI**：需允许「后台弹出界面」（`appops 10021`），否则测试 Activity 会被压回桌面。脚本会自动 `allow`，详见插桩文档。
 
-## v1.3.0 更新内容
+---
 
-- 重构漫画阅读图片链路：增加优先级调度、并发控制、请求去重、内存缓存、图片解码与预加载优化。
-- 加入多 CDN 加速与竞速机制，支持节点健康度、失败冷却、连接预热和前台请求优先。
-- 优化封面加载与下载：增加 CDN 自动兜底、节点记忆和缓存去重，降低单节点故障影响。
-- 缩短启动关键路径，延后非必要初始化；优化首页懒加载、请求取消、标签保留和数据源切换。
-- 加固登录与会话流程，改善登录/退出响应、会话持久化、取消传播及临时网络错误处理。
-- 收藏夹改为 Room 本地优先存储，支持 Paging、文件夹、搜索筛选、后台同步和强制刷新；移除重复的“连载系列”入口。
-- 优化点赞状态与收藏元数据加载，减少详情页和收藏页的等待。
-- 更新应用图标与构建环境，并补充阅读、图片、首页、会话和收藏同步相关回归测试。
+## 致谢
+
+- [HongShi2333/jmcomic-next](https://github.com/HongShi2333/jmcomic-next) — 上游客户端
+- [JUKOMU/JMComic-Api-Java](https://github.com/JUKOMU/JMComic-Api-Java) — 接口与解析
