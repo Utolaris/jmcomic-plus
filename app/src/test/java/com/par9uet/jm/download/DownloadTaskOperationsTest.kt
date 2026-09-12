@@ -101,6 +101,8 @@ class DownloadTaskOperationsTest {
             assertEquals(0f, it.progress)
         }
         assertEquals(archive.path, dao.tasks.getValue(1).zipPath)
+        // Deleted cover must not remain advertised in the DB.
+        assertEquals("", dao.tasks.getValue(1).coverPath)
     }
 
     @Test

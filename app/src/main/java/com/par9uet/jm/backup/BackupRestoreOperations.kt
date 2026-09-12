@@ -95,8 +95,9 @@ internal class DeviceBackupRestoreOperations(
     }
 }
 
-private fun isValidRestoreGroup(group: ComicGroupBackup): Boolean {
+internal fun isValidRestoreGroup(group: ComicGroupBackup): Boolean {
     if (group.id <= 0) return false
-    if (group.name.isBlank() || group.name.contains('/') || group.name.contains('\\')) return false
-    return group.chapters.all { it.id >= 0 }
+    if (group.name.isBlank()) return false
+    if (group.chapters.isEmpty()) return false
+    return group.chapters.all { it.id > 0 }
 }

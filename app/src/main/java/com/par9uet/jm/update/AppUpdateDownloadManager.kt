@@ -12,6 +12,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,7 +72,6 @@ class AppUpdateDownloadManager(
     private var paused = false
     @Volatile
     private var canceled = false
-    private var activeRequest: AppUpdateDownloadRequest? = null
 
     private val _state = MutableStateFlow(AppUpdateDownloadState())
     override val state = _state.asStateFlow()
@@ -81,19 +81,21 @@ class AppUpdateDownloadManager(
             toastManager.showAsync("未找到 APK 下载链接")
             return
         }
-        cancelInternal(resetState = false)
-        activeRequest = request
-        paused = false
-        canceled = false
+        val previous = job
+        // Serialize old/new jobs: the new download only starts after the previous one fully stops.
+        job = scope.launch {
+            previous?.cancelAndJoin()
+            if (job !== this@launch) return@launch
+            paused = false
+            canceled = false
+            download(request)
+        }
         _state.value = AppUpdateDownloadState(
             status = AppUpdateDownloadStatus.Downloading,
             version = request.version,
             fileName = request.fileName,
             downloadUrl = request.downloadUrl
         )
-        job = scope.launch {
-            download(request)
-        }
     }
 
     override fun pause() {
@@ -139,7 +141,7 @@ class AppUpdateDownloadManager(
     }
 
     private suspend fun download(request: AppUpdateDownloadRequest) = withContext(Dispatchers.IO) {
-        val file = File(getCommonCacheDir(context), "updates/${safeFileName(request.fileName)}")
+        val file = File(getCommonCacheDir(context), "updates/${safeUpdateFileName(request.fileName)}")
         try {
             val httpRequest = Request.Builder()
                 .url(request.downloadUrl)
@@ -208,13 +210,13 @@ class AppUpdateDownloadManager(
         } catch (cancelled: CancellationException) {
             file.delete()
             throw cancelled
-        } catch (throwable: Throwable) {
+        } catch (error: Exception) {
             if (!canceled) {
                 _state.update {
                     it.copy(
                         status = AppUpdateDownloadStatus.Error,
                         speedBytesPerSecond = 0L,
-                        errorMessage = throwable.message ?: "下载失败"
+                        errorMessage = error.message ?: "下载失败"
                     )
                 }
                 cancelProgressNotification(context, APP_UPDATE_NOTIFICATION_ID)
@@ -233,12 +235,12 @@ class AppUpdateDownloadManager(
             progressPercent = (state.progress * 100).roundToInt()
         )
     }
+}
 
-    private fun safeFileName(name: String): String {
-        return name.substringAfterLast('/').substringAfterLast('\\')
-            .replace("..", "_")
-            .ifBlank { "update.apk" }
-    }
+internal fun safeUpdateFileName(name: String): String {
+    return name.substringAfterLast('/').substringAfterLast('\\')
+        .replace("..", "_")
+        .ifBlank { "update.apk" }
 }
 
 data class AppUpdateDownloadRequest(

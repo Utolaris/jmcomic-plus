@@ -9,7 +9,6 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.par9uet.jm.download.DownloadWorkScheduler
-import com.par9uet.jm.utils.logError
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -56,7 +55,11 @@ internal class WorkManagerDownloadWorkScheduler(
                 workManager.cancelUniqueWork(workName(comicId))
                     .result.get(CANCEL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             } catch (e: TimeoutException) {
-                logError("WorkManagerDownloadWorkScheduler", "cancelUniqueWork 超时: ${workName(comicId)}")
+                // Fail the cancel: callers must not mutate DB while work may still be writing.
+                throw IllegalStateException(
+                    "取消缓存任务超时：${workName(comicId)}",
+                    e,
+                )
             } catch (e: InterruptedException) {
                 Thread.currentThread().interrupt()
                 throw CancellationException("cancel interrupted")

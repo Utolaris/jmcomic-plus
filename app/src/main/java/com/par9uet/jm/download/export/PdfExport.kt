@@ -133,8 +133,10 @@ private fun writeImagesToPdf(
     } ?: throw IllegalStateException("无法写入 PDF 文件")
 
     if (failedPages.isNotEmpty()) {
+        // Do not leave a partial (possibly garbled) document behind.
+        runCatching { context.contentResolver.delete(outputUri, null, null) }
         throw IllegalStateException(
-            "导出完成但有 ${failedPages.size}/${imageFiles.size} 页失败：${failedPages.joinToString()}，可能内存不足或图片损坏"
+            "导出失败：${failedPages.size}/${imageFiles.size} 页无法写入（页码 ${failedPages.joinToString()}），已删除未完成文件"
         )
     }
 
@@ -169,5 +171,8 @@ private fun calculateSampleSize(width: Int, height: Int): Int {
 }
 
 private fun safeFileName(name: String): String {
-    return name.replace(Regex("""[\\/:*?"<>|]"""), "_")
+    // SAF display names garble on some devices when control chars slip through.
+    return name.replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), "_")
+        .trim()
+        .ifBlank { "comic.pdf" }
 }
