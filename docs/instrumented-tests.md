@@ -87,6 +87,8 @@ Compose 的 `waitForIdle` / `onNode...` 要当前界面是 resumed 并且能出�
 - 真机经验（MIUI）：`RetainedMainNavigationTest`、`NavigationInteractionTest` 这两个类
   在设备被占用时会卡在宿主活动被切到后台之后的第一次等待上——它们是纯 Compose 宿主活动，
   不需要登录，也不是被测应用本身的问题。手机空闲时才有机会跑过。
+  另：GlassCaptureHost 曾存在"每次 draw 都重新标记捕获"的反馈循环，在真机上让 Compose
+  测试永不 idle——已修复并由 `ui/glass/GlassCaptureHostSettleTest` 回归守卫。
 
 `-w` 等待结果，`-r` 打印原始结果流（每个用例一行）。**别拿退出码当结论**：用例失败、
 筛选条件一条都没匹配到、甚至 runner 没起来，`adb shell am instrument` 都可能返回 0；
@@ -106,6 +108,7 @@ Compose 的 `waitForIdle` / `onNode...` 要当前界面是 resumed 并且能出�
 | `reader/atom/LocalChapterFilesDeviceTest` | 本地章节的三种历史布局（当前目录 / `<comicId>` 旧目录 / ZIP）、自然排序、解压残留 | 依赖真实文件排序与 ZIP 解压 |
 | `cache/migration/CacheMigrationDeviceTest` | 缓存迁移的真机行为：文件缓存↔SAF 互迁、旧 ZIP、断点续传目录、来源不可读时不动库也不切目录、重试先清残留 | 需要真实 `DocumentsContract` 读写与 Room；迁移的决策分支由 JVM 的 `cache.migration.CacheMigrationCoordinatorTest` 覆盖 |
 | `worker/CacheMigrationWorkerContractTest` | 迁移 Worker 只做参数透传与结果映射；目标目录只经过协调器，通知与缓存 API 不进入 Worker | 需要真实 `WorkerParameters`、`ProgressUpdater` 与 `ForegroundUpdater` |
+| `ui/glass/GlassCaptureHostSettleTest` | GlassCaptureHost 的捕获语义：静态源收敛（不再逐帧重绘）+ 源内容变化后玻璃仍刷新 | 捕获反馈循环只在真机 HWUI 上表现为"逐帧重绘、Compose 测试永不 idle"（模拟器 SwiftShader 不复现）；修复见 2026-09-12 的 `GlassSourceComposeView`（失效驱动的 markDirty） |
 
 ### 原有插桩测试
 

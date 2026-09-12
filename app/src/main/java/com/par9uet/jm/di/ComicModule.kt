@@ -28,9 +28,12 @@ val comicModule = module {
     // orchestration ownership stays in the session layer.
     single {
         val gate = AuthenticatedSessionGate(get())
-        object : AuthenticatedRequestGate {
-            override suspend fun <T> run(block: suspend () -> T): T = gate.run(block)
-        }
+        AuthenticatedEmbeddedClient(
+            get(),
+            object : AuthenticatedRequestGate {
+                override suspend fun <T> run(block: suspend () -> T): T = gate.run(block)
+            },
+        )
     }
     single { RetrofitNetworkHomeDataSource(get()) } bind NetworkHomeDataSource::class
     single { EmbeddedComicDataSource(get(), get()) } bind ComicEmbeddedDataSource::class

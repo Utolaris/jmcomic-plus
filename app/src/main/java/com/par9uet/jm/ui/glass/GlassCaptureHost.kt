@@ -103,7 +103,7 @@ internal class GlassCaptureHostView(context: Context) :
         val bounds: GlassSurfaceBounds? = null,
     )
 
-    private val sourceComposeView = ComposeView(context)
+    private val sourceComposeView = GlassSourceComposeView(context)
     private val overlayComposeView = ComposeView(context)
     private val sourceContentState = mutableStateOf<(@Composable () -> Unit)?>(null)
     private val overlayContentState = mutableStateOf<(@Composable () -> Unit)?>(null)
@@ -144,7 +144,16 @@ internal class GlassCaptureHostView(context: Context) :
         addView(sourceComposeView)
         addView(overlayComposeView)
 
-        sourceComposeView.setContent {
+        // The capture is refreshed only when the source composition reports a real change
+        // (invalidation or layout request). Re-marking dirty from inside every draw would
+        // make the host redraw forever and Compose instrumentation never reaches idle.
+        sourceComposeView.onSourceInvalidated = {
+            if (!isCapturingSource) {
+                sourceCapture.markDirty()
+            }
+        }
+
+        sourceComposeView.contentCallback = {
             val theme = themeState.value
             val content = sourceContentState.value
             if (theme != null && content != null) {
@@ -155,9 +164,6 @@ internal class GlassCaptureHostView(context: Context) :
                             .drawWithContent {
                                 drawRect(theme.colorScheme.background)
                                 drawContent()
-                                if (!isCapturingSource) {
-                                    onSourceDrawn()
-                                }
                             },
                     ) {
                         content()
@@ -298,7 +304,17 @@ internal class GlassCaptureHostView(context: Context) :
         val time = drawingTime
         drawChild(canvas, sourceComposeView, time)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val generationBefore = sourceCapture.generation
             sourceCapture.recordIfNeeded()
+            if (sourceCapture.generation != generationBefore) {
+                // Backdrop views only notice a new source generation while drawing, so they
+                // must be redrawn in this same frame to keep the glass in sync.
+                backdropViews.values.forEach { view ->
+                    if (view.visibility != View.GONE) {
+                        view.invalidate()
+                    }
+                }
+            }
         }
         backdropViews.values.forEach { view ->
             if (view.visibility != View.GONE) {
@@ -373,8 +389,9 @@ internal class GlassCaptureHostView(context: Context) :
                 }
             }
         }
-        if (layoutChanged) requestLayout()
-        invalidate()
+        if (layoutChanged) {
+            requestLayout()
+        }
     }
 
     private fun colorsFor(material: GlassMaterialStyle): GlassSurfaceColors {
@@ -390,12 +407,6 @@ internal class GlassCaptureHostView(context: Context) :
             bottomStroke = if (isDarkTheme) 0x11FFFFFF else 0x20000000,
             shadow = if (isDarkTheme) 0x04FFFFFF else 0x20000000,
         )
-    }
-
-    private fun onSourceDrawn() {
-        if (!isCapturingSource) {
-            sourceCapture.markDirty()
-        }
     }
 
     @Composable
