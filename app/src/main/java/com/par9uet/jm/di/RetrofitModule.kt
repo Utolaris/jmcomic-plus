@@ -1,5 +1,6 @@
 package com.par9uet.jm.di
 
+import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.retrofit.Retrofit
 import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.retrofit.converter.PrimitiveToRequestBodyConverterFactory
@@ -22,7 +23,7 @@ val retrofitModule = module {
             get(),
             get(),
             get(),
-            get()
+            get<DohManager>()
         )
     } bind ActiveSessionCookieStore::class
     single<ComicService> { get<Retrofit>().createService(ComicService::class.java) }

@@ -2,7 +2,6 @@ package com.par9uet.jm.network
 import com.google.gson.reflect.TypeToken
 import com.par9uet.jm.core.model.RemoteSetting
 import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.retrofit.model.RemoteSettingResponse
 import com.par9uet.jm.storage.RemoteConfigPreferences
 import com.par9uet.jm.storage.SecureStorage
 import com.par9uet.jm.storage.StorageReadResult
@@ -16,11 +15,6 @@ import kotlinx.coroutines.sync.withLock
 interface RemoteConfigStore {
     fun <T> get(key: String, type: java.lang.reflect.Type): T?
     fun <T> set(key: String, value: T)
-}
-
-/** Narrow port for fetching the server setting response; the composition root delegates it. */
-fun interface RemoteSettingFetch {
-    suspend fun fetch(): NetWorkResult<RemoteSettingResponse>
 }
 
 class SecureRemoteConfigStore(
@@ -38,6 +32,11 @@ class SecureRemoteConfigStore(
     override fun <T> set(key: String, value: T) {
         secureStorage.set(key, value)
     }
+}
+
+/** Fetch port so this manager never depends on the repository/retrofit layers. */
+fun interface RemoteSettingFetch {
+    suspend fun fetch(): NetWorkResult<RemoteSetting>
 }
 
 /**
@@ -64,8 +63,8 @@ class RemoteConfigManager(
                 log("获取远程应用设置失败，继续使用本地缓存：${data.message}")
             }
 
-            is NetWorkResult.Success<RemoteSettingResponse> -> {
-                val setting = data.data.toRemoteSetting()
+            is NetWorkResult.Success<RemoteSetting> -> {
+                val setting = data.data
                 if (setting.imgHost.isNotBlank()) {
                     _remoteImageHost.value = setting.imgHost
                     store.set(STORAGE_KEY, setting)

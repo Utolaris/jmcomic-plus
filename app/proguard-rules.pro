@@ -44,6 +44,28 @@
     @com.google.gson.annotations.SerializedName <fields>;
 }
 
+# Shared DTOs moved out of data.models (2026-09-12) are still Gson-serialized:
+# User is the persisted login session (storage/UserStorage), RemoteSetting is the
+# secure-storage cache of the /setting endpoint (network/RemoteConfigManager).
+-keep class com.par9uet.jm.core.model.** { *; }
+
+# ResponseWrapper is the server envelope Gson parses through the Retrofit
+# converter (fields code / data / errorMsg must match the wire format).
+-keep class com.par9uet.jm.core.network.ResponseWrapper { *; }
+
+# Backup file format (meta + data envelope and the cache-backup payloads) must
+# stay compatible with backup files exported by earlier releases.
+-keep class com.par9uet.jm.backup.BackupFile { *; }
+-keep class com.par9uet.jm.backup.BackupMeta { *; }
+-keep class com.par9uet.jm.backup.ComicCacheBackup { *; }
+-keep class com.par9uet.jm.backup.ComicGroupBackup { *; }
+-keep class com.par9uet.jm.backup.ChapterBackup { *; }
+
+# Per-comic download-cache config JSON persists on disk across app versions.
+-keep class com.par9uet.jm.cache.DownloadComicCacheConfig { *; }
+-keep class com.par9uet.jm.cache.DownloadComicCacheChapter { *; }
+-keep class com.par9uet.jm.cache.CacheImageEntry { *; }
+
 # Room and WorkManager rely on generated/runtime-discovered classes in release.
 -keep class * extends androidx.room.RoomDatabase { *; }
 -keep class com.par9uet.jm.database.** { *; }
@@ -55,7 +77,6 @@
 # Koin resolves definitions and the WorkManager factory at runtime.
 -keep class org.koin.** { *; }
 -keep class com.par9uet.jm.di.** { *; }
--keep class com.par9uet.jm.store.** { *; }
 -keep class com.par9uet.jm.repository.** { *; }
 -keep class com.par9uet.jm.storage.** { *; }
 -keep class com.par9uet.jm.JmApplication { *; }

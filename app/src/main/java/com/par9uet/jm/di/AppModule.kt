@@ -31,6 +31,7 @@ import com.par9uet.jm.storage.DohPreferencesEditor
 import com.par9uet.jm.storage.ReaderPreferences
 import com.par9uet.jm.storage.RecommendationPreferences
 import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.network.RemoteConfigManager
 import com.par9uet.jm.download.coordinator.DownloadToastAggregator
 import com.par9uet.jm.storage.HistorySearchManager
@@ -113,7 +114,12 @@ val appModule = module {
         val remoteSettingRepository = get<RemoteSettingRepository>()
         RemoteConfigManager(
             remoteSettingFetch = com.par9uet.jm.network.RemoteSettingFetch {
-                remoteSettingRepository.getRemoteSetting()
+                // Map on this side of the port so network never imports retrofit.
+                when (val result = remoteSettingRepository.getRemoteSetting()) {
+                    is NetWorkResult.Success ->
+                        NetWorkResult.Success(result.data.toRemoteSetting())
+                    is NetWorkResult.Error -> result
+                }
             },
             store = get(),
         )

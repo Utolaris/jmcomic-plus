@@ -90,6 +90,12 @@ data/ repository/ retrofit/  历史命名保留，包间依赖环已全部消除
 
 ## 已采用的边界
 
+- Gson 反射序列化的 DTO（登录数据 `core/model/User`、备份文件 `backup/BackupFile` /
+  `BackupMeta` / 缓存备份载荷、服务器响应包装 `core/network/ResponseWrapper`、远程配置
+  `core/model/RemoteSetting`、下载缓存 config）由 `app/proguard-rules.pro` 的精确保留规则
+  覆盖；模型迁包时必须同步迁移对应规则。发布前用 `scripts/check-release-json-fields.sh`
+  校验 DEX 里的真实字段名——本项目的 R8 版本在 `mapping.txt` 中会省略"保留原名"成员的
+  字段行，不能拿 mapping 当兼容性依据。
 - 启动后任务由 `startup/PostStartupCoordinator` 统一排序。
 - 下载业务通过 `download/DownloadWorkScheduler` 端口提交任务，不直接构造 Worker。
   实现 `worker/WorkManagerDownloadWorkScheduler` 以 **comicId 为粒度**调用
@@ -244,18 +250,21 @@ Reader 的 L3 不得依赖 UI 或 Worker，L4 不得反向依赖 L3。磁盘缓�
 | `data` ↔ `repository` | 内置 API 客户端三件套（`EmbeddedClientManager` / `AuthenticatedEmbeddedClient` / `EmbeddedSessionCookies`）本质是网络设施，从 `repository/impl` 迁到 `network`；`data`/`favorites/data`/`di` 改引 `network` | `repository → data`（仓库用领域模型与数据源，合法向下） |
 | `data` ↔ `retrofit` | response→领域模型的 `toXxx()` mapper 从 `retrofit/model` 成员函数改为 `data/comic/mapper/ResponseMappers` 的扩展函数，`retrofit/model` 回归纯 wire DTO | `data → retrofit`（数据源用 wire 类型与服务接口，合法向下） |
 | `retrofit` ↔ `store` | store 清空；`UserManager` 迁 `session`，`LoginResponse.toUser` 等以共享契约为目标的 mapper 留在 `retrofit/model`（目标类型在 `core/model`） | `session → retrofit`（会话协调用登录服务，合法向下） |
-| `repository` ↔ `store` | store 清空；`RemoteConfigManager` 迁 `network` 后不再依赖 `RemoteSettingRepository`——`network` 定义窄端口 `RemoteSettingFetch`，由组合根（`di/AppModule`）委托给仓库实现 | `network → session/storage/core`（客户端设施依赖会话与偏好，合法向下） |
+| `repository` ↔ `store` | store 清空；`RemoteConfigManager` 迁 `network` 后改用 `network` 内窄端口 `RemoteSettingFetch`（返回 `core.model.RemoteSetting`），由组合根（`di/AppModule`）委托给仓库并完成 response 映射 | `network → core/storage/utils`（纯 L4 设施） |
+| `network` ↔ `session` ↔ `retrofit` | **三边环（评审发现）**：`network → session`（客户端三件套引会话类型）、`session → retrofit`（UserManager 用 `ActiveSessionCookieStore`）、`retrofit → network`（`Retrofit.kt` 以全限定类名引用 `DohManager`，绕过 import 统计）。修法：`AuthenticatedSessionRequiredException` 下沉 `core/network`；`network` 定义 `AuthenticatedRequestGate` 端口，认证请求的编排归属归还 session——组合根把端口绑定到 `AuthenticatedSessionGate`（其内部经 `UserManager` 注册的 executor 做登录恢复重试），`AuthenticatedEmbeddedClient` 不再感知会话类型；`EmbeddedClientManager` 删除未使用的 session import；`Retrofit.kt` 参数改为 `okhttp3.Dns`，组合根注入 `DohManager` | `network` 只依赖 `core/storage/utils`；`session → retrofit` 单向保留 |
 | `data` ↔ `reader` | `ComicPicImageState` 不再持有 `ReaderPage`/`ReaderPageKey` 转换与 `java.io.File` 探测，改由 `reader/ComicPicImageStateReader` 扩展适配器承担 | `reader → data`（阅读器读领域模型，合法向下） |
 
 随之消除的连带反向依赖：`session → data`（共享 DTO `User` / `RemoteSetting` / `SignInData`
-迁到 `core/model`）、`network → repository`（见上表）、`network → data`（`RemoteSetting` 迁
-`core/model`）。
+迁到 `core/model`）、`network → repository`、`network → data`（`RemoteSetting` 迁
+`core/model`）、`network → session` 与 `retrofit → network`（见上表三边环）。
 
 以上每个被切断的方向都有 `ArchitectureBoundaryTest` 断言钉住（`data` 禁
-`repository`/`session`、`retrofit` 禁 `data`/`store`/`session`、`network` 禁
-`repository`/`data`、`session` 禁 `data`/`repository`、`favorites/data` 禁 `repository`），
-回归时先看边界测试。`download`↔`store` 的残余已随 store 清空自然消失
-（`ToastManager` → `core`，偏好 → `storage`）；`favorites`↔`store` 的"自然双向"
+`repository`/`session`、`retrofit` 禁 `data`/`store`/`session`/`network`、`network` 禁
+`repository`/`data`/`session`/`retrofit`、`session` 禁 `data`/`repository`、`favorites/data`
+禁 `repository`）。断言用 `forbiddenQualifiedUsages` 同时扫描**全限定引用**（非注释行），
+防止 `com.par9uet.jm.network.DohManager` 这类写法绕过 import 统计——这正是评审发现的
+`retrofit → network` 隐形边。回归时先看边界测试。`download`↔`store` 的残余已随 store 清空
+自然消失（`ToastManager` → `core`，偏好 → `storage`）；`favorites`↔`store` 的"自然双向"
 已随 `FavoriteStore` 迁入 `favorites/data` 变成包内实现细节，不再是跨包环。
 
 ## 耦合热点与拆分优先级
@@ -359,11 +368,16 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
    L4 不得反向调用协调器。
 4. 下载相关的 4 个 UI 文件直连 Room——**已修**，`ui` 禁止 import `database`，
    DAO 观察走 `download/molecule/DownloadLibraryQueries`。
-5. `RemoteConfigManager` 通过 `network` 包内的窄端口 `RemoteSettingFetch` 取数，
-   组合根把端口委托给 `RemoteSettingRepository`——这是 network 不依赖 repository 的代价，
-   属于有意的端口例外而非转发层。
+5. `RemoteConfigManager` 通过 `network` 包内的窄端口 `RemoteSettingFetch`（返回
+   `core.model.RemoteSetting`）取数，组合根把端口委托给 `RemoteSettingRepository` 并在
+   di 侧完成 response 映射——network 不依赖 repository/retrofit 的代价，属于有意的端口例外。
+6. 认证请求的编排归属在 session 层：`network/AuthenticatedEmbeddedClient` 只依赖
+   `network/AuthenticatedRequestGate` 端口，组合根把它绑定到 `session/AuthenticatedSessionGate`
+   （内部经 `UserManager` 注册的 `AuthenticatedRequestExecutor` 完成登录恢复与一次性重试）。
+   端口实现由 di 桥接，network/session 互不 import。共享异常
+   `AuthenticatedSessionRequiredException` 落在 `core/network`。
 
-上述 1～3、5 项是有意保留的例外。store 清空与 5 个依赖环消除后，
+上述 1～4、5～6 项是有意保留的例外。store 清空与 5 个依赖环消除后，
 耦合表里已没有"先拆谁"级别的热点；后续候选（按收益排序）：
 `ui/screens` 巨型文件的可读性拆分（优先 `DownloadComicDetailScreen`，跨 4 层）、
 `reader` 根包按来源策略与缓存生命周期继续归位、

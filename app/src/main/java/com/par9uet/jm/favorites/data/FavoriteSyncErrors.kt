@@ -2,7 +2,7 @@ package com.par9uet.jm.favorites.data
 
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.core.network.NetworkErrorKind
-import com.par9uet.jm.session.AuthenticatedSessionRequiredException
+import com.par9uet.jm.core.network.AuthenticatedSessionRequiredException
 import io.github.jukomu.jmcomic.api.exception.NetworkException
 import io.github.jukomu.jmcomic.api.exception.ParseResponseException
 import io.github.jukomu.jmcomic.api.exception.ResponseException

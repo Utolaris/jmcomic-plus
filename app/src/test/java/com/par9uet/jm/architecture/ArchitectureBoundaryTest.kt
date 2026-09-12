@@ -18,21 +18,42 @@ class ArchitectureBoundaryTest {
             addAll(forbiddenImports("core", listOf("com.par9uet.jm.ui.")))
             // 依赖环收口后的单向约束（详见 ARCHITECTURE.md「依赖现状与已知环」）：
             // data 不再反向依赖 repository；retrofit 是纯 wire 层，不回头 import 领域模型；
-            // network 不依赖 repository/data；session 不依赖 data（共享 DTO 在 core/model）。
+            // network 不依赖 repository/data/session/retrofit；session 不依赖 data（共享 DTO 在 core/model）。
+            // forbiddenQualifiedUsages 同时扫描全限定引用，防止绕过 import 统计。
             addAll(forbiddenImports("data", listOf(
                 "com.par9uet.jm.repository.", "com.par9uet.jm.session.",
             )))
             addAll(forbiddenImports("retrofit", listOf(
                 "com.par9uet.jm.data.", "com.par9uet.jm.store.", "com.par9uet.jm.session.",
+                "com.par9uet.jm.network.",
             )))
             addAll(forbiddenImports("network", listOf(
                 "com.par9uet.jm.repository.", "com.par9uet.jm.data.",
+                "com.par9uet.jm.session.", "com.par9uet.jm.retrofit.",
             )))
             addAll(forbiddenImports("session", listOf(
                 "com.par9uet.jm.data.", "com.par9uet.jm.repository.",
             )))
             addAll(forbiddenImports("favorites/data", listOf(
                 "com.par9uet.jm.repository.",
+            )))
+            listOf(
+                "data", "retrofit", "network", "session", "favorites/data",
+            ).forEach { pkg ->
+                addAll(forbiddenQualifiedUsages(pkg, listOf("com.par9uet.jm.store.")))
+            }
+            addAll(forbiddenQualifiedUsages("data", listOf(
+                "com.par9uet.jm.repository.", "com.par9uet.jm.session.",
+            )))
+            addAll(forbiddenQualifiedUsages("retrofit", listOf(
+                "com.par9uet.jm.data.", "com.par9uet.jm.session.", "com.par9uet.jm.network.",
+            )))
+            addAll(forbiddenQualifiedUsages("network", listOf(
+                "com.par9uet.jm.repository.", "com.par9uet.jm.data.",
+                "com.par9uet.jm.session.", "com.par9uet.jm.retrofit.",
+            )))
+            addAll(forbiddenQualifiedUsages("session", listOf(
+                "com.par9uet.jm.data.", "com.par9uet.jm.repository.",
             )))
             listOf("CacheCleanupScreen.kt", "downloadScreen/DownloadComicDetailScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
@@ -130,6 +151,31 @@ class ArchitectureBoundaryTest {
             "Layer boundary violations:\n${violations.joinToString("\n")}",
             violations.isEmpty(),
         )
+    }
+
+    private fun forbiddenQualifiedUsages(
+        packagePath: String,
+        prefixes: List<String>,
+    ): List<String> {
+        val sourceRoot = sourceRoot()
+        val packageRoot = sourceRoot.resolve(packagePath)
+        if (!Files.exists(packageRoot)) return emptyList()
+
+        return buildList {
+            Files.walk(packageRoot).use { paths ->
+                paths.filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
+                    .forEach { path ->
+                        Files.readAllLines(path).forEachIndexed { index, line ->
+                            val trimmed = line.trim()
+                            val isComment = trimmed.startsWith("//") ||
+                                trimmed.startsWith("*") || trimmed.startsWith("/*")
+                            if (!isComment && prefixes.any(line::contains)) {
+                                add("${sourceRoot.relativize(path)}:${index + 1}: $line")
+                            }
+                        }
+                    }
+            }
+        }
     }
 
     private fun forbiddenImports(

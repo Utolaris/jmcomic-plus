@@ -1,4 +1,5 @@
 package com.par9uet.jm.session
+import com.par9uet.jm.core.network.AuthenticatedSessionRequiredException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -51,11 +52,6 @@ suspend fun SessionReadinessHolder.awaitReady(): SessionReadiness {
         it == SessionReadiness.Authenticated || it == SessionReadiness.Unauthenticated
     }
 }
-
-class AuthenticatedSessionRequiredException(
-    message: String = "请先登录",
-    cause: Throwable? = null,
-) : IllegalStateException(message, cause)
 
 /** Shared ordering gate for every authenticated Embedded request. */
 class AuthenticatedSessionGate(

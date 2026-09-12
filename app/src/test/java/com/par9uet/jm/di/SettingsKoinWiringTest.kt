@@ -1,6 +1,7 @@
 package com.par9uet.jm.di
 
 import com.par9uet.jm.data.models.LocalSetting
+import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.retrofit.interceptor.BaseUrlInterceptor
@@ -48,8 +49,10 @@ class SettingsKoinWiringTest {
                 val remoteSettingRepository = NoOpRemoteSettingRepository()
                 single {
                     RemoteConfigManager(
+                        // The wiring test only resolves the graph; NetWorkResult.Error is a
+                        // NetWorkResult<Nothing> and satisfies the covariant fetch type.
                         remoteSettingFetch = com.par9uet.jm.network.RemoteSettingFetch {
-                            remoteSettingRepository.getRemoteSetting()
+                            NetWorkResult.Error("unused in wiring test")
                         },
                         store = get(),
                     )

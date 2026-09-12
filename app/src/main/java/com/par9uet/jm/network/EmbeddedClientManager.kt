@@ -1,5 +1,5 @@
 package com.par9uet.jm.network
-import com.par9uet.jm.session.CandidateSession
+
 
 import com.google.gson.JsonParser
 import com.par9uet.jm.storage.CookieStorage

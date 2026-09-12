@@ -1,9 +1,7 @@
 package com.par9uet.jm.network
 
-import com.par9uet.jm.session.AuthenticatedSessionGate
-import com.par9uet.jm.session.AuthenticatedSessionRequiredException
+import com.par9uet.jm.core.network.AuthenticatedSessionRequiredException
 import io.github.jukomu.jmcomic.api.exception.ParseResponseException
-import com.par9uet.jm.session.SessionReadinessHolder
 import io.github.jukomu.jmcomic.api.exception.ResponseException
 import io.github.jukomu.jmcomic.core.client.impl.JmApiClient
 import kotlinx.coroutines.CancellationException
@@ -11,12 +9,11 @@ import kotlinx.coroutines.CancellationException
 /** The single entry point for requests that require an authenticated Embedded session. */
 class AuthenticatedEmbeddedClient(
     embeddedClientManager: EmbeddedClientManager,
-    sessionReadinessHolder: SessionReadinessHolder,
+    private val requestGate: AuthenticatedRequestGate,
 ) {
     private val clientProvider = embeddedClientManager::getClient
-    private val sessionGate = AuthenticatedSessionGate(sessionReadinessHolder)
 
-    suspend fun <T> withClient(block: (JmApiClient) -> T): T? = sessionGate.run {
+    suspend fun <T> withClient(block: (JmApiClient) -> T): T? = requestGate.run {
         try {
             block(clientProvider())
         } catch (cancelled: CancellationException) {

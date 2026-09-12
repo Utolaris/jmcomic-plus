@@ -6,6 +6,7 @@ import com.par9uet.jm.retrofit.interceptor.BaseUrlInterceptor
 import com.par9uet.jm.retrofit.interceptor.ToastInterceptor
 import com.par9uet.jm.retrofit.interceptor.TokenInterceptor
 import okhttp3.CookieJar
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -27,12 +28,13 @@ class Retrofit(
     private val scalarsConverterFactory: ScalarsConverterFactory,
     private val responseConverterFactory: ResponseConverterFactory,
     private val primitiveToRequestBodyConverterFactory: PrimitiveToRequestBodyConverterFactory,
-    dohManager: com.par9uet.jm.network.DohManager,
+    // OkHttp's Dns interface keeps this layer free of the network package; the
+    // composition root supplies the app-wide DoH resolver.
+    dns: Dns,
 ) : ActiveSessionCookieStore {
     internal val okHttpClient by lazy {
         OkHttpClient.Builder()
-            // Retrofit (network Home recommendation) shares the app-wide DoH resolver.
-            .dns(dohManager)
+            .dns(dns)
             .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)

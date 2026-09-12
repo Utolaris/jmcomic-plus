@@ -7,9 +7,11 @@ import com.par9uet.jm.data.comic.RetrofitNetworkHomeDataSource
 import com.par9uet.jm.favorites.usecase.MoveFavorites
 import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.network.AuthenticatedEmbeddedClient
+import com.par9uet.jm.network.AuthenticatedRequestGate
 import com.par9uet.jm.repository.impl.ComicRepositoryImpl
 import com.par9uet.jm.network.EmbeddedClientManager
 import com.par9uet.jm.reader.ReaderImagePipeline
+import com.par9uet.jm.session.AuthenticatedSessionGate
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
 import com.par9uet.jm.ui.viewModel.HomeViewModel
@@ -21,7 +23,15 @@ import org.koin.dsl.module
 
 val comicModule = module {
     single { EmbeddedClientManager(get(), get()) }
-    single { AuthenticatedEmbeddedClient(get(), get()) }
+    // The network client only knows the ordering port; the session gate (which funnels
+    // requests through UserManager's executor during restoration) is bound here so the
+    // orchestration ownership stays in the session layer.
+    single {
+        val gate = AuthenticatedSessionGate(get())
+        object : AuthenticatedRequestGate {
+            override suspend fun <T> run(block: suspend () -> T): T = gate.run(block)
+        }
+    }
     single { RetrofitNetworkHomeDataSource(get()) } bind NetworkHomeDataSource::class
     single { EmbeddedComicDataSource(get(), get()) } bind ComicEmbeddedDataSource::class
     single { ComicRepositoryImpl(get(), get()) } bind ComicRepository::class

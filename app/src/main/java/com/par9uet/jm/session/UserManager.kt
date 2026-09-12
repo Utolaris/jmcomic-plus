@@ -1,4 +1,5 @@
 package com.par9uet.jm.session
+import com.par9uet.jm.core.network.AuthenticatedSessionRequiredException
 import com.par9uet.jm.core.SessionRecoveryException
 import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.core.model.CommonUIState
