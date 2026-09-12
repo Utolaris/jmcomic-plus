@@ -9,7 +9,6 @@
 ## 开发文档
 
 - [四层架构约束](ARCHITECTURE.md)
-- [ReaderImagePipeline 图片链路与组件说明](docs/reader-image-pipeline.md)
 - [真机插桩测试与 adb 调试](docs/instrumented-tests.md)
 
 ## 真机跑插桩测试
