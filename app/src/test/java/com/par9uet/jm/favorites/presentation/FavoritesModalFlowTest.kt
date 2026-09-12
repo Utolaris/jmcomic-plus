@@ -53,4 +53,13 @@ class FavoritesModalFlowTest {
             reduceFavoritesModal(null, FavoritesIntent.UncollectSelected, hasSelection = true),
         )
     }
+
+    @Test
+    fun `batch toast copy reports success-only and mixed outcomes`() {
+        assertEquals("已移动 3 部漫画", favoriteBatchMessage(succeeded = 3, failed = 0, action = "移动"))
+        assertEquals(
+            "成功 2 部，失败 1 部",
+            favoriteBatchMessage(succeeded = 2, failed = 1, action = "取消收藏"),
+        )
+    }
 }

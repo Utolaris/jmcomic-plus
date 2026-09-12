@@ -1,7 +1,7 @@
 package com.par9uet.jm.favorites
 
-import com.par9uet.jm.favorites.data.FavoriteSession
-import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
+import com.par9uet.jm.favorites.model.FavoriteSession
+import com.par9uet.jm.favorites.model.FavoriteSessionSnapshot
 import com.par9uet.jm.core.network.NetWorkResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map

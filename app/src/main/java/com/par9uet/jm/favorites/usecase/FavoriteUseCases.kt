@@ -2,11 +2,11 @@ package com.par9uet.jm.favorites.usecase
 
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
-import com.par9uet.jm.favorites.data.FavoriteLocalQuery
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
-import com.par9uet.jm.favorites.data.FavoriteSession
-import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.data.FavoriteDownloader
+import com.par9uet.jm.favorites.model.FavoriteLocalQuery
+import com.par9uet.jm.favorites.model.FavoriteSession
+import com.par9uet.jm.favorites.model.FavoriteSessionSnapshot
 import com.par9uet.jm.core.network.NetWorkResult
 
 data class FavoritesBatchResult(

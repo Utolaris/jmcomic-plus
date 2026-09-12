@@ -3,7 +3,7 @@ package com.par9uet.jm.favorites.sync
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.core.network.NetworkErrorKind
 import com.par9uet.jm.favorites.TestFavoriteSession
-import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
+import com.par9uet.jm.favorites.model.FavoriteSessionSnapshot
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.CancellationException

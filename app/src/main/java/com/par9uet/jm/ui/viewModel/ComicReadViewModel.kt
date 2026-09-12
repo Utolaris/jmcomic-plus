@@ -12,7 +12,7 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
 import com.par9uet.jm.data.models.ComicPicImageState
 import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.favorites.data.FavoriteSession
+import com.par9uet.jm.favorites.model.FavoriteSession
 import com.par9uet.jm.favorites.usecase.CollectFavorite
 import com.par9uet.jm.favorites.usecase.UncollectFavorites
 import com.par9uet.jm.retrofit.model.ComicDetailResponse

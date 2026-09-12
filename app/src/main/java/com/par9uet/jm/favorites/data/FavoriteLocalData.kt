@@ -1,36 +1,9 @@
 package com.par9uet.jm.favorites.data
 
-import androidx.paging.PagingSource
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.database.model.FavoriteComicEntity
 import com.par9uet.jm.favorites.data.FavoriteMetadataPayload
 import com.par9uet.jm.favorites.data.FavoriteRemoteItem
 import com.par9uet.jm.favorites.data.FavoriteSyncDelta
-import kotlinx.coroutines.flow.Flow
-
-/** L4 query capabilities for the Room-backed local Favorites snapshot. */
-interface FavoriteLocalQuery {
-    fun pagingSource(
-        accountId: Int,
-        blockedTagList: List<String>,
-        searchText: String,
-        selectedTags: Set<String>,
-        selectedAuthors: Set<String>,
-        folderId: Int,
-        tagLogic: TagFilterLogic,
-    ): PagingSource<Int, FavoriteComicEntity>
-
-    fun observeFolders(accountId: Int): Flow<Map<String, String>>
-
-    fun observeTagCounts(accountId: Int, folderId: Int): Flow<Map<String, Int>>
-
-    fun observeAuthorCounts(accountId: Int, folderId: Int): Flow<Map<String, Int>>
-
-    suspend fun getCachedFolders(accountId: Int): Map<String, String>
-
-    suspend fun getComics(accountId: Int, albumIds: Collection<Int>): List<Comic>
-}
 
 /** L4 mutation capabilities for the Room-backed local Favorites snapshot. */
 interface FavoriteLocalMutation {

@@ -10,8 +10,8 @@ import com.par9uet.jm.favorites.data.FavoriteMetadataPayload
 import com.par9uet.jm.favorites.data.FavoriteRemoteItem
 import com.par9uet.jm.favorites.sync.FavoriteSyncProgress
 import com.par9uet.jm.favorites.sync.FavoriteSyncReport
-import com.par9uet.jm.favorites.data.FavoriteSession
-import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
+import com.par9uet.jm.favorites.model.FavoriteSession
+import com.par9uet.jm.favorites.model.FavoriteSessionSnapshot
 import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.logError
 import kotlinx.coroutines.CancellationException

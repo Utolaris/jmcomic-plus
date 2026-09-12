@@ -55,11 +55,11 @@ download/                    已迁移
 └── export/                        L3 操作 + L4 PDF 编码
 
 favorites/                   已迁移，但用词不同
-├── model/                         共享契约
-├── presentation/ViewModel         L2
+├── model/                         共享契约（含 FavoriteSession / FavoriteLocalQuery，UI 只依赖这里）
+├── presentation/ViewModel         L2（+ FavoritesPresentationReducers）
 ├── sync/                          L2
 ├── usecase/                       L3
-└── data/                          L4（FavoriteStore 及其端口、SQL 侧都在这里）
+└── data/                          L4（FavoriteStore 门面 + Query/Mutation/Sync 实现；Room 端口）
 
 cache/                       部分迁移
 ├── atom/CacheFiles.kt             L4
@@ -71,7 +71,8 @@ cache/                       部分迁移
 │   ├── CacheMigrationNotifications.kt       L2 前台通知适配
 │   ├── CacheMigrationOperations.kt          L3 操作端口与值类型
 │   └── DeviceCacheMigrationOperations.kt    L3 文档读写与 DAO 组合
-└── CacheModels / ComicDownloadCache / DocumentCacheStorage / CacheMigrationPaths / Config   未归位的 L4
+└── CacheModels / ComicDownloadCache / CacheDocumentPaths / CacheDocumentIo /
+    CacheMigrationPaths / Config   未归位的 L4（DocumentCacheStorage 已按路径/IO 拆开）
 
 update/ backup/ contentfilter/ launcher/ startup/   扁平包，按类判断层级
 update/AppUpdateDownloadManager  已从 store 迁入 update（L2 下载协调 + 状态契约）

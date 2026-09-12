@@ -11,8 +11,8 @@ import com.par9uet.jm.data.models.TagFilterLogic
 import com.par9uet.jm.database.AppDatabase
 import com.par9uet.jm.favorites.data.FavoriteRemotePage
 import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
-import com.par9uet.jm.favorites.data.FavoriteSession
-import com.par9uet.jm.favorites.data.FavoriteSessionSnapshot
+import com.par9uet.jm.favorites.model.FavoriteSession
+import com.par9uet.jm.favorites.model.FavoriteSessionSnapshot
 import com.par9uet.jm.favorites.usecase.SyncFavorites
 import com.par9uet.jm.core.network.NetWorkResult
 import kotlinx.coroutines.flow.flowOf

@@ -37,6 +37,11 @@ class ArchitectureBoundaryTest {
             addAll(forbiddenImports("favorites/data", listOf(
                 "com.par9uet.jm.repository.",
             )))
+            // UI only speaks favorites.model ports/contracts; Room/session impl stay in data.
+            addAll(forbiddenImports("ui", listOf("com.par9uet.jm.favorites.data.")))
+            addAll(forbiddenQualifiedUsages("ui", listOf("com.par9uet.jm.favorites.data.")))
+            // Screens must not touch cache file atoms; CacheCleanupViewModel is the L2 exception.
+            addAll(forbiddenImports("ui/screens", listOf("com.par9uet.jm.cache.atom.")))
             listOf(
                 "data", "retrofit", "network", "session", "favorites/data",
             ).forEach { pkg ->

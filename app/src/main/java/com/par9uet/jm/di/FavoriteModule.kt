@@ -5,11 +5,11 @@ import com.par9uet.jm.favorites.data.EmbeddedFavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.EmbeddedFavoriteRemoteQuery
 import com.par9uet.jm.favorites.data.FavoriteDownloader
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
-import com.par9uet.jm.favorites.data.FavoriteLocalQuery
 import com.par9uet.jm.favorites.data.FavoriteLocalSync
 import com.par9uet.jm.favorites.data.FavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.FavoriteRemoteQuery
-import com.par9uet.jm.favorites.data.FavoriteSession
+import com.par9uet.jm.favorites.model.FavoriteLocalQuery
+import com.par9uet.jm.favorites.model.FavoriteSession
 import com.par9uet.jm.favorites.data.FavoriteStore
 import com.par9uet.jm.favorites.data.UserManagerFavoriteSession
 import com.par9uet.jm.favorites.presentation.FavoritesViewModel

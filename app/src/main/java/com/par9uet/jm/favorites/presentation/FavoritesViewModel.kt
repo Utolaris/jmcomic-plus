@@ -6,14 +6,13 @@ import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.cachedIn
 import com.par9uet.jm.data.models.TagFilterLogic
-import com.par9uet.jm.favorites.data.FavoriteLocalQuery
-import com.par9uet.jm.favorites.data.FavoriteSession
+import com.par9uet.jm.favorites.model.FavoriteLocalQuery
+import com.par9uet.jm.favorites.model.FavoriteSession
 import com.par9uet.jm.favorites.model.FavoritesFilter
 import com.par9uet.jm.favorites.model.FavoritesIntent
 import com.par9uet.jm.favorites.model.FavoritesModal
 import com.par9uet.jm.favorites.model.FavoritesSelectionState
 import com.par9uet.jm.favorites.model.FavoritesUiState
-import com.par9uet.jm.favorites.model.FavoritesViewportState
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequestKind
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequester
 import com.par9uet.jm.favorites.sync.FavoriteVisibilityPolicy
@@ -341,7 +340,7 @@ class FavoritesViewModel(
         dismissModal()
         viewModelScope.launch {
             val result = moveFavorites(sessionSnapshot, ids, folderId)
-            toastManager.showAsync(batchMessage(result.succeeded, result.failed, "移动"))
+            toastManager.showAsync(favoriteBatchMessage(result.succeeded, result.failed, "移动"))
             clearSelection()
         }
     }
@@ -353,7 +352,7 @@ class FavoritesViewModel(
         dismissModal()
         viewModelScope.launch {
             val result = uncollectFavorites(sessionSnapshot, ids)
-            toastManager.showAsync(batchMessage(result.succeeded, result.failed, "取消收藏"))
+            toastManager.showAsync(favoriteBatchMessage(result.succeeded, result.failed, "取消收藏"))
             clearSelection()
         }
     }
@@ -469,37 +468,4 @@ class FavoritesViewModel(
     }
 
     private fun currentAccountId(): Int = favoriteSession.currentAccountId()
-
-    private fun batchMessage(succeeded: Int, failed: Int, action: String): String =
-        if (failed == 0) "已$action $succeeded 部漫画"
-        else "成功 $succeeded 部，失败 $failed 部"
-}
-
-private fun FavoritesViewportState.reset(): FavoritesViewportState =
-    FavoritesViewportState(resetGeneration = resetGeneration + 1)
-
-internal fun reduceFavoritesModal(
-    current: FavoritesModal?,
-    intent: FavoritesIntent,
-    hasSelection: Boolean = false,
-): FavoritesModal? = when (intent) {
-    FavoritesIntent.FilterOpened -> FavoritesModal.Filter
-    FavoritesIntent.FilterCleared,
-    FavoritesIntent.FilterDismissed,
-    FavoritesIntent.ModalDismissed,
-    FavoritesIntent.FolderManagementDismissed -> null
-    FavoritesIntent.MoveSelected -> if (hasSelection) FavoritesModal.Move else current
-    FavoritesIntent.UncollectSelected -> if (hasSelection) FavoritesModal.Uncollect else current
-    FavoritesIntent.FolderManagementOpened -> FavoritesModal.FolderManagement
-    FavoritesIntent.CreateFolderOpened -> FavoritesModal.CreateFolder
-    is FavoritesIntent.RenameFolderOpened -> FavoritesModal.RenameFolder(
-        folderId = intent.folderId,
-        folderName = intent.folderName,
-    )
-    is FavoritesIntent.DeleteFolderOpened -> FavoritesModal.DeleteFolder(
-        folderId = intent.folderId,
-        folderName = intent.folderName,
-    )
-    FavoritesIntent.FolderActionDismissed -> FavoritesModal.FolderManagement
-    else -> current
 }
