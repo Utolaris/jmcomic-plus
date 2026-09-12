@@ -14,6 +14,7 @@ import com.par9uet.jm.database.model.DownloadComic
 import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipInputStream
+import kotlinx.coroutines.CancellationException
 
 data class CachedComicInfo(
     val imageCount: Int,
@@ -95,52 +96,63 @@ private fun writeImagesToPdf(
         fileName
     ) ?: throw IllegalStateException("无法创建 PDF 文件")
 
-    val failedPages = mutableListOf<Int>()
-    context.contentResolver.openOutputStream(outputUri)?.use { output ->
-        val document = PdfDocument()
-        var pageIndex = 0
-        try {
-            imageFiles.forEachIndexed { index, file ->
-                var bitmap: Bitmap? = null
-                try {
-                    bitmap = decodeBitmapForPdf(context, file)
-                        ?: run {
-                            failedPages.add(index + 1)
-                            return@forEachIndexed
-                        }
-                    val pageWidth = bitmap.width.coerceAtLeast(1)
-                    val pageHeight = bitmap.height.coerceAtLeast(1)
-                    val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
-                    val page = document.startPage(pageInfo)
-                    page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-                    document.finishPage(page)
-                    pageIndex++
-                    bitmap.recycle()
-                    bitmap = null
-                } catch (e: OutOfMemoryError) {
-                    System.gc()
-                    bitmap?.recycle()
-                    failedPages.add(index + 1)
-                } catch (e: Exception) {
-                    bitmap?.recycle()
-                    failedPages.add(index + 1)
+    try {
+        val failedPages = mutableListOf<Int>()
+        val output = context.contentResolver.openOutputStream(outputUri)
+            ?: throw IllegalStateException("无法写入 PDF 文件")
+        output.use { stream ->
+            val document = PdfDocument()
+            var pageIndex = 0
+            try {
+                imageFiles.forEachIndexed { index, file ->
+                    var bitmap: Bitmap? = null
+                    try {
+                        bitmap = decodeBitmapForPdf(context, file)
+                            ?: run {
+                                failedPages.add(index + 1)
+                                return@forEachIndexed
+                            }
+                        val pageWidth = bitmap.width.coerceAtLeast(1)
+                        val pageHeight = bitmap.height.coerceAtLeast(1)
+                        val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
+                        val page = document.startPage(pageInfo)
+                        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                        document.finishPage(page)
+                        pageIndex++
+                        bitmap.recycle()
+                        bitmap = null
+                    } catch (e: OutOfMemoryError) {
+                        System.gc()
+                        bitmap?.recycle()
+                        failedPages.add(index + 1)
+                    } catch (e: Exception) {
+                        bitmap?.recycle()
+                        failedPages.add(index + 1)
+                    }
                 }
+                document.writeTo(stream)
+            } finally {
+                document.close()
             }
-            document.writeTo(output)
-        } finally {
-            document.close()
         }
-    } ?: throw IllegalStateException("无法写入 PDF 文件")
-
-    if (failedPages.isNotEmpty()) {
-        // Do not leave a partial (possibly garbled) document behind.
+        if (failedPages.isNotEmpty()) {
+            throw IllegalStateException(
+                "导出失败：${failedPages.size}/${imageFiles.size} 页无法写入（页码 ${failedPages.joinToString()}）"
+            )
+        }
+        return outputUri.toString()
+    } catch (failure: Throwable) {
+        // createDocument already allocated a SAF entry; never leave a partial PDF behind.
         runCatching { context.contentResolver.delete(outputUri, null, null) }
-        throw IllegalStateException(
-            "导出失败：${failedPages.size}/${imageFiles.size} 页无法写入（页码 ${failedPages.joinToString()}），已删除未完成文件"
-        )
+        if (failure is CancellationException) throw failure
+        val base = failure.message ?: "未知错误"
+        val message = if (base.startsWith("导出失败：")) {
+            "$base，已尝试清理未完成文件"
+        } else {
+            "导出失败：$base，已尝试清理未完成文件"
+        }
+        throw IllegalStateException(message, failure)
     }
-
-    return outputUri.toString()
 }
 
 private fun decodeBitmapForPdf(context: Context, path: String): Bitmap? {

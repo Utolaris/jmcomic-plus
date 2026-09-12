@@ -67,11 +67,7 @@ class AppUpdateDownloadManager(
     private val dohManager: com.par9uet.jm.network.DohManager,
 ) : AppUpdateDownloads {
     private val client = OkHttpClient.Builder().dns(dohManager).build()
-    private var job: Job? = null
-    @Volatile
-    private var paused = false
-    @Volatile
-    private var canceled = false
+    private val jobs = UpdateDownloadJobGate()
 
     private val _state = MutableStateFlow(AppUpdateDownloadState())
     override val state = _state.asStateFlow()
@@ -81,13 +77,7 @@ class AppUpdateDownloadManager(
             toastManager.showAsync("未找到 APK 下载链接")
             return
         }
-        val previous = job
-        // Serialize old/new jobs: the new download only starts after the previous one fully stops.
-        job = scope.launch {
-            previous?.cancelAndJoin()
-            if (job !== this@launch) return@launch
-            paused = false
-            canceled = false
+        jobs.start(scope) {
             download(request)
         }
         _state.value = AppUpdateDownloadState(
@@ -99,7 +89,7 @@ class AppUpdateDownloadManager(
     }
 
     override fun pause() {
-        paused = true
+        jobs.paused = true
         _state.update {
             if (it.status == AppUpdateDownloadStatus.Downloading) {
                 it.copy(status = AppUpdateDownloadStatus.Paused, speedBytesPerSecond = 0L)
@@ -110,7 +100,7 @@ class AppUpdateDownloadManager(
     }
 
     override fun resume() {
-        paused = false
+        jobs.paused = false
         _state.update {
             if (it.status == AppUpdateDownloadStatus.Paused) {
                 it.copy(status = AppUpdateDownloadStatus.Downloading)
@@ -121,23 +111,14 @@ class AppUpdateDownloadManager(
     }
 
     override fun cancel() {
-        cancelInternal(resetState = true)
+        jobs.cancel()
+        _state.update { it.copy(status = AppUpdateDownloadStatus.Canceled, speedBytesPerSecond = 0L) }
         cancelProgressNotification(context, APP_UPDATE_NOTIFICATION_ID)
     }
 
     override fun sendToBackground() {
         _state.update { it.copy(background = true) }
         notifyProgress()
-    }
-
-    private fun cancelInternal(resetState: Boolean) {
-        canceled = true
-        paused = false
-        job?.cancel()
-        job = null
-        if (resetState) {
-            _state.update { it.copy(status = AppUpdateDownloadStatus.Canceled, speedBytesPerSecond = 0L) }
-        }
     }
 
     private suspend fun download(request: AppUpdateDownloadRequest) = withContext(Dispatchers.IO) {
@@ -161,10 +142,10 @@ class AppUpdateDownloadManager(
                     FileOutputStream(file).use { output ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         while (true) {
-                            while (paused && !canceled) {
+                            while (jobs.paused && !jobs.canceled) {
                                 delay(250)
                             }
-                            if (canceled) {
+                            if (jobs.canceled) {
                                 file.delete()
                                 return@withContext
                             }
@@ -211,7 +192,7 @@ class AppUpdateDownloadManager(
             file.delete()
             throw cancelled
         } catch (error: Exception) {
-            if (!canceled) {
+            if (!jobs.canceled) {
                 _state.update {
                     it.copy(
                         status = AppUpdateDownloadStatus.Error,
@@ -234,6 +215,39 @@ class AppUpdateDownloadManager(
             text = "${(state.progress * 100).roundToInt()}% · ${formatBytes(state.speedBytesPerSecond)}/s",
             progressPercent = (state.progress * 100).roundToInt()
         )
+    }
+}
+
+/**
+ * One active download at a time: a new start flags the previous writer to stop,
+ * joins it, then clears flags before the next block runs.
+ */
+internal class UpdateDownloadJobGate {
+    @Volatile
+    var canceled = false
+
+    @Volatile
+    var paused = false
+
+    private var job: Job? = null
+
+    fun start(scope: CoroutineScope, block: suspend () -> Unit) {
+        val previous = job
+        canceled = true
+        paused = false
+        job = scope.launch {
+            previous?.cancelAndJoin()
+            canceled = false
+            paused = false
+            block()
+        }
+    }
+
+    fun cancel() {
+        canceled = true
+        paused = false
+        job?.cancel()
+        job = null
     }
 }
 
