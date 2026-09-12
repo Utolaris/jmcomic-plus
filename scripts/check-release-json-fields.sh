@@ -22,8 +22,8 @@ fi
 
 DEXDUMP=""
 if [ -d "$SDK/build-tools" ]; then
-  # Prefer the newest installed build-tools.
-  DEXDUMP="$(ls -1d "$SDK"/build-tools/*/dexdump 2>/dev/null | sort -V | tail -1 || true)"
+  # Newest installed build-tools. Avoid sort -V (not portable on older macOS/BSD sort).
+  DEXDUMP="$(ls -1dt "$SDK"/build-tools/*/dexdump 2>/dev/null | head -1 || true)"
 fi
 DEX="app/build/intermediates/dex/release/minifyReleaseWithR8/classes.dex"
 OUT="build/release_dexdump.txt"

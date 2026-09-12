@@ -80,6 +80,8 @@ class ArchitectureBoundaryTest {
             // Room entities stay in L4; model contracts and presentation must not see them.
             addAll(forbiddenImports("favorites/model", listOf("com.par9uet.jm.database.")))
             addAll(forbiddenImports("favorites/presentation", listOf("com.par9uet.jm.database.")))
+            addAll(forbiddenQualifiedUsages("favorites/model", listOf("com.par9uet.jm.database.")))
+            addAll(forbiddenQualifiedUsages("favorites/presentation", listOf("com.par9uet.jm.database.")))
             addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.", "com.par9uet.jm.download.coordinator.")))
             addAll(forbiddenImports("update", listOf("com.par9uet.jm.ui.")))
             addAll(forbiddenImports("download/export", listOf("com.par9uet.jm.download.molecule.")))

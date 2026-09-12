@@ -189,23 +189,31 @@ preflight_hyperos_background_start() {
   case "$mode" in
     *MIUI*|*HyperOS*|*XOCC*|V[0-9]*|*OS[0-9]*) ;;
     *)
-      # Unknown ROM: only warn if 10021 is explicitly ignore.
-      local probe
-      probe="$(adb -s "$serial" shell appops get "$APPLICATION_ID" 10021 </dev/null 2>/dev/null | tr -d '\r' || true)"
-      case "$probe" in
+      # Unknown ROM: only enforce when either package is explicitly ignore.
+      local probe_app probe_test
+      probe_app="$(adb -s "$serial" shell appops get "$APPLICATION_ID" 10021 </dev/null 2>/dev/null | tr -d '\r' || true)"
+      probe_test="$(adb -s "$serial" shell appops get "$TEST_PACKAGE" 10021 </dev/null 2>/dev/null | tr -d '\r' || true)"
+      case "$probe_app$probe_test" in
         *ignore*) ;;
         *) return 0 ;;
       esac
       ;;
   esac
 
-  local app_mode test_mode
+  local app_mode test_mode app_bad=0 test_bad=0
   app_mode="$(adb -s "$serial" shell appops get "$APPLICATION_ID" 10021 </dev/null 2>/dev/null | tr -d '\r' || true)"
   test_mode="$(adb -s "$serial" shell appops get "$TEST_PACKAGE" 10021 </dev/null 2>/dev/null | tr -d '\r' || true)"
   case "$app_mode" in
-    *allow*|*default*|*foreground*) ;;
-    *ignore*)
-      cat >&2 <<EOF
+    *ignore*) app_bad=1 ;;
+  esac
+  case "$test_mode" in
+    *ignore*) test_bad=1 ;;
+  esac
+  if [ "$app_bad" -eq 0 ] && [ "$test_bad" -eq 0 ]; then
+    return 0
+  fi
+
+  cat >&2 <<EOF
 HyperOS 后台弹出界面（MIUIOP 10021）为 ignore，插桩 Activity 会被压回后台，UI 用例会卡死。
 
 请手动执行后重试：
@@ -214,16 +222,14 @@ HyperOS 后台弹出界面（MIUIOP 10021）为 ignore，插桩 Activity 会被�
   adb -s '$serial' shell appops set --user 0 $TEST_PACKAGE 10021 allow
 
 当前状态：
-  $APPLICATION_ID: $app_mode
+  $APPLICATION_ID: ${app_mode:-unknown}
   $TEST_PACKAGE:   ${test_mode:-unknown}
 
 本脚本不会自动改写 appops。跑完后如需恢复：
   adb -s '$serial' shell appops set --user 0 $APPLICATION_ID 10021 ignore
+  adb -s '$serial' shell appops set --user 0 $TEST_PACKAGE 10021 ignore
 EOF
-      return 1
-      ;;
-  esac
-  return 0
+  return 1
 }
 
 # Focus is observed by the stall watchdog only — no background am start.
