@@ -14,7 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.ui.navigation.returnToHome
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 
 @Composable
 internal fun BackIconButton(onClick: (() -> Unit)? = null) {

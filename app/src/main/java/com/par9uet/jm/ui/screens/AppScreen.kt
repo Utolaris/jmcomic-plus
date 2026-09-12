@@ -4,7 +4,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
@@ -13,6 +12,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.navigation.NavigationMotion
 import com.par9uet.jm.ui.screens.downloadScreen.DownloadScreen
 import com.par9uet.jm.ui.screens.downloadScreen.DownloadComicDetailScreen
@@ -191,10 +191,6 @@ fun AppScreen(
             }
         }
     }
-}
-
-val LocalMainNavController = staticCompositionLocalOf<NavHostController> {
-    error("none")
 }
 
 private tailrec fun android.content.Context.findActivity(): android.app.Activity? {

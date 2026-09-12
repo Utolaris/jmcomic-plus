@@ -88,6 +88,7 @@ import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.glass.GlassMaterialStyle
 import com.par9uet.jm.ui.glass.GlassSurface
 import com.par9uet.jm.ui.glass.GlassSurfaceStyle
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import org.koin.compose.getKoin
 import org.koin.compose.viewmodel.koinActivityViewModel

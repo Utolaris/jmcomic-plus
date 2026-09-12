@@ -36,7 +36,7 @@ import com.par9uet.jm.favorites.data.FavoriteStore
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
 import com.par9uet.jm.ui.glass.GlassCaptureHost
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import androidx.navigation.compose.rememberNavController
 import com.par9uet.jm.ui.theme.LocalExtendedColors
 import com.par9uet.jm.ui.theme.extendedColorSchemeFor

@@ -16,6 +16,7 @@ import com.par9uet.jm.ui.components.Comment
 import com.par9uet.jm.ui.components.CommentSkeleton
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.PullRefreshAndLoadMoreGrid
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.viewmodel.koinActivityViewModel
 

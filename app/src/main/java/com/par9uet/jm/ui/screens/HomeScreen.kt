@@ -1,6 +1,5 @@
 package com.par9uet.jm.ui.screens
 
-import com.par9uet.jm.data.comic.mapper.toComic
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -221,7 +220,7 @@ internal fun HomeScreen(
         (blockedTags + homeExcludedTags).distinct()
     }
     val comicList = remember(currentContent, allExcludedTags) {
-        currentContent.map { it.toComic() }.filterBlockedTags(allExcludedTags)
+        currentContent.filterBlockedTags(allExcludedTags)
     }
     LazyVerticalGrid(
         modifier = pullDownModifier.fillMaxSize(),

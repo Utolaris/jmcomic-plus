@@ -52,6 +52,7 @@ import com.par9uet.jm.ui.glass.GlassMenuAlignment
 import com.par9uet.jm.ui.glass.GlassMenuItem
 import com.par9uet.jm.ui.glass.glassMenuAnchor
 import com.par9uet.jm.ui.glass.rememberGlassAnchoredMenuState
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.SearchViewModel
 import com.par9uet.jm.contentfilter.serializeExcludedTags

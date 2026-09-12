@@ -55,6 +55,7 @@ import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.ui.components.ComicSearchHistoryTag
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.SearchExclusionEditor
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.SearchViewModel
 import com.par9uet.jm.contentfilter.normalizeSearchExcludedTags
 import com.par9uet.jm.contentfilter.parseSearchSyntax

@@ -28,9 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.contentfilter.filterBlockedTags
-import org.koin.compose.getKoin
 
 @Composable
 fun ComicLazyGrid(
@@ -48,9 +46,8 @@ fun ComicLazyGrid(
     horizontalArrangement: Arrangement.HorizontalOrVertical = Arrangement.spacedBy(10.dp),
     contentPadding: PaddingValues = PaddingValues(8.dp),
     stickyHeaderContent: @Composable (() -> Unit)? = null,
-    localSettingManager: LocalSettingManager = getKoin().get(),
+    blockedTags: List<String> = emptyList(),
 ) {
-    val blockedTags by localSettingManager.blockedTags.collectAsState()
     val visibleList = remember(list, blockedTags) {
         list.filterBlockedTags(blockedTags)
     }

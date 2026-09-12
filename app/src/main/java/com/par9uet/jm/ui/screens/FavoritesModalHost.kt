@@ -66,6 +66,7 @@ import com.par9uet.jm.favorites.presentation.FavoritesViewModel
 import com.par9uet.jm.core.network.NetworkErrorKind
 import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassModal
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 
 /** Renders every Favorites modal from the single ViewModel-owned modal state. */
 @OptIn(ExperimentalMaterial3Api::class)

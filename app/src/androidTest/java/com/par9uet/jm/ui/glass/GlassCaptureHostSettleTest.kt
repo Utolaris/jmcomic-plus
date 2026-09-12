@@ -16,7 +16,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.compose.rememberNavController
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.theme.LocalExtendedColors
 import com.par9uet.jm.ui.theme.extendedColorSchemeFor
 import org.junit.Assert.assertTrue

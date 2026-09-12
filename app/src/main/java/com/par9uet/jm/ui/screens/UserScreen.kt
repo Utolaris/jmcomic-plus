@@ -54,9 +54,10 @@ import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.par9uet.jm.R
 import com.par9uet.jm.core.model.User
-import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.ui.models.LocalRemoteImageHost
 import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.session.SessionReadiness
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import kotlinx.coroutines.launch
 import org.koin.compose.getKoin
@@ -318,7 +319,6 @@ private fun MenuDivider() {
 @Composable
 fun UserScreen(
     userManager: UserManager = getKoin().get(),
-    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     userViewModel: UserViewModel = koinActivityViewModel(),
     topContentPadding: Dp = 0.dp,
     bottomContentPadding: Dp = 0.dp,
@@ -328,7 +328,7 @@ fun UserScreen(
     val authState by userManager.authState.collectAsState()
     val hasCachedIdentity = authState != SessionReadiness.Unauthenticated &&
         (userState.data?.id ?: 0) > 0
-    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
+    val remoteImageHost = LocalRemoteImageHost.current
     val mainNavController = LocalMainNavController.current
 
     fun checkLoginThenDo(onDo: () -> Unit) {

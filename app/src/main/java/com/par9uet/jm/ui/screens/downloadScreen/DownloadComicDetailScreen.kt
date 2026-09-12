@@ -52,13 +52,13 @@ import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.ui.models.LocalRemoteImageHost
 import com.par9uet.jm.ui.components.ChapterMultiSelectDialog
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.ChapterSingleSelectDialog
 import com.par9uet.jm.ui.components.ComicContentTag
 import com.par9uet.jm.ui.components.JmCoverImage
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.DownloadExportViewModel
 import com.par9uet.jm.download.export.PdfExportMode
 import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
@@ -75,12 +75,11 @@ fun DownloadComicDetailScreen(
     id: Int,
     viewModel: DownloadComicDetailViewModel = koinViewModel(),
     imageLoader: ImageLoader = getKoin().get(),
-    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     exportViewModel: DownloadExportViewModel = koinViewModel(),
 ) {
     val mainNavController = LocalMainNavController.current
     val detailState by viewModel.detailState.collectAsState()
-    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
+    val remoteImageHost = LocalRemoteImageHost.current
     val scrollState = rememberScrollState()
     val exportState by exportViewModel.state.collectAsState()
     val cachedInfo = exportState.summary

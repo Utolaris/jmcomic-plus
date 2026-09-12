@@ -18,7 +18,6 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import com.par9uet.jm.ui.components.ComicPicImage
 import com.par9uet.jm.ui.viewModel.ComicReadViewModel
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNot

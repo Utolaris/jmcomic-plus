@@ -10,7 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.navigation.NavType
 import com.par9uet.jm.ui.navigation.returnToHome
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Rule

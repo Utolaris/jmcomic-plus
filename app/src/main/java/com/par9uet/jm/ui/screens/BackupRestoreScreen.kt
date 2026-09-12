@@ -60,14 +60,13 @@ import com.par9uet.jm.backup.BACKUP_PROTECTION_PATTERN
 import com.par9uet.jm.backup.BackupContentOptions
 import com.par9uet.jm.backup.BackupFile
 import com.par9uet.jm.backup.ComicGroupBackup
-import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.ui.models.LocalRemoteImageHost
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.components.JmCoverImage
 import com.par9uet.jm.ui.components.SelectDialog
 import com.par9uet.jm.ui.components.SelectOption
 import com.par9uet.jm.ui.glass.GlassModal
 import kotlinx.coroutines.launch
-import org.koin.compose.getKoin
 
 import com.par9uet.jm.ui.viewModel.BackupRestoreViewModel
 import com.par9uet.jm.ui.viewModel.BackupStep
@@ -85,10 +84,9 @@ private val protectionOptionList = listOf(
 @Composable
 internal fun BackupRestoreScreen(
     viewModel: BackupRestoreViewModel = koinViewModel(),
-    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
 ) {
     val state by viewModel.state.collectAsState()
-    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
+    val remoteImageHost = LocalRemoteImageHost.current
     val createDocumentLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.CreateDocument("application/json"),
         onResult = { viewModel.writeDocument(it?.toString()) },

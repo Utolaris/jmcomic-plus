@@ -59,7 +59,7 @@ import com.par9uet.jm.ui.navigation.shouldIgnoreTabSelection
 import com.par9uet.jm.ui.screens.HomeScreen
 import com.par9uet.jm.ui.screens.HomeGlassTopBar
 import com.par9uet.jm.ui.screens.FavoritesModalHost
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.screens.resolveHomeCategoryTitle
 import com.par9uet.jm.ui.screens.UserCollectComicScreen
 import com.par9uet.jm.ui.screens.UserScreen

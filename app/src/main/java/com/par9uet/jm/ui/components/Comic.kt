@@ -19,11 +19,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.core.ToastManager
-import com.par9uet.jm.ui.screens.LocalMainNavController
-import com.par9uet.jm.ui.viewModel.ComicDetailViewModel
-import org.koin.compose.getKoin
-import org.koin.compose.viewmodel.koinActivityViewModel
+import com.par9uet.jm.ui.models.LocalComicDetailOpener
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -35,10 +32,9 @@ fun Comic(
     isScrolling: Boolean = false,
     onLongClick: (() -> Unit)? = null,
     onToggleSelected: (() -> Unit)? = null,
-    comicDetailViewModel: ComicDetailViewModel = koinActivityViewModel()
 ) {
     val mainNavController = LocalMainNavController.current
-    val toastManager: ToastManager = getKoin().get()
+    val detailOpener = LocalComicDetailOpener.current
 
     Card(
         modifier = modifier.combinedClickable(
@@ -46,10 +42,14 @@ fun Comic(
                 if (editing && onToggleSelected != null) {
                     onToggleSelected()
                 } else {
-                    // Seed the detail state with this list item so cover/title render on
-                    // the first frame while full detail loads in the background.
-                    comicDetailViewModel.prepareDetail(comic)
-                    mainNavController.navigate("comicDetail/${comic.id}")
+                    // 预置详情状态由组合根负责：调用方（App）先 seed 再导航，
+                    // 组件本身不认识 ViewModel。未提供时退化为直接导航。
+                    val opener = detailOpener
+                    if (opener != null) {
+                        opener.open(comic)
+                    } else {
+                        mainNavController.navigate("comicDetail/${comic.id}")
+                    }
                 }
             },
             onLongClick = {

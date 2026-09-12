@@ -34,10 +34,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.repository.ComicRepository
-import com.par9uet.jm.retrofit.model.ComicDetailResponse
-import com.par9uet.jm.core.network.NetWorkResult
-import com.par9uet.jm.storage.RemoteConfigPreferences
+import com.par9uet.jm.ui.models.ComicDetailLoader
+import com.par9uet.jm.ui.models.LocalComicDetailLoader
+import com.par9uet.jm.ui.models.LocalRemoteImageHost
 import com.par9uet.jm.core.ToastManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -51,13 +50,12 @@ fun ComicCoverImage(
     modifier: Modifier = Modifier,
     showIdChip: Boolean = false,
     isScrolling: Boolean = false,
-    remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
     imageLoader: ImageLoader = getKoin().get(),
     toastManager: ToastManager = getKoin().get(),
 ) {
-    val remoteImageHost by remoteConfigPreferences.remoteImageHost.collectAsState()
+    val remoteImageHost = LocalRemoteImageHost.current
     val clipboard = LocalClipboard.current
-    val comicRepository: ComicRepository = getKoin().get()
+    val detailLoader = LocalComicDetailLoader.current
     val scope = rememberCoroutineScope()
     var showDetailDialog by remember { mutableStateOf(false) }
     var detailInfoText by remember { mutableStateOf("") }
@@ -99,7 +97,7 @@ fun ComicCoverImage(
                             detailLoading = true
                             showDetailDialog = true
                             scope.launch {
-                                val text = buildComicDetailText(comicRepository, comic.id)
+                                val text = buildComicDetailText(detailLoader, comic.id)
                                 detailInfoText = text
                                 detailLoading = false
                             }
@@ -152,40 +150,43 @@ fun ComicCoverImage(
     }
 }
 
-private suspend fun buildComicDetailText(repository: ComicRepository, comicId: Int): String {
+private suspend fun buildComicDetailText(
+    detailLoader: ComicDetailLoader?,
+    comicId: Int,
+): String {
+    if (detailLoader == null) return "详情不可用"
     return withContext(Dispatchers.IO) {
-        when (val result = repository.getComicDetail(comicId)) {
-            is NetWorkResult.Error -> "获取详情失败：${result.message}"
-            is NetWorkResult.Success -> {
-                val detail: ComicDetailResponse = result.data
-                buildString {
-                    appendLine("=== 基础信息 ===")
-                    appendLine("ID: ${detail.id}")
-                    appendLine("名称: ${detail.name}")
-                    appendLine("作者: ${detail.author.joinToString(", ")}")
-                    appendLine("简介: ${detail.description.ifBlank { "无" }}")
-                    appendLine("阅读次数: ${detail.total_views}")
-                    appendLine("喜欢数: ${detail.likes}")
-                    appendLine("评论数: ${detail.comment_total}")
-                    appendLine("标签: ${detail.tags.joinToString(", ").ifBlank { "无" }}")
-                    appendLine("角色: ${detail.actors.joinToString(", ").ifBlank { "无" }}")
-                    appendLine("作品: ${detail.works.joinToString(", ").ifBlank { "无" }}")
-                    appendLine()
-                    appendLine("=== 详情扩展 ===")
-                    appendLine("已收藏: ${if (detail.is_favorite) "是" else "否"}")
-                    appendLine("系列ID: ${detail.series_id.ifBlank { "无" }}")
-                    appendLine("价格: ${detail.price}")
-                    appendLine("已购买: ${if (detail.purchased) "是" else "否"}")
-                    appendLine()
-                    appendLine("=== 章节 ===")
-                    detail.series.forEachIndexed { i, chapter ->
-                        appendLine("${i + 1}. ${chapter.name}")
-                    }
-                    appendLine()
-                    appendLine("=== 相关漫画 ===")
-                    detail.related_list.forEachIndexed { i, related ->
-                        appendLine("${i + 1}. JM${related.id} - ${related.name} (${related.author})")
-                    }
+        val detail = detailLoader.load(comicId)
+        if (detail == null) {
+            "获取详情失败"
+        } else {
+            buildString {
+                appendLine("=== 基础信息 ===")
+                appendLine("ID: ${detail.id}")
+                appendLine("名称: ${detail.name}")
+                appendLine("作者: ${detail.authorList.joinToString(", ")}")
+                appendLine("简介: ${detail.description.ifBlank { "无" }}")
+                appendLine("阅读次数: ${detail.readCount}")
+                appendLine("喜欢数: ${detail.likeCount}")
+                appendLine("评论数: ${detail.commentCount}")
+                appendLine("标签: ${detail.tagList.joinToString(", ").ifBlank { "无" }}")
+                appendLine("角色: ${detail.roleList.joinToString(", ").ifBlank { "无" }}")
+                appendLine("作品: ${detail.workList.joinToString(", ").ifBlank { "无" }}")
+                appendLine()
+                appendLine("=== 详情扩展 ===")
+                appendLine("已收藏: ${if (detail.isCollect) "是" else "否"}")
+                appendLine("系列ID: ${detail.seriesId.ifBlank { "无" }}")
+                appendLine("价格: ${detail.price}")
+                appendLine("已购买: ${if (detail.isBuy) "是" else "否"}")
+                appendLine()
+                appendLine("=== 章节 ===")
+                detail.comicChapterList.forEachIndexed { i, chapter ->
+                    appendLine("${i + 1}. ${chapter.name}")
+                }
+                appendLine()
+                appendLine("=== 相关漫画 ===")
+                detail.relateComicList.forEachIndexed { i, related ->
+                    appendLine("${i + 1}. JM${related.id} - ${related.name} (${related.authorList.joinToString(", ")})")
                 }
             }
         }

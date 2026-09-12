@@ -58,7 +58,7 @@ import com.par9uet.jm.ui.glass.AppGlassTopBar
 import com.par9uet.jm.ui.glass.ChromeMode
 import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.download.model.DownloadItemGroup
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
 import com.par9uet.jm.storage.LocalSettingManager

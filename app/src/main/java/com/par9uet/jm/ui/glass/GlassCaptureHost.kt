@@ -25,7 +25,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.navigation.NavHostController
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.theme.ExtendedColorScheme
 import com.par9uet.jm.ui.theme.ExtendedTheme
 import com.par9uet.jm.ui.theme.LocalExtendedColors

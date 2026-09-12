@@ -32,7 +32,7 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.par9uet.jm.ui.components.BackIconButton
 import com.par9uet.jm.ui.glass.GlassCaptureHost
-import com.par9uet.jm.ui.screens.LocalMainNavController
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.screens.SearchPageFocusEffect
 import com.par9uet.jm.ui.theme.LocalExtendedColors
 import com.par9uet.jm.ui.theme.extendedColorSchemeFor

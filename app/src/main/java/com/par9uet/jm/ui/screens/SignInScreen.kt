@@ -62,6 +62,7 @@ import com.kizitonwose.calendar.core.yearMonth
 import com.par9uet.jm.session.UserManager
 import com.par9uet.jm.session.SessionReadiness
 import com.par9uet.jm.ui.components.CommonScaffold
+import com.par9uet.jm.ui.navigation.LocalMainNavController
 import com.par9uet.jm.ui.viewModel.UserViewModel
 import org.koin.compose.getKoin
 import kotlinx.coroutines.flow.filter
