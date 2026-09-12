@@ -67,7 +67,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
-import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.ReadHistoryManager
 import com.par9uet.jm.store.ReaderResumeManager

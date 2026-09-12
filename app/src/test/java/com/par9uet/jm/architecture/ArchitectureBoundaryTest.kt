@@ -12,9 +12,10 @@ class ArchitectureBoundaryTest {
             addAll(forbiddenImports("ui/viewModel/ComicReadViewModel.kt", listOf(
                 "java.io.", "java.util.zip.", "com.par9uet.jm.database.", "com.par9uet.jm.cache.",
             )))
+            addAll(forbiddenImports("ui", listOf("com.par9uet.jm.database.")))
             listOf("CacheCleanupScreen.kt", "downloadScreen/DownloadComicDetailScreen.kt").forEach { screen ->
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
-                    "java.io.", "kotlinx.coroutines.", "com.par9uet.jm.store.DownloadManager",
+                    "java.io.", "kotlinx.coroutines.", "com.par9uet.jm.download.coordinator.DownloadManager",
                     "com.par9uet.jm.reader.ReaderImagePipeline", "com.par9uet.jm.database.",
                     "com.par9uet.jm.download.export.export", "com.par9uet.jm.download.export.getCachedComicInfo",
                     "com.par9uet.jm.cache.atom.",
@@ -23,14 +24,16 @@ class ArchitectureBoundaryTest {
             addAll(forbiddenImports("cache/atom", listOf(
                 "com.par9uet.jm.ui.", "com.par9uet.jm.store.", "com.par9uet.jm.reader.",
             )))
-            addAll(forbiddenImports("store/DownloadManager.kt", listOf(
+            addAll(forbiddenImports("download/coordinator/DownloadManager.kt", listOf(
                 "com.par9uet.jm.download.coordinator.DownloadComicCoordinator",
             )))
             addAll(forbiddenImports("store", listOf("com.par9uet.jm.ui.", "com.par9uet.jm.worker.")))
             addAll(forbiddenImports("favorites", listOf("com.par9uet.jm.ui.")))
-            addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.")))
+            addAll(forbiddenImports("favorites/data", listOf("com.par9uet.jm.download.coordinator.")))
+            addAll(forbiddenImports("backup", listOf("com.par9uet.jm.ui.", "com.par9uet.jm.download.coordinator.")))
             addAll(forbiddenImports("update", listOf("com.par9uet.jm.ui.")))
-            addAll(forbiddenImports("store/DownloadManager.kt", listOf(
+            addAll(forbiddenImports("download/export", listOf("com.par9uet.jm.download.molecule.")))
+            addAll(forbiddenImports("download/coordinator/DownloadManager.kt", listOf(
                 "com.par9uet.jm.database.", "com.par9uet.jm.download.atom.", "java.io.",
             )))
             addAll(forbiddenImports("download/molecule", listOf(
@@ -72,8 +75,8 @@ class ArchitectureBoundaryTest {
                 addAll(forbiddenImports("ui/screens/$screen", listOf(
                     "okhttp3.", "com.google.gson.", "java.io.File", "androidx.core.content.FileProvider",
                     "com.par9uet.jm.database.", "com.par9uet.jm.store.BackupManager",
-                    "com.par9uet.jm.store.DownloadManager", "com.par9uet.jm.store.LocalSettingManager",
-                    "com.par9uet.jm.store.AppUpdateDownloadManager",
+                    "com.par9uet.jm.download.coordinator.DownloadManager", "com.par9uet.jm.store.LocalSettingManager",
+                    "com.par9uet.jm.update.AppUpdateDownloadManager",
                 )))
             }
             addAll(forbiddenImports("utils", listOf("com.par9uet.jm.cache.", "com.par9uet.jm.data.")))

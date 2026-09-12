@@ -2,10 +2,10 @@ package com.par9uet.jm.ui.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.par9uet.jm.database.dao.DownloadComicDao
-import com.par9uet.jm.database.model.DownloadComic
-import com.par9uet.jm.database.model.DownloadStatus
-import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.download.molecule.DownloadLibraryQueries
+import com.par9uet.jm.download.model.DownloadItem
+import com.par9uet.jm.download.model.DownloadItemGroup
+import com.par9uet.jm.download.coordinator.DownloadManager
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asStateFlow
@@ -21,45 +21,36 @@ data class DownloadEditState(
     val selectedIds: Set<Int> = emptySet()
 )
 
-data class DownloadComicGroup(
-    val id: Int,
-    val name: String,
-    val authorList: List<String>,
-    val coverPath: String,
-    val itemIds: Set<Int>,
-    val chapterCount: Int,
-    val latestTime: Long,
-    val status: DownloadStatus,
-    val progress: Float,
-)
-
 class DownloadViewModel(
-    private val downloadComicDao: DownloadComicDao,
-    private val downloadManager: DownloadManager
+    private val queries: DownloadLibraryQueries,
+    private val downloadManager: DownloadManager,
 ) : ViewModel() {
     private val _editState = MutableStateFlow(DownloadEditState())
     val editState = _editState.asStateFlow()
 
-    private val completeList = downloadComicDao.observeCompleteList()
+    private val completeList = queries.observeCompleteList()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val activeList = downloadComicDao.observeActiveList()
+    private val activeList = queries.observeActiveList()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
-    private val errorList = downloadComicDao.observeErrorList()
+    private val errorList = queries.observeErrorList()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val completeGroups = completeList
-        .map(::groupDownloads)
+        .map { items -> withCoverResolution(DownloadLibraryQueries.groupItems(items), items) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val activeGroups = combine(activeList, completeList) { activeItems, completeItems ->
-        groupActiveDownloads(activeItems, completeItems)
+        withCoverResolution(
+            DownloadLibraryQueries.groupActiveDownloads(activeItems, completeItems),
+            activeItems + completeItems,
+        )
     }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val errorGroups = errorList
-        .map(::groupDownloads)
+        .map { items -> withCoverResolution(DownloadLibraryQueries.groupItems(items), items) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun enterEdit(id: Int) {
@@ -152,46 +143,22 @@ class DownloadViewModel(
         downloadManager.redownloadGroup(groupId)
     }
 
-}
-
-private fun groupDownloads(items: List<DownloadComic>): List<DownloadComicGroup> {
-    return items
-        .groupBy(::downloadGroupId)
-        .values
-        .map { groupItems ->
-            val sortedItems = groupItems.sortedBy { it.createTime }
-            val displayItem = sortedItems.firstOrNull { it.coverPath.isNotBlank() } ?: sortedItems.first()
-            DownloadComicGroup(
-                id = if (displayItem.groupId != 0) displayItem.groupId else displayItem.id,
-                name = displayItem.groupName.ifBlank { displayItem.name },
-                authorList = displayItem.authorList,
-                coverPath = resolveGroupCoverPath(sortedItems, displayItem),
-                itemIds = sortedItems.map { it.id }.toSet(),
-                chapterCount = sortedItems.size,
-                latestTime = sortedItems.maxOf { it.createTime },
-                status = resolveGroupStatus(sortedItems),
-                progress = sortedItems.map { it.progress.coerceIn(0f, 1f) }.average().toFloat()
-            )
+    private fun withCoverResolution(
+        groups: List<DownloadItemGroup>,
+        sourceItems: List<DownloadItem>,
+    ): List<DownloadItemGroup> {
+        if (groups.isEmpty()) return groups
+        val byGroupId = sourceItems.groupBy { item ->
+            if (item.groupId != 0) item.groupId else item.id
         }
-        .sortedByDescending { it.latestTime }
-}
-
-private fun groupActiveDownloads(
-    activeItems: List<DownloadComic>,
-    completeItems: List<DownloadComic>
-): List<DownloadComicGroup> {
-    val activeGroupIds = activeItems.map(::downloadGroupId).toSet()
-    val relatedCompleteItems = completeItems.filter { item ->
-        downloadGroupId(item) in activeGroupIds
+        return groups.map { group ->
+            val items = byGroupId[group.id] ?: return@map group
+            group.copy(coverPath = resolveGroupCoverPath(items, group.coverPath))
+        }
     }
-    return groupDownloads(activeItems + relatedCompleteItems)
 }
 
-private fun downloadGroupId(item: DownloadComic): Int {
-    return if (item.groupId != 0) item.groupId else item.id
-}
-
-private fun resolveGroupCoverPath(items: List<DownloadComic>, displayItem: DownloadComic): String {
+private fun resolveGroupCoverPath(items: List<DownloadItem>, fallbackCover: String): String {
     val directCover = items.firstNotNullOfOrNull { item ->
         item.coverPath.takeIf { it.isNotBlank() && File(it).exists() }
     }
@@ -207,15 +174,5 @@ private fun resolveGroupCoverPath(items: List<DownloadComic>, displayItem: Downl
             else -> null
         }
         rootDir?.let { File(it, "cover.webp") }?.takeIf { it.exists() }?.absolutePath
-    } ?: displayItem.coverPath
-}
-
-private fun resolveGroupStatus(items: List<DownloadComic>): DownloadStatus {
-    return when {
-        items.any { it.status == DownloadStatus.DOWNLOADING } -> DownloadStatus.DOWNLOADING
-        items.any { it.status == DownloadStatus.PENDING } -> DownloadStatus.PENDING
-        items.any { it.status == DownloadStatus.PAUSED } -> DownloadStatus.PAUSED
-        items.any { it.status == DownloadStatus.ERROR } -> DownloadStatus.ERROR
-        else -> items.firstOrNull()?.status ?: DownloadStatus.PENDING
-    }
+    } ?: fallbackCover
 }

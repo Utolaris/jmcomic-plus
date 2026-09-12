@@ -1,8 +1,8 @@
 package com.par9uet.jm.di
 
+import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.favorites.data.EmbeddedFavoriteRemoteMutation
 import com.par9uet.jm.favorites.data.EmbeddedFavoriteRemoteQuery
-import com.par9uet.jm.favorites.data.DownloadManagerFavoriteDownloader
 import com.par9uet.jm.favorites.data.FavoriteDownloader
 import com.par9uet.jm.favorites.data.FavoriteLocalMutation
 import com.par9uet.jm.favorites.data.FavoriteLocalQuery
@@ -32,7 +32,10 @@ val favoriteModule = module {
     single<FavoriteLocalMutation> { get<FavoriteStore>() }
     single<FavoriteLocalSync> { get<FavoriteStore>() }
     single<FavoriteSession> { UserManagerFavoriteSession(get()) }
-    single<FavoriteDownloader> { DownloadManagerFavoriteDownloader(get()) }
+    single<FavoriteDownloader> {
+        val downloadManager = get<DownloadManager>()
+        FavoriteDownloader { comics -> downloadManager.downloadComics(comics) }
+    }
     single { EmbeddedFavoriteRemoteMutation(get()) } bind FavoriteRemoteMutation::class
     single { EmbeddedFavoriteRemoteQuery(get()) } bind FavoriteRemoteQuery::class
 

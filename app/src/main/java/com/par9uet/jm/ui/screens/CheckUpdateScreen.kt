@@ -54,7 +54,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.par9uet.jm.store.AppUpdateDownloadStatus
+import com.par9uet.jm.update.AppUpdateDownloadStatus
 import com.par9uet.jm.utils.formatBytes
 import com.par9uet.jm.ui.components.CommonScaffold
 import com.par9uet.jm.ui.glass.GlassModal
@@ -498,7 +498,7 @@ private fun UpdateDownloadDialog(
     onPauseResume: () -> Unit,
     onCancel: () -> Unit,
     onBackground: () -> Unit,
-    downloadState: com.par9uet.jm.store.AppUpdateDownloadState
+    downloadState: com.par9uet.jm.update.AppUpdateDownloadState
 ) {
     val status = downloadState.status
     val isDone = status == AppUpdateDownloadStatus.Completed ||

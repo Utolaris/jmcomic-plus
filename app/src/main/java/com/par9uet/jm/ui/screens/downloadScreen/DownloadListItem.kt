@@ -43,8 +43,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.ImageLoader
 import coil.compose.AsyncImage
-import com.par9uet.jm.database.model.DownloadStatus
-import com.par9uet.jm.ui.viewModel.DownloadComicGroup
+import com.par9uet.jm.download.model.DownloadItemGroup
+import com.par9uet.jm.download.model.DownloadItemStatus
 import com.par9uet.jm.utils.shimmer
 import org.koin.compose.getKoin
 
@@ -72,7 +72,7 @@ private fun GroupCoverImage(
 @Composable
 fun DownloadCoverGridItem(
     modifier: Modifier = Modifier,
-    group: DownloadComicGroup,
+    group: DownloadItemGroup,
     editing: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
@@ -140,7 +140,7 @@ fun DownloadCoverGridItem(
 @Composable
 fun DownloadRowItem(
     modifier: Modifier = Modifier,
-    group: DownloadComicGroup,
+    group: DownloadItemGroup,
     editing: Boolean,
     selected: Boolean,
     onClick: () -> Unit,
@@ -220,7 +220,7 @@ fun DownloadRowItem(
 @Composable
 private fun DownloadStateBlock(
     modifier: Modifier,
-    group: DownloadComicGroup
+    group: DownloadItemGroup
 ) {
     Column(
         modifier = modifier,
@@ -228,7 +228,7 @@ private fun DownloadStateBlock(
         verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically)
     ) {
         when (group.status) {
-            DownloadStatus.DOWNLOADING -> {
+            DownloadItemStatus.DOWNLOADING -> {
                 val animatedProgress by animateFloatAsState(
                     targetValue = group.progress.coerceIn(0f, 1f),
                     animationSpec = ProgressIndicatorDefaults.ProgressAnimationSpec,
@@ -244,7 +244,7 @@ private fun DownloadStateBlock(
                 )
             }
 
-            DownloadStatus.ERROR -> {
+            DownloadItemStatus.ERROR -> {
                 Icon(
                     imageVector = Icons.Rounded.ErrorOutline,
                     contentDescription = null,
@@ -257,7 +257,7 @@ private fun DownloadStateBlock(
                 )
             }
 
-            DownloadStatus.PAUSED -> {
+            DownloadItemStatus.PAUSED -> {
                 Icon(
                     imageVector = Icons.Rounded.PauseCircleOutline,
                     contentDescription = null,
@@ -283,7 +283,7 @@ private fun DownloadStateBlock(
                 )
             }
         }
-        if (group.status == DownloadStatus.DOWNLOADING) {
+        if (group.status == DownloadItemStatus.DOWNLOADING) {
             LinearProgressIndicator(
                 progress = { group.progress.coerceIn(0f, 1f) },
                 modifier = Modifier.fillMaxWidth()

@@ -1,4 +1,6 @@
-package com.par9uet.jm.store
+package com.par9uet.jm.download.coordinator
+
+import com.par9uet.jm.store.ToastManager
 
 class DownloadToastAggregator(
     private val toastManager: ToastManager
@@ -47,6 +49,6 @@ class DownloadToastAggregator(
         val total: Int,
         val reportedIds: MutableSet<Int> = mutableSetOf(),
         var successCount: Int = 0,
-        var failureCount: Int = 0
+        var failureCount: Int = 0,
     )
 }
