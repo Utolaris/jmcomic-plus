@@ -2,12 +2,7 @@
 .gradle
 /.kotlin
 /local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+/.idea/
 .DS_Store
 /build
 /captures
@@ -17,5 +12,19 @@ local.properties
 release-key
 .debug-screenshot.png
 
-# Agent workspace: session memory, not project source
+# App module build outputs (merged from app/.gitignore)
+/app/build
+/app/release
+
+# Agent workspace / local env
 .workbuddy/
+.codex/
+.env*
+!.env.example
+
+# Signing / packaged artifacts
+*.p12
+*.jks
+*.keystore
+*.apk
+*.aab

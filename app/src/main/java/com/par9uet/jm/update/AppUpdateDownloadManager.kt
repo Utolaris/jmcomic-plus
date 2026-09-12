@@ -8,15 +8,20 @@ import com.par9uet.jm.utils.cancelProgressNotification
 import com.par9uet.jm.utils.formatBytes
 import com.par9uet.jm.utils.showProgressNotification
 import com.par9uet.jm.utils.showUpdateDownloadedNotification
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -65,10 +70,7 @@ class AppUpdateDownloadManager(
     private val dohManager: com.par9uet.jm.network.DohManager,
 ) : AppUpdateDownloads {
     private val client = OkHttpClient.Builder().dns(dohManager).build()
-    private var job: Job? = null
-    private var paused = false
-    private var canceled = false
-    private var activeRequest: AppUpdateDownloadRequest? = null
+    private val jobs = UpdateDownloadJobGate()
 
     private val _state = MutableStateFlow(AppUpdateDownloadState())
     override val state = _state.asStateFlow()
@@ -78,23 +80,21 @@ class AppUpdateDownloadManager(
             toastManager.showAsync("未找到 APK 下载链接")
             return
         }
-        cancelInternal(resetState = false)
-        activeRequest = request
-        paused = false
-        canceled = false
+        // New download intent: stop the current writer; pause issued while waiting must stick.
+        jobs.paused = false
+        jobs.start(scope) {
+            download(request)
+        }
         _state.value = AppUpdateDownloadState(
             status = AppUpdateDownloadStatus.Downloading,
             version = request.version,
             fileName = request.fileName,
             downloadUrl = request.downloadUrl
         )
-        job = scope.launch {
-            download(request)
-        }
     }
 
     override fun pause() {
-        paused = true
+        jobs.paused = true
         _state.update {
             if (it.status == AppUpdateDownloadStatus.Downloading) {
                 it.copy(status = AppUpdateDownloadStatus.Paused, speedBytesPerSecond = 0L)
@@ -105,7 +105,7 @@ class AppUpdateDownloadManager(
     }
 
     override fun resume() {
-        paused = false
+        jobs.paused = false
         _state.update {
             if (it.status == AppUpdateDownloadStatus.Paused) {
                 it.copy(status = AppUpdateDownloadStatus.Downloading)
@@ -116,7 +116,8 @@ class AppUpdateDownloadManager(
     }
 
     override fun cancel() {
-        cancelInternal(resetState = true)
+        jobs.cancel()
+        _state.update { it.copy(status = AppUpdateDownloadStatus.Canceled, speedBytesPerSecond = 0L) }
         cancelProgressNotification(context, APP_UPDATE_NOTIFICATION_ID)
     }
 
@@ -125,29 +126,25 @@ class AppUpdateDownloadManager(
         notifyProgress()
     }
 
-    private fun cancelInternal(resetState: Boolean) {
-        canceled = true
-        paused = false
-        job?.cancel()
-        job = null
-        if (resetState) {
-            _state.update { it.copy(status = AppUpdateDownloadStatus.Canceled, speedBytesPerSecond = 0L) }
-        }
-    }
-
     private suspend fun download(request: AppUpdateDownloadRequest) = withContext(Dispatchers.IO) {
-        runCatching {
-            val httpRequest = Request.Builder()
+        val file = File(getCommonCacheDir(context), "updates/${safeUpdateFileName(request.fileName)}")
+        val call = client.newCall(
+            Request.Builder()
                 .url(request.downloadUrl)
                 .header("User-Agent", "jmcomic-plus-android")
                 .build()
-            client.newCall(httpRequest).execute().use { response ->
+        )
+        // Unblock a writer stuck in InputStream.read() so the single-writer mutex can release.
+        currentCoroutineContext().job.invokeOnCompletion { cause ->
+            if (cause != null) call.cancel()
+        }
+        try {
+            call.execute().use { response ->
                 if (!response.isSuccessful) {
                     error("下载失败：HTTP ${response.code}")
                 }
                 val body = response.body ?: error("下载失败：响应体为空")
                 val totalBytes = body.contentLength().takeIf { it > 0L } ?: 0L
-                val file = File(getCommonCacheDir(context), "updates/${request.fileName}")
                 file.parentFile?.mkdirs()
                 var downloaded = 0L
                 var windowBytes = 0L
@@ -156,10 +153,10 @@ class AppUpdateDownloadManager(
                     FileOutputStream(file).use { output ->
                         val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                         while (true) {
-                            while (paused && !canceled) {
+                            while (jobs.paused && !jobs.canceled) {
                                 delay(250)
                             }
-                            if (canceled) {
+                            if (jobs.canceled) {
                                 file.delete()
                                 return@withContext
                             }
@@ -186,6 +183,11 @@ class AppUpdateDownloadManager(
                         }
                     }
                 }
+                // Cancel near EOF must not be overwritten by Completed.
+                if (jobs.canceled) {
+                    file.delete()
+                    return@withContext
+                }
                 _state.update {
                     it.copy(
                         status = AppUpdateDownloadStatus.Completed,
@@ -202,13 +204,16 @@ class AppUpdateDownloadManager(
                     savedPath = file.absolutePath
                 )
             }
-        }.onFailure { throwable ->
-            if (!canceled) {
+        } catch (cancelled: CancellationException) {
+            file.delete()
+            throw cancelled
+        } catch (error: Exception) {
+            if (!jobs.canceled) {
                 _state.update {
                     it.copy(
                         status = AppUpdateDownloadStatus.Error,
                         speedBytesPerSecond = 0L,
-                        errorMessage = throwable.message ?: "下载失败"
+                        errorMessage = error.message ?: "下载失败"
                     )
                 }
                 cancelProgressNotification(context, APP_UPDATE_NOTIFICATION_ID)
@@ -227,6 +232,50 @@ class AppUpdateDownloadManager(
             progressPercent = (state.progress * 100).roundToInt()
         )
     }
+}
+
+/**
+ * Single-writer gate: at most one download block holds the mutex.
+ *
+ * start() flags canceled and cancels the active job so a writer blocked in IO can leave,
+ * then the new block waits on the mutex until that writer fully exits.
+ * cancel() cancels the active job without dropping the mutex — a later start still
+ * serializes behind the old writer.
+ */
+internal class UpdateDownloadJobGate {
+    @Volatile
+    var canceled = false
+
+    @Volatile
+    var paused = false
+
+    private val writerMutex = Mutex()
+    private var activeJob: Job? = null
+
+    fun start(scope: CoroutineScope, block: suspend () -> Unit) {
+        canceled = true
+        activeJob?.cancel()
+        val job = scope.launch {
+            writerMutex.withLock {
+                canceled = false
+                // Keep paused as-is: a pause issued while waiting must stick.
+                block()
+            }
+        }
+        activeJob = job
+    }
+
+    fun cancel() {
+        canceled = true
+        paused = false
+        activeJob?.cancel()
+    }
+}
+
+internal fun safeUpdateFileName(name: String): String {
+    return name.substringAfterLast('/').substringAfterLast('\\')
+        .replace("..", "_")
+        .ifBlank { "update.apk" }
 }
 
 data class AppUpdateDownloadRequest(

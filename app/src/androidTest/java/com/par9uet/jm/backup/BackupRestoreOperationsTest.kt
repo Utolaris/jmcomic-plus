@@ -21,6 +21,7 @@ import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -107,6 +108,46 @@ class BackupRestoreOperationsTest {
         assertEquals("已恢复：2 部漫画的缓存任务（共 3 章）", summary)
         assertEquals(listOf(10), scheduler.comics.map { it.id })
         assertEquals(listOf(21, 22), scheduler.chapters.single().second.map { it.id })
+    }
+
+    @Test
+    fun `restore skips invalid groups and keeps titles with slashes`() = runBlocking {
+        val slashTitle = ComicGroupBackup(
+            id = 30,
+            name = "A/B",
+            authors = emptyList(),
+            tags = emptyList(),
+            chapters = listOf(ChapterBackup(31, "第一章", 1)),
+        )
+        val emptyChapters = ComicGroupBackup(
+            id = 40,
+            name = "空章",
+            authors = emptyList(),
+            tags = emptyList(),
+            chapters = emptyList(),
+        )
+        val badChapterId = ComicGroupBackup(
+            id = 50,
+            name = "坏章",
+            authors = emptyList(),
+            tags = emptyList(),
+            chapters = listOf(ChapterBackup(0, "零", 1)),
+        )
+        val summary = operations.restore(
+            backup = codec.parseBackup(
+                codec.createBackup(
+                    localSetting = LocalSetting(),
+                    comicCache = ComicCacheBackup(listOf(slashTitle)),
+                    options = BackupContentOptions(includeLocalSetting = false, includeComicCache = true),
+                )
+            ).getOrThrow(),
+            includeSettings = false,
+            groups = listOf(slashTitle, emptyChapters, badChapterId),
+        )
+
+        assertEquals("已恢复：1 部漫画的缓存任务（共 1 章）、跳过 2 部无效漫画", summary)
+        assertEquals(listOf(30), scheduler.comics.map { it.id })
+        assertTrue(scheduler.chapters.isEmpty())
     }
 
     @Test

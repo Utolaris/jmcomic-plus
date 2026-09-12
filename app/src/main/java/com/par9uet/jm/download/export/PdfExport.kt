@@ -95,44 +95,58 @@ private fun writeImagesToPdf(
         fileName
     ) ?: throw IllegalStateException("无法创建 PDF 文件")
 
-    val failedPages = mutableListOf<Int>()
-    context.contentResolver.openOutputStream(outputUri)?.use { output ->
-        val document = PdfDocument()
-        var pageIndex = 0
-        try {
-            imageFiles.forEachIndexed { index, file ->
-                try {
-                    val bitmap = decodeBitmapForPdf(context, file)
-                        ?: run {
-                            failedPages.add(index + 1)
-                            return@forEachIndexed
-                        }
-                    val pageWidth = bitmap.width.coerceAtLeast(1)
-                    val pageHeight = bitmap.height.coerceAtLeast(1)
-                    val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
-                    val page = document.startPage(pageInfo)
-                    page.canvas.drawBitmap(bitmap, 0f, 0f, null)
-                    document.finishPage(page)
-                    pageIndex++
-                    bitmap.recycle()
-                } catch (e: OutOfMemoryError) {
-                    System.gc()
-                    failedPages.add(index + 1)
-                } catch (e: Exception) {
-                    failedPages.add(index + 1)
+    var success = false
+    try {
+        val failedPages = mutableListOf<Int>()
+        val output = context.contentResolver.openOutputStream(outputUri)
+            ?: throw IllegalStateException("无法写入 PDF 文件，已尝试清理未完成文件")
+        output.use { stream ->
+            val document = PdfDocument()
+            var pageIndex = 0
+            try {
+                imageFiles.forEachIndexed { index, file ->
+                    var bitmap: Bitmap? = null
+                    try {
+                        bitmap = decodeBitmapForPdf(context, file)
+                            ?: run {
+                                failedPages.add(index + 1)
+                                return@forEachIndexed
+                            }
+                        val pageWidth = bitmap.width.coerceAtLeast(1)
+                        val pageHeight = bitmap.height.coerceAtLeast(1)
+                        val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, pageIndex + 1).create()
+                        val page = document.startPage(pageInfo)
+                        page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                        document.finishPage(page)
+                        pageIndex++
+                        bitmap.recycle()
+                        bitmap = null
+                    } catch (e: OutOfMemoryError) {
+                        System.gc()
+                        bitmap?.recycle()
+                        failedPages.add(index + 1)
+                    } catch (e: Exception) {
+                        bitmap?.recycle()
+                        failedPages.add(index + 1)
+                    }
                 }
+                document.writeTo(stream)
+            } finally {
+                document.close()
             }
-            document.writeTo(output)
-        } finally {
-            document.close()
         }
-    } ?: throw IllegalStateException("无法写入 PDF 文件")
-
-    if (failedPages.isNotEmpty() && failedPages.size == imageFiles.size) {
-        throw IllegalStateException("所有图片导出失败，可能内存不足或图片损坏")
+        if (failedPages.isNotEmpty()) {
+            throw IllegalStateException(
+                "导出失败：${failedPages.size}/${imageFiles.size} 页无法写入（页码 ${failedPages.joinToString()}），已尝试清理未完成文件"
+            )
+        }
+        success = true
+        return outputUri.toString()
+    } finally {
+        if (!success) {
+            runCatching { context.contentResolver.delete(outputUri, null, null) }
+        }
     }
-
-    return outputUri.toString()
 }
 
 private fun decodeBitmapForPdf(context: Context, path: String): Bitmap? {
@@ -163,5 +177,8 @@ private fun calculateSampleSize(width: Int, height: Int): Int {
 }
 
 private fun safeFileName(name: String): String {
-    return name.replace(Regex("""[\\/:*?"<>|]"""), "_")
+    // SAF display names garble on some devices when control chars slip through.
+    return name.replace(Regex("""[\\/:*?"<>|\p{Cntrl}]"""), "_")
+        .trim()
+        .ifBlank { "comic.pdf" }
 }

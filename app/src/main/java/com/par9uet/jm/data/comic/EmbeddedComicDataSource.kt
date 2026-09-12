@@ -80,7 +80,12 @@ class EmbeddedComicDataSource(
     private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
 ) : BaseRepository(), ComicEmbeddedDataSource {
     companion object {
-        private val imageCache = mutableMapOf<Int, List<JmImage>>()
+        private const val IMAGE_CACHE_MAX = 32
+        private val imageCache: MutableMap<Int, List<JmImage>> =
+            object : LinkedHashMap<Int, List<JmImage>>(IMAGE_CACHE_MAX, 0.75f, true) {
+                override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, List<JmImage>>): Boolean =
+                    size > IMAGE_CACHE_MAX
+            }
         private val cleanHttpClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 .connectTimeout(15, TimeUnit.SECONDS)

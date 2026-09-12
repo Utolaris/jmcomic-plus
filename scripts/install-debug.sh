@@ -5,13 +5,14 @@
 # 所以这里自动跳过模拟器只选真机；要指定设备时把序列号作为参数传进来。
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APK_DIR="$PROJECT_DIR/app/build/outputs/apk/debug"
 GRADLE_FLAGS="-Dhttp.proxyHost= -Dhttp.proxyPort= -Dhttps.proxyHost= -Dhttps.proxyPort="
 
 usage() {
   cat <<'USAGE'
-用法：./install-debug.sh [设备序列号]
+用法：./scripts/install-debug.sh [设备序列号]
 
 不带参数时自动选择已连接的真机（模拟器会被忽略）。
 序列号可以用 adb devices -l 查看。

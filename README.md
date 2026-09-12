@@ -15,10 +15,10 @@
 ## 真机跑插桩测试
 
 ```bash
-./run-instrumented-tests.sh                                  # 全量
-./run-instrumented-tests.sh -p com.par9uet.jm.worker         # 只跑一个包
-./run-instrumented-tests.sh -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest
-./run-instrumented-tests.sh --no-build -c <类名>             # 已装包时跳过编译
+./scripts/run-instrumented-tests.sh                                  # 全量
+./scripts/run-instrumented-tests.sh -p com.par9uet.jm.worker         # 只跑一个包
+./scripts/run-instrumented-tests.sh -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest
+./scripts/run-instrumented-tests.sh --no-build -c <类名>             # 已装包时跳过编译
 ```
 
 脚本会编译安装 debug 与 androidTest 两个 APK，再用 `adb shell am instrument` 驱动；
@@ -27,8 +27,8 @@
 ## 一键安装到手机
 
 ```bash
-./install-debug.sh           # 编译 debug APK 并装到已连接的真机（自动忽略模拟器）
-./install-debug.sh <序列号>   # 存在多台设备时指定其中一台
+./scripts/install-debug.sh           # 编译 debug APK 并装到已连接的真机（自动忽略模拟器）
+./scripts/install-debug.sh <序列号>   # 存在多台设备时指定其中一台
 ```
 
 脚本执行前会打印目标设备；需要手动指定时，序列号可用 `adb devices -l` 查看。

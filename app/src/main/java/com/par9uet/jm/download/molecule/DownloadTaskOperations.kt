@@ -172,6 +172,12 @@ class DownloadTaskOperations(
         if (items.isEmpty()) return null
         items.forEach { item ->
             files.delete(item.zipPath, item.coverPath)
+            // Cover file is gone; clear the DB path so UI does not point at a missing file.
+            if (item.coverPath.isNotBlank()) {
+                downloadComicDao.updateCover(
+                    com.par9uet.jm.database.model.UpdateComicCover(item.id, "")
+                )
+            }
             downloadComicDao.updateStatus(
                 UpdateComicStatus(item.id, DownloadStatus.PENDING)
             )

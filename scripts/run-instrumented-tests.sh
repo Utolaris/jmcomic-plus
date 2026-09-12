@@ -6,7 +6,8 @@
 # 不用每次都重新打包；配合 -l 还能把用例执行期间的 logcat 一起抓下来。
 set -euo pipefail
 
-PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 APK_DIR="$PROJECT_DIR/app/build/outputs/apk"
 GRADLE_FLAGS="-Dhttp.proxyHost= -Dhttp.proxyPort= -Dhttps.proxyHost= -Dhttps.proxyPort="
 
@@ -49,7 +50,7 @@ STALL_SECONDS=180
 
 usage() {
   cat <<'USAGE'
-用法：./run-instrumented-tests.sh [选项] [设备序列号]
+用法：./scripts/run-instrumented-tests.sh [选项] [设备序列号]
 
 选项：
   -c <类名>     只跑一个测试类，例如 com.par9uet.jm.cache.atom.CacheFilesDeviceTest
@@ -72,11 +73,11 @@ usage() {
 只有覆盖失败或显式 --fresh 才会卸载重装，那时数据会丢。
 
 示例：
-  ./run-instrumented-tests.sh                                  # 全量
-  ./run-instrumented-tests.sh -p com.par9uet.jm.worker         # 一个包
-  ./run-instrumented-tests.sh -c com.par9uet.jm.database.FavoriteStoreRealDatabaseTest -m chineseSearch
-  ./run-instrumented-tests.sh --no-build -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest
-  ./run-instrumented-tests.sh --fresh                          # 干净安装后再跑（会清掉登录数据）
+  ./scripts/run-instrumented-tests.sh                                  # 全量
+  ./scripts/run-instrumented-tests.sh -p com.par9uet.jm.worker         # 一个包
+  ./scripts/run-instrumented-tests.sh -c com.par9uet.jm.database.FavoriteStoreRealDatabaseTest -m chineseSearch
+  ./scripts/run-instrumented-tests.sh --no-build -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest
+  ./scripts/run-instrumented-tests.sh --fresh                          # 干净安装后再跑（会清掉登录数据）
 USAGE
 }
 

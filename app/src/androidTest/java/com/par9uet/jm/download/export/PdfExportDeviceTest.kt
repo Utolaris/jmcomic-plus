@@ -16,6 +16,7 @@ import java.net.URLDecoder
 import java.util.UUID
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -148,6 +149,36 @@ class PdfExportDeviceTest {
 
         assertEquals(2, uris.size)
         uris.forEach { assertEquals("%PDF-", String(readBytes(it).copyOfRange(0, 5), Charsets.US_ASCII)) }
+    }
+
+    @Test
+    fun partialPageFailureDeletesTheIncompletePdfFromTheSafTree() {
+        val target = tree("partial-${UUID.randomUUID()}")
+        val comic = comicWithPages(7008, "部分失败", 3)
+        // good page / corrupt page / good page
+        File(comic.zipPath, "1.webp").writeBytes(ByteArray(64) { 0x7F })
+
+        val error = assertThrows(IllegalStateException::class.java) {
+            exportComicToPdf(context, comic, target)
+        }
+        assertTrue(error.message!!.contains("已尝试清理未完成文件"))
+
+        val children = context.contentResolver.query(
+            DocumentsContract.buildChildDocumentsUriUsingTree(
+                target,
+                DocumentsContract.getTreeDocumentId(target),
+            ),
+            arrayOf(DocumentsContract.Document.COLUMN_DOCUMENT_ID, DocumentsContract.Document.COLUMN_DISPLAY_NAME),
+            null,
+            null,
+            null,
+        )!!
+        children.use { cursor ->
+            while (cursor.moveToNext()) {
+                val name = cursor.getString(1)
+                assertFalse("SAF 目录中不应残留 partial PDF：$name", name.endsWith(".pdf"))
+            }
+        }
     }
 
     private companion object {

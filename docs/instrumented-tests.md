@@ -9,16 +9,16 @@ WorkManager 的参数解析依赖真实的 `WorkerParameters`。
 ## 一键运行
 
 ```bash
-./run-instrumented-tests.sh                       # 编译安装后跑全部插桩测试
-./run-instrumented-tests.sh -p com.par9uet.jm.worker          # 只跑一个包
-./run-instrumented-tests.sh -c com.par9uet.jm.database.FavoriteStoreRealDatabaseTest
-./run-instrumented-tests.sh -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest -m scanReportsRealByteCountsAndZeroForMissingAreas
-./run-instrumented-tests.sh -l                    # 同时把 logcat 抓到 build/instrumented-logcat.txt
-./run-instrumented-tests.sh --no-build -c ...     # 已装过 APK，只重跑用例
-./run-instrumented-tests.sh --start-app -c ...    # 跑之前先把应用切到前台（UI 用例用）
-./run-instrumented-tests.sh --stall 120 -c ...    # 120s 没新输出就判定卡死并中止
-./run-instrumented-tests.sh --fresh               # 干净安装（应用数据、登录会话会丢）
-./run-instrumented-tests.sh <序列号>              # 多台设备时指定（adb devices -l 查看）
+./scripts/run-instrumented-tests.sh                       # 编译安装后跑全部插桩测试
+./scripts/run-instrumented-tests.sh -p com.par9uet.jm.worker          # 只跑一个包
+./scripts/run-instrumented-tests.sh -c com.par9uet.jm.database.FavoriteStoreRealDatabaseTest
+./scripts/run-instrumented-tests.sh -c com.par9uet.jm.cache.atom.CacheFilesDeviceTest -m scanReportsRealByteCountsAndZeroForMissingAreas
+./scripts/run-instrumented-tests.sh -l                    # 同时把 logcat 抓到 build/instrumented-logcat.txt
+./scripts/run-instrumented-tests.sh --no-build -c ...     # 已装过 APK，只重跑用例
+./scripts/run-instrumented-tests.sh --start-app -c ...    # 跑之前先把应用切到前台（UI 用例用）
+./scripts/run-instrumented-tests.sh --stall 120 -c ...    # 120s 没新输出就判定卡死并中止
+./scripts/run-instrumented-tests.sh --fresh               # 干净安装（应用数据、登录会话会丢）
+./scripts/run-instrumented-tests.sh <序列号>              # 多台设备时指定（adb devices -l 查看）
 ```
 
 脚本做的是 `assembleDebug` + `assembleDebugAndroidTest` → **覆盖安装**两个 APK →
