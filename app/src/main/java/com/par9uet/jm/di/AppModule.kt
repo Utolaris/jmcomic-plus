@@ -20,7 +20,7 @@ import com.par9uet.jm.store.ApiEndpointPreference
 import com.par9uet.jm.store.AppExperiencePreferences
 import com.par9uet.jm.store.AppSecurityEditor
 import com.par9uet.jm.store.AppSecurityPreferences
-import com.par9uet.jm.store.AppUpdateDownloadManager
+import com.par9uet.jm.update.AppUpdateDownloadManager
 import com.par9uet.jm.store.AppearanceEditor
 import com.par9uet.jm.store.AppearancePreferences
 import com.par9uet.jm.store.CacheNotificationPreferences
@@ -32,7 +32,7 @@ import com.par9uet.jm.store.ReaderPreferences
 import com.par9uet.jm.store.RecommendationPreferences
 import com.par9uet.jm.store.RemoteConfigPreferences
 import com.par9uet.jm.store.RemoteConfigManager
-import com.par9uet.jm.store.DownloadToastAggregator
+import com.par9uet.jm.download.coordinator.DownloadToastAggregator
 import com.par9uet.jm.store.HistorySearchManager
 import com.par9uet.jm.store.LocalSettingManager
 import com.par9uet.jm.store.LocalSettingSnapshotProvider
@@ -121,12 +121,12 @@ val appModule = module {
     }
     viewModel {
         val reader = get<com.par9uet.jm.reader.ReaderImagePipeline>()
-        val downloads = get<com.par9uet.jm.store.DownloadManager>()
+        val downloads = get<com.par9uet.jm.download.coordinator.DownloadManager>()
         com.par9uet.jm.ui.viewModel.CacheCleanupViewModel(get(), reader::clearDiskCache, downloads::clearDownloadedCache)
     }
     single { DownloadToastAggregator(get()) }
     single { PostStartupCoordinator(get(), GlobalContext.get()) }
-    single { AppUpdateDownloadManager(get(), get(), get(), get()) } bind com.par9uet.jm.store.AppUpdateDownloads::class
+    single { AppUpdateDownloadManager(get(), get(), get(), get()) } bind com.par9uet.jm.update.AppUpdateDownloads::class
     single { com.par9uet.jm.update.GithubReleaseSource() } bind com.par9uet.jm.update.ReleaseSource::class
     single { com.par9uet.jm.update.ApkInstaller(get()) } bind com.par9uet.jm.update.AppUpdateInstaller::class
     viewModel { com.par9uet.jm.ui.viewModel.AppUpdateViewModel(get(), get(), get(), get()) }

@@ -3,8 +3,8 @@ package com.par9uet.jm.download
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.download.atom.DownloadFiles
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
-import com.par9uet.jm.store.DownloadManager
-import com.par9uet.jm.store.DownloadWorkScheduler
+import com.par9uet.jm.download.coordinator.DownloadManager
+import com.par9uet.jm.download.DownloadWorkScheduler
 import com.par9uet.jm.store.ToastManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope

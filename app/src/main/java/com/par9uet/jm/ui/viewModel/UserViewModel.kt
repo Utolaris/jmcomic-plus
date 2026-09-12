@@ -12,7 +12,7 @@ import com.par9uet.jm.repository.UserRepository
 import com.par9uet.jm.retrofit.model.NetWorkResult
 import com.par9uet.jm.retrofit.model.SignInDataResponse
 import com.par9uet.jm.retrofit.model.SignInResponse
-import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.store.ContentPreferences
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.store.UserManager

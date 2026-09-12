@@ -3,10 +3,10 @@ package com.par9uet.jm.ui.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.par9uet.jm.BuildConfig
-import com.par9uet.jm.store.AppUpdateDownloads
-import com.par9uet.jm.store.AppUpdateDownloadRequest
-import com.par9uet.jm.store.AppUpdateDownloadState
-import com.par9uet.jm.store.AppUpdateDownloadStatus
+import com.par9uet.jm.update.AppUpdateDownloads
+import com.par9uet.jm.update.AppUpdateDownloadRequest
+import com.par9uet.jm.update.AppUpdateDownloadState
+import com.par9uet.jm.update.AppUpdateDownloadStatus
 import com.par9uet.jm.store.ToastManager
 import com.par9uet.jm.update.AppUpdateInstaller
 import com.par9uet.jm.update.GithubRelease

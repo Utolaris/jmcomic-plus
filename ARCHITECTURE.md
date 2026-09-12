@@ -12,20 +12,22 @@
 | 层 | 职责 | 主要落点 |
 | --- | --- | --- |
 | L1 Entry | 只接收事件并交给 L2，不做业务判断 | `ui/screens`（33 个 `*Screen.kt`）、`ui/navigation`、`MainActivity`、`App`、`worker/DownloadComicWorker`（26 行）、`worker/CacheMigrationWorker`（54 行） |
-| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（14 个，加上 `favorites/presentation/FavoritesViewModel` 共 15 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`、`cache/migration` 的协调器与通知适配、`favorites/sync`、`startup/PostStartupCoordinator`、`store` 中的兼容入口 |
-| L3 Molecule | 组合多个原子能力，完成一个完整业务动作 | `reader/molecule`、`download/molecule`、`cache/migration` 的操作端口与实现、`favorites/usecase`、`backup/BackupRestoreOperations`、`download/export/DownloadExportOperations` |
-| L4 Atom | 每个原子只负责一个底层契约 | `database`、`storage`、`retrofit`、`data`、`repository`、`network`、`image`、`coil`、`cache/atom`、`reader/atom`、`download/atom`、`download/export/PdfExport`、`favorites/data`、`update`、`contentfilter`、`launcher`、`utils` |
-| Shared Contract | 不含行为的稳定 DTO，可被各层依赖 | `core/model/CommonUIState`、`favorites/model/FavoritesModels`、`reader/ReaderImageModels` |
+| L2 Coordinator | 集中保存流程顺序、分支和跨边界协调 | `ui/viewModel`（14 个，加上 `favorites/presentation/FavoritesViewModel` 共 15 个）、`reader/ReaderImagePipeline`、`reader/coordinator`、`download/coordinator`（含 `DownloadManager`）、`cache/migration` 的协调器与通知适配、`favorites/sync`、`startup/PostStartupCoordinator`、`store` 中的兼容入口（`UserManager` 等） |
+| L3 Molecule | 组合多个原子能力，完成一个完整业务动作 | `reader/molecule`、`download/molecule`（含 `DownloadLibraryQueries`）、`cache/migration` 的操作端口与实现、`favorites/usecase`、`backup/BackupRestoreOperations`、`download/export/DownloadExportOperations` |
+| L4 Atom | 每个原子只负责一个底层契约 | `database`、`storage`、`retrofit`、`data`、`repository`、`network`、`image`、`coil`、`cache/atom`、`reader/atom`、`download/atom`、`download/export/PdfExport`、`favorites/data`、`update`（含 `AppUpdateDownloadManager` 下载适配）、`contentfilter`、`launcher`、`utils` |
+| Shared Contract | 不含行为的稳定 DTO，可被各层依赖 | `core/model/CommonUIState`、`favorites/model/FavoritesModels`、`reader/ReaderImageModels`、`download/model/DownloadLibraryModels` |
 
 依赖方向为 `L1 -> L2 -> L3 -> L4`。L3 之间、L4 之间不得为了方便横向调用；
 需要组合时提升到 L3，需要决定顺序时提升到 L2。`di` 是组合根，可以引用所有层，
 但不得承载业务判断。
 
-`store` 是一个**历史混合包**（21 个文件 / 3,121 行），同一包内既有 L2 兼容入口
-（`DownloadManager`、`UserManager`、`FavoriteStore`、`AppUpdateDownloadManager`），
+`store` 仍是**历史混合包**，同一包内既有 L2 兼容入口（`UserManager`、`FavoriteStore`），
 也有 L4 状态与适配实现（`LocalSettingManager`、`FavoriteStore` 的 SQL 侧、
-`DownloadWorkScheduler` 端口、`RemoteConfigManager`）。引用 `store` 时按具体类的层级判断，
-不要按包名判断。
+`RemoteConfigManager`、各种 `*Preferences`）。下载与更新域的 L2/L4 入口已迁出：
+`DownloadManager` / `DownloadToastAggregator` / `BackupTaskScheduler` → `download/coordinator`，
+`DownloadWorkScheduler` 端口 → `download`，
+`AppUpdateDownloadManager` 及其状态契约 → `update`。
+引用 `store` 时仍按具体类的层级判断，不要按包名判断。
 
 ## 目录约定
 
@@ -41,8 +43,10 @@ reader/                      已迁移
 └── atom/                          L4
 
 download/                    已迁移
-├── coordinator/                   L2
-├── molecule/                      L3
+├── DownloadWorkScheduler.kt       L2 排队端口（实现在 worker/）
+├── model/DownloadLibraryModels    共享契约（DownloadItem / Group / Status）
+├── coordinator/                   L2（含 DownloadManager、DownloadToastAggregator）
+├── molecule/                      L3（含 DownloadLibraryQueries、DownloadTaskOperations）
 ├── atom/                          L4
 └── export/                        L3 操作 + L4 PDF 编码
 
@@ -66,6 +70,7 @@ cache/                       部分迁移
 └── CacheModels / ComicDownloadCache / DocumentCacheStorage / CacheMigrationPaths / Config   未归位的 L4
 
 update/ backup/ contentfilter/ launcher/ startup/   扁平包，按类判断层级
+update/AppUpdateDownloadManager  已从 store 迁入 update（L2 下载协调 + 状态契约）
 data/ repository/ retrofit/ store/                   遗留包，含依赖环
 ```
 
@@ -76,7 +81,7 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
 ## 已采用的边界
 
 - 启动后任务由 `startup/PostStartupCoordinator` 统一排序。
-- 下载业务通过 `store/DownloadWorkScheduler` 端口提交任务，不直接构造 Worker。
+- 下载业务通过 `download/DownloadWorkScheduler` 端口提交任务，不直接构造 Worker。
   实现 `worker/WorkManagerDownloadWorkScheduler` 以 **comicId 为粒度**调用
   `enqueueUniqueWork(..., ExistingWorkPolicy.KEEP, ...)`，暂停/删除走
   `cancelUniqueWork`；批量下载通过 `batchId` / `batchTotal` 入参传递批次信息。
@@ -94,14 +99,19 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   自身不做顺序判断；前台通知由 `cache/migration/CacheMigrationNotifications`（L2）构造，
   Worker 不再反向引用 `MainActivity`。等下载空闲通过组合根提供的窄回调
   `CacheMigrationDownloadGate` 传入，`cache/migration` 不依赖 `download` 域。
-- `store/DownloadManager` 是下载任务管理的 L2 兼容入口，持有协程生命周期，按业务结果入队并发送提示；
-  `download/molecule/DownloadTaskOperations` 组合 DAO 与 `download/atom/DownloadFiles`，
-  处理创建、重试、恢复和重新下载；`download/atom/DownloadFiles` 只清理已有缓存文件。
+- `download/coordinator/DownloadManager` 是下载任务管理的 L2 入口，持有协程生命周期，
+  按业务结果入队并发送提示；`download/molecule/DownloadTaskOperations` 组合 DAO 与
+  `download/atom/DownloadFiles`，处理创建、重试、恢复和重新下载；
+  `download/molecule/DownloadLibraryQueries` 把下载 DAO 与 Room 实体映射成
+  `download/model` 契约，供 ViewModel 观察列表与分组，UI 不再 import `database`；
+  `download/atom/DownloadFiles` 只清理已有缓存文件。
   业务层不依赖 Store、Worker 或 UI。排队端口仍由 L2 调用，以保留单篇创建先提示后入队、
   其他操作先入队后提示的现有顺序。暂停、删除、清理和批量重下都在此入口串行化；
   批量章节到漫画组的查询归属 L3。
   `download/coordinator/DownloadExecutionControl` 只暴露停止并等待写入结束的能力，
   任务管理不再依赖下载执行器的具体类型。
+- 应用更新 APK 下载归属 `update/AppUpdateDownloadManager`（实现 `AppUpdateDownloads`），
+  状态契约（`AppUpdateDownloadState` / `Status` / `Request`）同包；不再放在 `store`。
 - `download/coordinator/DownloadComicCoordinator` 负责下载顺序、进度、重试和取消，
   `DownloadFeedback` 适配通知、速度统计与批量提示，`DownloadComicPolicy` 收敛策略判断；
   `download/molecule/DownloadContentOperations` 组合封面回退、逐页下载和完成提交。
@@ -132,7 +142,8 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
   首页与工具栏共享 `HomeViewModel`（`HomeScreen`、`TopBarComponent`）。
   原 `ComicViewModel` 已移除，不保留转发型兼容外壳。
 - 更新入口拆为 `AboutScreen` 和 `CheckUpdateScreen`；`AppUpdateViewModel` 管理检查、弹窗、下载和安装决策，
-  `update` 提供版本解析（`GithubReleaseSource`）、发布模型（`AppRelease`）与系统安装适配器（`ApkInstaller`）。
+  `update` 提供版本解析（`GithubReleaseSource`）、发布模型（`AppRelease`）、系统安装适配器（`ApkInstaller`）
+  与 APK 下载协调（`AppUpdateDownloadManager`）。
 - `BackupRestoreViewModel` 管理备份/恢复步骤及任务生命周期，`backup/BackupRestoreOperations`
   组合设置快照、文档读写和下载排队；Screen 仅持有系统文件选择器和展示组件。
 - `favorites/sync/FavoriteSyncController` 是唯一收藏同步任务入口，按登录会话代次隔离任务、进度与结果；
@@ -146,13 +157,14 @@ data/ repository/ retrofit/ store/                   遗留包，含依赖环
 
   | 受约束位置 | 禁止 import |
   | --- | --- |
+  | `ui`（整体） | `database.` |
   | `ui/viewModel/ComicReadViewModel.kt` | `java.io.`、`java.util.zip.`、`database.`、`cache.` |
-  | `ui/screens/CacheCleanupScreen.kt`、`ui/screens/downloadScreen/DownloadComicDetailScreen.kt` | `java.io.`、`kotlinx.coroutines.`、`store.DownloadManager`、`reader.ReaderImagePipeline`、`database.`、`download.export.export`、`download.export.getCachedComicInfo`、`cache.atom.` |
-  | `ui/screens/AboutScreen.kt`、`CheckUpdateScreen.kt`、`BackupRestoreScreen.kt` | `okhttp3.`、`gson`、`java.io.File`、`FileProvider`、`database.`、`store.BackupManager`、`store.DownloadManager`、`store.LocalSettingManager`、`store.AppUpdateDownloadManager` |
+  | `ui/screens/CacheCleanupScreen.kt`、`ui/screens/downloadScreen/DownloadComicDetailScreen.kt` | `java.io.`、`kotlinx.coroutines.`、`download.coordinator.DownloadManager`、`reader.ReaderImagePipeline`、`database.`、`download.export.export`、`download.export.getCachedComicInfo`、`cache.atom.` |
+  | `ui/screens/AboutScreen.kt`、`CheckUpdateScreen.kt`、`BackupRestoreScreen.kt` | `okhttp3.`、`gson`、`java.io.File`、`FileProvider`、`database.`、`store.BackupManager`、`download.coordinator.DownloadManager`、`store.LocalSettingManager`、`update.AppUpdateDownloadManager` |
   | `cache/atom` | `ui.`、`store.`、`reader.` |
   | `download/molecule` | `store.`、`ui.`、`worker.`、`download.coordinator.`、`reader.`、`java.io.`、`androidx.work.` |
   | `download/atom` | `download.molecule.`、`store.`、`download.coordinator.`、`reader.`、`ui.`、`worker.`、`database.dao.`、`database.AppDatabase` |
-  | `store/DownloadManager.kt` | `download.coordinator.DownloadComicCoordinator`、`database.`、`download.atom.`、`java.io.` |
+  | `download/coordinator/DownloadManager.kt` | `download.coordinator.DownloadComicCoordinator`、`database.`、`download.atom.`、`java.io.` |
   | `store`（整体） | `ui.`、`worker.` |
   | `favorites`、`backup`、`update`（整体） | `ui.` |
   | `reader/atom` | `reader.molecule.`、`reader.coordinator.`、`ui.`、`worker.`、`store.` |
@@ -210,17 +222,13 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 | `retrofit` ↔ `store` | 跨层遗留 | `UserManager` 直接用 `retrofit.model.*`，`retrofit` 反向用 `store` 的会话状态 |
 | `repository` ↔ `store` | 跨层遗留 | `RemoteConfigManager`、`UserManager` 与仓库互相引用 |
 | `data` ↔ `reader` | 跨层遗留 | `data/models/ComicPicImageState` 引用 `reader.ReaderPage` / `ReaderPageKey`，而 `reader/molecule/LoadLocalChapter` 反向引用 `data.models.ComicChapter` |
-| `download` ↔ `store` | **L2 内部互调** | `DownloadManager`→`download.molecule/coordinator`；`DownloadFeedback`/`DownloadComicCoordinator`→`store` 的偏好与提示聚合器。同为 L2，不构成逆向依赖 |
+| `download` ↔ `store` | **残余** | `DownloadManager`（已迁 `download/coordinator`）仍依赖 `store.ToastManager`；`DownloadFeedback`/`DownloadComicCoordinator` 仍读 `store` 的偏好。不再互为包环的主体 |
 | `favorites` ↔ `store` | **契约与实现的自然双向** | `favorites/data` 定义窄端口，`store/FavoriteStore` 实现它们，因此必然互相 import |
 
 前五项是需要在迁移具体功能时收拢模型和端口的**真实技术债**；
-不能用一次性改包名掩盖依赖环。后两项是有意为之，不应"修掉"。
-
-另有一处**未登记的例外**：`ui` 包中有 4 个文件直接 import `database`
-（`ui/screens/downloadScreen/DownloadListItem.kt`、`ui/viewModel/DownloadViewModel.kt`、
-`ui/viewModel/DownloadComicDetailViewModel.kt`、`ui/viewModel/DownloadExportViewModel.kt`）。
-这是 L1/L2 直连 L4，与"依赖必须逐层下行"的规则冲突，目前未被 `ArchitectureBoundaryTest` 覆盖。
-修复方向是把 DAO 访问收敛到 `download/molecule` 或专门的 L3，而不是放宽测试。
+不能用一次性改包名掩盖依赖环。`favorites↔store` 是有意保留，不应"修掉"。
+下载 UI 直连 Room 的 4 个文件已修：DAO 访问收敛到
+`download/molecule/DownloadLibraryQueries`，UI 使用 `download/model` 契约。
 
 ## 耦合热点与拆分优先级
 
@@ -254,21 +262,20 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
 
 ### 值得拆的两个目标
 
-**1. `store` 包（21 文件 / 3,142 行，Ca=19 且 Ce=16）——拆包，收益最大但工作量最大**
+**1. `store` 包——下载/更新域已切出，剩余仍是全局枢纽**
 
-它是唯一被 19 个模块依赖、同时又依赖 16 个模块的包，L2 兼容入口与 L4 存储实现混在一起。
-这直接导致两件事：按包名判断层级失效；`download↔store`、`favorites↔store` 看起来像依赖环。
+已迁出：`DownloadManager` / `DownloadToastAggregator` / `BackupTaskScheduler` →
+`download/coordinator`，`DownloadWorkScheduler` → `download`，
+`AppUpdateDownloadManager` 及其状态契约 → `update`。
+剩余 L2 兼容入口（`UserManager`、`FavoriteStore`、`RemoteConfigManager`）与
+L4 状态/偏好（`LocalSettingManager`、各种 `*Preferences`）仍在 `store`。
+下一步拆法：L2 入口下沉到各自领域 `coordinator/`；L4 状态与偏好下沉到
+`storage/` 或 `database/`。
 
-拆法：L2 兼容入口（`DownloadManager`、`UserManager`、`AppUpdateDownloadManager`、
-`RemoteConfigManager`）下沉到各自领域的 `coordinator/`；L4 状态与偏好
-（`LocalSettingManager`、`FavoriteStore` 的 SQL 侧、各种 `*Preferences`）下沉到
-`storage/` 或 `database/`。拆完再回看依赖环表，多半会自然消失。
+**2. 下载相关的 4 个 UI 文件直连 Room——已修**
 
-**2. 下载相关的 4 个 UI 文件直连 Room——小改动，先修**
-
-`ui/screens/downloadScreen/DownloadListItem`、`ui/viewModel/DownloadViewModel`、
-`DownloadComicDetailViewModel`、`DownloadExportViewModel` 直接 import `database`。
-把 DAO 访问收敛到 `download/molecule` 或专门的 L3 即可，不需要动 UI 结构。
+`ui` 整体禁止 import `database`；DAO 访问收敛到 `download/molecule/DownloadLibraryQueries`，
+UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadItemStatus`）。
 
 ### 不建议动
 
@@ -302,10 +309,12 @@ Reader 的 L3 不得依赖 UI、Worker 或 Store，L4 不得反向依赖 L3。�
    导出协调器直接调用 PDF 文件端口；缓存迁移协调器同样以窄回调
    （`CacheMigrationDownloadGate`）等待下载空闲。这些是 L2 的跨功能协调及选定适配器例外，
    L4 不得反向调用协调器。
-4. 下载相关的 4 个 UI 文件直连 Room（见"依赖现状"）。这是**待修**而非**有意保留**，
-   不应当作"架构允许"来扩散。
+4. 下载相关的 4 个 UI 文件直连 Room——**已修**，`ui` 禁止 import `database`，
+   DAO 观察走 `download/molecule/DownloadLibraryQueries`。
 
-上述 1～3 项是有意保留的例外，第 4 项是待修项。优先级见"耦合热点与拆分优先级"。
+上述 1～3 项是有意保留的例外。优先级见"耦合热点与拆分优先级"：下一步仍是拆剩余 `store`
+（`UserManager` / `FavoriteStore` / `RemoteConfigManager` / 偏好实现），以及
+`data`↔`repository`/`retrofit` 等真实依赖环。
 
 新增回归约束覆盖：批量重下去重与停止顺序、本地加载 IO 线程、旧目录/ZIP 兼容和失败清理、
 清理期间的重复点击与阅读器租约保护、导出选择快照及过期统计、首页/搜索/周推荐独立注入与状态、

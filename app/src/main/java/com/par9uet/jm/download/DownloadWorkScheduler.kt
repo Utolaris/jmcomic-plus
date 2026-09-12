@@ -1,4 +1,4 @@
-package com.par9uet.jm.store
+package com.par9uet.jm.download
 
 interface DownloadWorkScheduler {
     fun enqueue(comicIds: Collection<Int>)

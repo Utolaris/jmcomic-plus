@@ -3,9 +3,10 @@ package com.par9uet.jm.ui.viewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.par9uet.jm.data.models.ComicChapter
-import com.par9uet.jm.database.dao.DownloadComicDao
-import com.par9uet.jm.database.model.DownloadComic
-import com.par9uet.jm.database.model.DownloadStatus
+import com.par9uet.jm.download.molecule.DownloadLibraryQueries
+import com.par9uet.jm.download.model.DownloadItem
+import com.par9uet.jm.download.model.DownloadItemStatus
+import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +15,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.io.File
@@ -29,8 +31,8 @@ data class DownloadComicDetailState(
     val createTime: Long = 0L,
     val zipPath: String = "",
     val cachePath: String = "",
-    val allItems: List<DownloadComic> = emptyList(),
-    val completeItems: List<DownloadComic> = emptyList(),
+    val allItems: List<DownloadItem> = emptyList(),
+    val completeItems: List<DownloadItem> = emptyList(),
     val readableChapters: List<ComicChapter> = emptyList(),
     val statusSummary: String = "暂无缓存",
     val downloadSpeed: Float = 0f,
@@ -42,30 +44,29 @@ data class DownloadComicDetailState(
     val groupProgress: Float get() = allItems.takeIf { it.isNotEmpty() }
         ?.map { it.progress.coerceIn(0f, 1f) }
         ?.average()?.toFloat() ?: 0f
-    val hasError: Boolean get() = allItems.any { it.status == DownloadStatus.ERROR }
+    val hasError: Boolean get() = allItems.any { it.status == DownloadItemStatus.ERROR }
     val isDownloading: Boolean get() = allItems.any {
-        it.status == DownloadStatus.DOWNLOADING || it.status == DownloadStatus.PENDING
+        it.status == DownloadItemStatus.DOWNLOADING || it.status == DownloadItemStatus.PENDING
     }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DownloadComicDetailViewModel(
-    private val downloadComicDao: DownloadComicDao,
-    private val downloadManager: com.par9uet.jm.store.DownloadManager,
+    private val queries: DownloadLibraryQueries,
+    private val downloadManager: DownloadManager,
 ) : ViewModel() {
 
     private val _groupId = MutableStateFlow(0)
     val groupId: StateFlow<Int> = _groupId.asStateFlow()
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     private val allItemsFlow = _groupId.flatMapLatest { gid ->
-        if (gid == 0) kotlinx.coroutines.flow.flowOf(emptyList())
-        else downloadComicDao.observeByGroupId(gid)
+        if (gid == 0) flowOf(emptyList())
+        else queries.observeByGroupId(gid)
     }
 
     private val completeItemsFlow = _groupId.flatMapLatest { gid ->
-        if (gid == 0) kotlinx.coroutines.flow.flowOf(emptyList())
-        else downloadComicDao.observeCompleteByGroupId(gid)
+        if (gid == 0) flowOf(emptyList())
+        else queries.observeCompleteByGroupId(gid)
     }
 
     private val speedFlow = DownloadSpeedTracker.speedByGroup
@@ -98,7 +99,7 @@ class DownloadComicDetailViewModel(
 
     fun load(id: Int) {
         viewModelScope.launch {
-            val currentItem = downloadComicDao.getById(id)
+            val currentItem = queries.getById(id)
             val gid = currentItem?.groupId?.takeIf { it != 0 } ?: id
             _groupId.value = gid
         }
@@ -106,9 +107,9 @@ class DownloadComicDetailViewModel(
 
     private fun buildDetailState(
         groupId: Int,
-        allItems: List<DownloadComic>,
-        completeItems: List<DownloadComic>,
-        detailItems: List<DownloadComic>,
+        allItems: List<DownloadItem>,
+        completeItems: List<DownloadItem>,
+        detailItems: List<DownloadItem>,
         downloadSpeed: Float
     ): DownloadComicDetailState {
         val titleItem = detailItems.firstOrNull { it.groupName.isNotBlank() }
@@ -188,13 +189,13 @@ private fun resolveCoverPath(coverPath: String?, zipPath: String?): String {
 }
 
 private fun buildStatusSummary(
-    allItems: List<DownloadComic>,
-    completeItems: List<DownloadComic>
+    allItems: List<DownloadItem>,
+    completeItems: List<DownloadItem>
 ): String {
-    val pendingCount = allItems.count { it.status == DownloadStatus.PENDING }
-    val downloadingCount = allItems.count { it.status == DownloadStatus.DOWNLOADING }
-    val pausedCount = allItems.count { it.status == DownloadStatus.PAUSED }
-    val errorCount = allItems.count { it.status == DownloadStatus.ERROR }
+    val pendingCount = allItems.count { it.status == DownloadItemStatus.PENDING }
+    val downloadingCount = allItems.count { it.status == DownloadItemStatus.DOWNLOADING }
+    val pausedCount = allItems.count { it.status == DownloadItemStatus.PAUSED }
+    val errorCount = allItems.count { it.status == DownloadItemStatus.ERROR }
     return when {
         allItems.isEmpty() -> "暂无缓存"
         allItems.size == completeItems.size -> "全部完成"

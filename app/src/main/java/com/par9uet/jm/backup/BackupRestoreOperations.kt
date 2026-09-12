@@ -11,7 +11,7 @@ import com.par9uet.jm.store.BackupFile
 import com.par9uet.jm.store.BackupManager
 import com.par9uet.jm.store.ComicCacheBackup
 import com.par9uet.jm.store.ComicGroupBackup
-import com.par9uet.jm.store.BackupTaskScheduler
+import com.par9uet.jm.download.coordinator.BackupTaskScheduler
 import com.par9uet.jm.store.LocalSettingManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext

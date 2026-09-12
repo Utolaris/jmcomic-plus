@@ -58,7 +58,7 @@ import com.par9uet.jm.ui.glass.ChromeMode
 import com.par9uet.jm.ui.glass.GlassConfirmDialog
 import com.par9uet.jm.ui.glass.GlassTopBarModeTransition
 import com.par9uet.jm.ui.screens.LocalMainNavController
-import com.par9uet.jm.ui.viewModel.DownloadComicGroup
+import com.par9uet.jm.download.model.DownloadItemGroup
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
 import com.par9uet.jm.store.LocalSettingManager
 import org.koin.compose.getKoin
@@ -457,12 +457,12 @@ private fun DownloadSectionHeader(
 
 @Composable
 private fun CompletedGrid(
-    groups: List<DownloadComicGroup>,
+    groups: List<DownloadItemGroup>,
     editing: Boolean,
     selectedIds: Set<Int>,
     gridColumns: Int,
-    onClick: (DownloadComicGroup) -> Unit,
-    onLongClick: (DownloadComicGroup) -> Unit
+    onClick: (DownloadItemGroup) -> Unit,
+    onLongClick: (DownloadItemGroup) -> Unit
 ) {
     val configuration = LocalConfiguration.current
     val columns = if (gridColumns > 0) {

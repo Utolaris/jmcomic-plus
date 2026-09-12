@@ -12,7 +12,7 @@ import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.store.BACKUP_PROTECTION_NONE
 import com.par9uet.jm.store.BackupContentOptions
 import com.par9uet.jm.store.BackupManager
-import com.par9uet.jm.store.BackupTaskScheduler
+import com.par9uet.jm.download.coordinator.BackupTaskScheduler
 import com.par9uet.jm.store.ChapterBackup
 import com.par9uet.jm.store.ComicCacheBackup
 import com.par9uet.jm.store.ComicGroupBackup

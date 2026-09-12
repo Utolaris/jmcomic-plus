@@ -1,7 +1,7 @@
 package com.par9uet.jm.favorites.data
 
 import com.par9uet.jm.data.models.Comic
-import com.par9uet.jm.store.DownloadManager
+import com.par9uet.jm.download.coordinator.DownloadManager
 
 interface FavoriteDownloader {
     fun downloadComics(comics: List<Comic>)

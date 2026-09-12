@@ -2,10 +2,10 @@ package com.par9uet.jm.ui.viewModel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.par9uet.jm.database.model.DownloadComic
 import com.par9uet.jm.download.export.DownloadCacheSummary
 import com.par9uet.jm.download.export.DownloadExportOperations
 import com.par9uet.jm.download.export.PdfExportMode
+import com.par9uet.jm.download.model.DownloadItem
 import com.par9uet.jm.store.ToastManager
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -26,7 +26,7 @@ class DownloadExportViewModel(
 ) : ViewModel() {
     private val _state = MutableStateFlow(DownloadExportState())
     val state = _state.asStateFlow()
-    private data class Request(val chapters: List<DownloadComic>, val mode: PdfExportMode)
+    private data class Request(val chapters: List<DownloadItem>, val mode: PdfExportMode)
     private var pendingRequest: Request? = null
     private var inspectionJob: Job? = null
     private var inspectionGeneration = 0L
@@ -36,7 +36,7 @@ class DownloadExportViewModel(
     }
 
     /** Capture exactly what was confirmed before opening the system folder picker. */
-    fun prepareExport(chapters: List<DownloadComic>, mode: PdfExportMode): Boolean {
+    fun prepareExport(chapters: List<DownloadItem>, mode: PdfExportMode): Boolean {
         if (_state.value.exporting) return false
         val selected = chapters.filter { it.id in _state.value.selectedChapterIds }
         if (selected.isEmpty()) {
@@ -72,7 +72,7 @@ class DownloadExportViewModel(
         }
     }
 
-    fun inspect(chapters: List<DownloadComic>, cachePath: String) {
+    fun inspect(chapters: List<DownloadItem>, cachePath: String) {
         inspectionJob?.cancel()
         val generation = ++inspectionGeneration
         _state.update { it.copy(summary = null) }

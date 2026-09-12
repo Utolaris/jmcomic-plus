@@ -1,17 +1,18 @@
-package com.par9uet.jm.store
+package com.par9uet.jm.download.coordinator
 
 import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.data.models.ComicChapter
+import com.par9uet.jm.download.DownloadWorkScheduler
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
 import com.par9uet.jm.download.molecule.DownloadTaskResult
-import com.par9uet.jm.download.coordinator.DownloadExecutionControl
+import com.par9uet.jm.store.ToastManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-internal interface BackupTaskScheduler {
+interface BackupTaskScheduler {
     fun downloadComic(comic: Comic)
     fun downloadChapters(parentComic: Comic, chapters: List<ComicChapter>)
 }

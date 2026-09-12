@@ -15,10 +15,11 @@ import com.par9uet.jm.download.coordinator.DownloadFeedback
 import com.par9uet.jm.download.coordinator.DeviceDownloadFeedback
 import com.par9uet.jm.download.molecule.DownloadContentOperations
 import com.par9uet.jm.download.molecule.DeviceDownloadContentOperations
+import com.par9uet.jm.download.molecule.DownloadLibraryQueries
 import com.par9uet.jm.download.molecule.DownloadTaskOperations
 import com.par9uet.jm.reader.ReaderImagePipeline
-import com.par9uet.jm.store.DownloadManager
-import com.par9uet.jm.store.DownloadWorkScheduler
+import com.par9uet.jm.download.coordinator.DownloadManager
+import com.par9uet.jm.download.DownloadWorkScheduler
 import com.par9uet.jm.store.FavoriteStore
 import com.par9uet.jm.ui.viewModel.DownloadComicDetailViewModel
 import com.par9uet.jm.ui.viewModel.DownloadViewModel
@@ -53,6 +54,7 @@ val databaseModule = module {
     single<DownloadWorkScheduler> { WorkManagerDownloadWorkScheduler(androidContext()) }
     single { DownloadFiles(androidContext()) }
     single { DownloadTaskOperations(get(), get()) }
+    single { DownloadLibraryQueries(get()) }
     single { DownloadManager(get(), get(), get(), get(), get()) }
     single<DownloadContentStorage> { DownloadContentFiles(androidContext()) }
     single<DownloadCoverImages> { CoilDownloadCoverImages(androidContext(), get()) }
