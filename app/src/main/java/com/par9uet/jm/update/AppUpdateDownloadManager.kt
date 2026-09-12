@@ -12,13 +12,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -77,6 +80,8 @@ class AppUpdateDownloadManager(
             toastManager.showAsync("未找到 APK 下载链接")
             return
         }
+        // New download intent: stop the current writer; pause issued while waiting must stick.
+        jobs.paused = false
         jobs.start(scope) {
             download(request)
         }
@@ -123,12 +128,18 @@ class AppUpdateDownloadManager(
 
     private suspend fun download(request: AppUpdateDownloadRequest) = withContext(Dispatchers.IO) {
         val file = File(getCommonCacheDir(context), "updates/${safeUpdateFileName(request.fileName)}")
-        try {
-            val httpRequest = Request.Builder()
+        val call = client.newCall(
+            Request.Builder()
                 .url(request.downloadUrl)
                 .header("User-Agent", "jmcomic-plus-android")
                 .build()
-            client.newCall(httpRequest).execute().use { response ->
+        )
+        // Unblock a writer stuck in InputStream.read() so the single-writer mutex can release.
+        currentCoroutineContext().job.invokeOnCompletion { cause ->
+            if (cause != null) call.cancel()
+        }
+        try {
+            call.execute().use { response ->
                 if (!response.isSuccessful) {
                     error("下载失败：HTTP ${response.code}")
                 }
@@ -171,6 +182,11 @@ class AppUpdateDownloadManager(
                             }
                         }
                     }
+                }
+                // Cancel near EOF must not be overwritten by Completed.
+                if (jobs.canceled) {
+                    file.delete()
+                    return@withContext
                 }
                 _state.update {
                     it.copy(
@@ -219,8 +235,12 @@ class AppUpdateDownloadManager(
 }
 
 /**
- * One active download at a time: a new start flags the previous writer to stop,
- * joins it, then clears flags before the next block runs.
+ * Single-writer gate: at most one download block holds the mutex.
+ *
+ * start() flags canceled and cancels the active job so a writer blocked in IO can leave,
+ * then the new block waits on the mutex until that writer fully exits.
+ * cancel() cancels the active job without dropping the mutex — a later start still
+ * serializes behind the old writer.
  */
 internal class UpdateDownloadJobGate {
     @Volatile
@@ -229,25 +249,26 @@ internal class UpdateDownloadJobGate {
     @Volatile
     var paused = false
 
-    private var job: Job? = null
+    private val writerMutex = Mutex()
+    private var activeJob: Job? = null
 
     fun start(scope: CoroutineScope, block: suspend () -> Unit) {
-        val previous = job
         canceled = true
-        paused = false
-        job = scope.launch {
-            previous?.cancelAndJoin()
-            canceled = false
-            paused = false
-            block()
+        activeJob?.cancel()
+        val job = scope.launch {
+            writerMutex.withLock {
+                canceled = false
+                // Keep paused as-is: a pause issued while waiting must stick.
+                block()
+            }
         }
+        activeJob = job
     }
 
     fun cancel() {
         canceled = true
         paused = false
-        job?.cancel()
-        job = null
+        activeJob?.cancel()
     }
 }
 
