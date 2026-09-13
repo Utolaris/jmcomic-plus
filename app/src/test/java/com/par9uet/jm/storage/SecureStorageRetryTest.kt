@@ -183,4 +183,60 @@ class SecureStorageRetryTest {
         prefs.edit().putString("badKey", "enc:not-valid-base64!!!").commit()
         assertTrue(storage().getString("badKey") is StorageReadResult.Corrupted)
     }
+
+    @Test
+    fun commitFailureIsTemporaryUnavailableNotSuccess() {
+        var commitSucceeds = true
+        val failingPrefs = object : SharedPreferences by prefs {
+            override fun edit(): SharedPreferences.Editor {
+                val editor = prefs.edit()
+                return object : SharedPreferences.Editor by editor {
+                    override fun putString(key: String?, value: String?): SharedPreferences.Editor {
+                        editor.putString(key, value)
+                        // Must return the wrapper so the overridden commit() is the one called.
+                        return this
+                    }
+
+                    override fun commit(): Boolean {
+                        // Simulate a disk write that cannot be confirmed.
+                        return if (commitSucceeds) editor.commit() else false
+                    }
+                }
+            }
+        }
+        val durable = SecureStorage(
+            failingPrefs,
+            failingPrefs,
+            cryptoManager = CryptoManager { key },
+        )
+        commitSucceeds = false
+        assertTrue(durable.setStartup("localSetting", "secret") is StorageWriteResult.TemporaryUnavailable)
+        assertTrue(durable.getStartupString("localSetting") is StorageReadResult.Missing)
+
+        commitSucceeds = true
+        assertTrue(durable.setStartup("localSetting", "secret") is StorageWriteResult.Success)
+        val result = durable.getStartupString("localSetting")
+        assertTrue(result is StorageReadResult.Success)
+        assertEquals("\"secret\"", (result as StorageReadResult.Success).value)
+    }
+
+    @Test
+    fun encryptionFailureKeepsPreviousDurableValue() {
+        val first = storage()
+        assertTrue(first.set("user", "alice") is StorageWriteResult.Success)
+
+        val failing = SecureStorage(
+            prefs,
+            startupPrefs,
+            cryptoManager = CryptoManager { error("keystore down") },
+        )
+        assertTrue(failing.set("user", "bob") is StorageWriteResult.TemporaryUnavailable)
+
+        val restarted = storage()
+        val result = restarted.get<String>(
+            "user",
+            object : com.google.gson.reflect.TypeToken<String>() {}.type,
+        )
+        assertEquals("alice", (result as StorageReadResult.Success).value)
+    }
 }

@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -87,6 +88,11 @@ fun UserHistoryComicScreen(
 
     val selectedComics: List<com.par9uet.jm.data.models.Comic> = remember(historyComicLazyPagingItems.itemSnapshotList, historyEditState.selectedComicIds) {
         historyComicLazyPagingItems.itemSnapshotList.filterNotNull().filter { it.id in historyEditState.selectedComicIds }
+    }
+    // Session switch clears the selection (and therefore editing); dismiss any open
+    // confirm dialog so a stale A-session dialog cannot confirm under B.
+    LaunchedEffect(historyEditState.editing) {
+        if (!historyEditState.editing) showDeleteConfirmDialog = false
     }
     BackHandler(enabled = historyEditState.editing) {
         userViewModel.clearHistorySelection()

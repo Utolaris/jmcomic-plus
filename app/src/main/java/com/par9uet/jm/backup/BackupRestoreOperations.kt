@@ -66,9 +66,15 @@ internal class DeviceBackupRestoreOperations(
     ): String {
         val restored = mutableListOf<String>()
         if (includeSettings) {
-            codec.extractLocalSetting(backup)?.let {
-                settings.applyLocalSetting(it)
-                restored += "本地设置"
+            when (val section = codec.extractLocalSetting(backup)) {
+                is BackupSectionResult.Success -> {
+                    settings.applyLocalSetting(section.value)
+                    restored += "本地设置"
+                }
+                BackupSectionResult.Corrupted -> {
+                    restored += "本地设置已损坏，已跳过"
+                }
+                BackupSectionResult.Missing -> Unit
             }
         }
         var skippedGroups = 0

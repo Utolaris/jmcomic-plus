@@ -1,6 +1,7 @@
 package com.par9uet.jm.ui.screens.readScreen
 
 import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.core.tween
@@ -259,19 +260,17 @@ fun ComicReadScreen(
     // still fully covering the destination, the resulting inset change makes the underlying
     // page relayout invisibly. Restoring in onDispose (after the exit animation) instead let
     // the user watch the page jump when the navigation bar/dock reappeared.
-    val readerBackCallback = remember(comicId, localOnly) {
-        object : androidx.activity.OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                controller?.show(WindowInsetsCompat.Type.systemBars())
-                // Latch exit BEFORE popBackStack so dispose-time markReading cannot revive it.
-                readerResumeManager.endReading(comicId, localOnly)
-                isEnabled = false
-                mainNavController.popBackStack()
-            }
-        }
+    //
+    // BackHandler is composition-owned: it registers once and removes itself on dispose, so
+    // chapter jumps / comment / app-lock cannot leave a stale enabled callback holding this
+    // chapter's resume state. A raw OnBackPressedCallback added in the function body was
+    // re-registered on every recomposition and never removed.
+    BackHandler {
+        controller?.show(WindowInsetsCompat.Type.systemBars())
+        // Latch exit BEFORE popBackStack so dispose-time markReading cannot revive it.
+        readerResumeManager.endReading(comicId, localOnly)
+        mainNavController.popBackStack()
     }
-    androidx.activity.compose.LocalOnBackPressedDispatcherOwner.current?.onBackPressedDispatcher
-        ?.addCallback(readerBackCallback)
 
     // The reader is a full-screen NavHost destination: keep its first frame opaque so the
     // sliding navigation spring never shows the previous screen through the loading state.

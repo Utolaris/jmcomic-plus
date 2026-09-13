@@ -52,6 +52,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.map
+import okhttp3.CookieJar
+import okhttp3.Dns
+import okhttp3.OkHttpClient
 import org.koin.core.context.GlobalContext
 import org.koin.core.module.dsl.viewModel
 import org.koin.dsl.bind
@@ -80,6 +83,32 @@ val LOCAL_SETTING_MANAGER_ALIASES = arrayOf(
     LocalSettingSnapshotProvider::class,
 )
 
+/**
+ * Inventory of every app-owned OkHttpClient construction. New clients MUST be added here
+ * (and must set [DohManager] as DNS) — previous audits each found one previously-unlisted
+ * bypass that still used system DNS. The OkHttpClient inventory test asserts every
+ * construction site appears in this table.
+ *
+ * | Site (file) | DNS | Cookies | Notes |
+ * |---|---|---|---|
+ * | retrofit/Retrofit.kt | injected DohManager | NO_COOKIES | promote/settings API |
+ * | data/comic/EmbeddedComicDataSource.kt | dohManager | default | image fallback |
+ * | reader/ReaderImagePipeline.kt | dohManager | default | reader pages |
+ * | coil/Config.kt | dohManager | default | cover loader |
+ * | update/AppUpdateDownloadManager.kt | dohManager | default | APK download |
+ * | di/AppModule.kt GithubReleaseSource | DohManager | default | release metadata |
+ * | di/AppModule.kt JmImageHostHealthManager baseHttpClient | DohManager | NO_COOKIES | CDN HEAD probe |
+ * | network/DohManager.kt DohResolver bootstrap | bootstrapDns | default | **intentional system-DNS exception** for resolving the DoH server itself |
+ * | update/GithubReleaseSource.kt default parameter | bare (tests only) | default | production always injects the AppModule client |
+ * | image/JmImageHostHealthManager.kt default parameter | bare (tests only) | default | production always injects the AppModule client |
+ *
+ * System DNS is therefore only used by the DoH bootstrap path listed above.
+ */
+internal fun createSharedCookielessDohClient(dns: Dns): OkHttpClient = OkHttpClient.Builder()
+    .dns(dns)
+    .cookieJar(CookieJar.NO_COOKIES)
+    .build()
+
 val appModule = module {
     single { DohManager(get(), get()) }
 
@@ -101,6 +130,9 @@ val appModule = module {
             context = get(),
             scope = get(),
             configuredHostFlow = get<RemoteConfigPreferences>().remoteImageHost,
+            // Probes must share the app-wide DoH resolver; a bare OkHttpClient would
+            // leak CDN hostnames through system DNS on every init/network change.
+            baseHttpClient = createSharedCookielessDohClient(get<DohManager>()),
         )
     }
     single { CoverImageHostResolver(get<JmImageHostHealthManager>()) }
@@ -143,9 +175,7 @@ val appModule = module {
     single { AppUpdateDownloadManager(get(), get(), get(), get()) } bind com.par9uet.jm.update.AppUpdateDownloads::class
     single {
         com.par9uet.jm.update.GithubReleaseSource(
-            okhttp3.OkHttpClient.Builder()
-                .dns(get<com.par9uet.jm.network.DohManager>())
-                .build(),
+            createSharedCookielessDohClient(get<DohManager>()),
         )
     } bind com.par9uet.jm.update.ReleaseSource::class
     single { com.par9uet.jm.update.ApkInstaller(get()) } bind com.par9uet.jm.update.AppUpdateInstaller::class

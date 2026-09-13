@@ -83,35 +83,39 @@ class DohManager(
             .sortedWith(compareBy<InetAddress> { it is Inet6Address })
     }
 
-    fun setEnabled(enabled: Boolean) {
-        dohEditor.persistEnabled(enabled)
+    /** @return true only when the preference write confirmed; runtime then follows the write. */
+    fun setEnabled(enabled: Boolean): Boolean {
+        if (!dohEditor.persistEnabled(enabled)) return false
         sessionEnabled = enabled
         rebuildResolver()
+        return true
     }
 
-    fun setAutoStart(enabled: Boolean) {
-        dohEditor.persistAutoStart(enabled)
-    }
+    fun setAutoStart(enabled: Boolean): Boolean = dohEditor.persistAutoStart(enabled)
 
-    fun selectServer(serverId: String) {
-        dohEditor.persistServer(serverId)
+    fun selectServer(serverId: String): Boolean {
+        if (!dohEditor.persistServer(serverId)) return false
         rebuildResolver()
+        return true
     }
 
-    fun saveCustomServer(name: String, url: String) {
+    fun saveCustomServer(name: String, url: String): Boolean {
         require(isValidDohUrl(url)) { "请输入 HTTPS DoH 地址" }
-        dohEditor.persistCustomServer(name, url)
+        if (!dohEditor.persistCustomServer(name, url)) return false
         rebuildResolver()
+        return true
     }
 
-    fun setUseDeviceCertificates(enabled: Boolean) {
-        dohEditor.persistUseDeviceCertificates(enabled)
+    fun setUseDeviceCertificates(enabled: Boolean): Boolean {
+        if (!dohEditor.persistUseDeviceCertificates(enabled)) return false
         rebuildResolver()
+        return true
     }
 
-    fun setPreferIpv6(enabled: Boolean) {
-        dohEditor.persistPreferIpv6(enabled)
+    fun setPreferIpv6(enabled: Boolean): Boolean {
+        if (!dohEditor.persistPreferIpv6(enabled)) return false
         rebuildResolver()
+        return true
     }
 
     fun clearCache() {

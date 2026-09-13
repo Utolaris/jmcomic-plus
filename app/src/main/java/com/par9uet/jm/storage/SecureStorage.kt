@@ -97,8 +97,15 @@ class SecureStorage(
         } catch (_: Exception) {
             return StorageWriteResult.TemporaryUnavailable
         }
-        preferences.edit { putString(key, encrypted) }
-        return StorageWriteResult.Success
+        // androidx edit{} returns Unit and defaults to apply(), which cannot report a failed
+        // disk write. Call Editor.commit() so a false result maps to TemporaryUnavailable.
+        val committed = try {
+            preferences.edit().putString(key, encrypted).commit()
+        } catch (_: Exception) {
+            false
+        }
+        return if (committed) StorageWriteResult.Success
+        else StorageWriteResult.TemporaryUnavailable
     }
 
     private fun readEncrypted(preferences: SharedPreferences, key: String): StorageReadResult<String> {

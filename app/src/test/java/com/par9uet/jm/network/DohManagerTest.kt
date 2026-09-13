@@ -68,21 +68,24 @@ class DohManagerTest {
         var customName = prefs.doh.value.customServerName
         var customUrl = prefs.doh.value.customServerUrl
 
-        override fun persistEnabled(enabled: Boolean) {
+        override fun persistEnabled(enabled: Boolean): Boolean {
             this.enabled = enabled
             prefs.doh.value = prefs.doh.value.copy(enabled = enabled)
+            return true
         }
 
-        override fun persistAutoStart(enabled: Boolean) {
+        override fun persistAutoStart(enabled: Boolean): Boolean {
             prefs.doh.value = prefs.doh.value.copy(autoStart = enabled)
+            return true
         }
 
-        override fun persistServer(serverId: String) {
+        override fun persistServer(serverId: String): Boolean {
             this.serverId = serverId
             prefs.doh.value = prefs.doh.value.copy(serverId = serverId)
+            return true
         }
 
-        override fun persistCustomServer(name: String, url: String) {
+        override fun persistCustomServer(name: String, url: String): Boolean {
             serverId = DOH_SERVER_CUSTOM
             customName = name
             customUrl = url
@@ -91,14 +94,17 @@ class DohManagerTest {
                 customServerName = name,
                 customServerUrl = url,
             )
+            return true
         }
 
-        override fun persistUseDeviceCertificates(enabled: Boolean) {
+        override fun persistUseDeviceCertificates(enabled: Boolean): Boolean {
             prefs.doh.value = prefs.doh.value.copy(useDeviceCertificates = enabled)
+            return true
         }
 
-        override fun persistPreferIpv6(enabled: Boolean) {
+        override fun persistPreferIpv6(enabled: Boolean): Boolean {
             prefs.doh.value = prefs.doh.value.copy(preferIpv6 = enabled)
+            return true
         }
     }
 }

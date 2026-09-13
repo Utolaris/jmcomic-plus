@@ -11,6 +11,7 @@ import com.par9uet.jm.backup.BACKUP_PROTECTION_PATTERN
 import com.par9uet.jm.backup.BackupContentOptions
 import com.par9uet.jm.backup.BackupFile
 import com.par9uet.jm.backup.BackupManager
+import com.par9uet.jm.backup.BackupSectionResult
 import com.par9uet.jm.backup.ComicGroupBackup
 import com.par9uet.jm.core.ToastManager
 import java.text.SimpleDateFormat
@@ -202,6 +203,16 @@ internal class BackupRestoreViewModel(
         }
         val unlocked = codec.unlockBackup(backup, password, pattern).getOrElse {
             toastManager.showAsync("备份密码或图案错误")
+            // v4 has no fast digest, so a wrong password is only known here. Return to the
+            // first credential step so the user can correct it instead of staying stuck.
+            val step = if (codec.needsPassword(backup)) {
+                RestoreStep.VerifyPassword
+            } else {
+                RestoreStep.VerifyPattern
+            }
+            verifiedPassword = null
+            verifiedPattern = null
+            _state.update { it.copy(restoreStep = step) }
             return false
         }
         _state.update {
@@ -215,8 +226,24 @@ internal class BackupRestoreViewModel(
         val backup = current.restoreBackup ?: return
         if (current.restoreStep != RestoreStep.SelectContent) return
         restoreOptions = options
-        if (options.includeComicCache && backup.meta.includeComicCache) {
-            _state.update { it.copy(restoreStep = RestoreStep.SelectComicCache, restoreGroups = codec.extractComicCache(backup).groups) }
+        if (options.includeComicCache) {
+            when (val section = codec.extractComicCache(backup)) {
+                is BackupSectionResult.Success -> {
+                    _state.update {
+                        it.copy(restoreStep = RestoreStep.SelectComicCache, restoreGroups = section.value.groups)
+                    }
+                }
+                // Old format / option was never included: proceed without cache rather than
+                // pretending an empty selection was the file's content.
+                BackupSectionResult.Missing -> {
+                    toastManager.showAsync("该备份不含缓存目录内容")
+                    restoreSelected(emptyList())
+                }
+                // Corrupted content must not become “empty restore succeeded” or an NPE.
+                BackupSectionResult.Corrupted -> {
+                    toastManager.showAsync("备份中的缓存目录内容已损坏，无法恢复")
+                }
+            }
         } else restoreSelected(emptyList())
     }
 

@@ -29,12 +29,12 @@ class RetrofitCookieIsolationTest {
             }
             val prefs = object : DohPreferences { override val doh = MutableStateFlow(DohSettingsState(enabled = false)) }
             val editor = object : DohPreferencesEditor {
-                override fun persistEnabled(enabled: Boolean) = Unit
-                override fun persistAutoStart(enabled: Boolean) = Unit
-                override fun persistServer(serverId: String) = Unit
-                override fun persistCustomServer(name: String, url: String) = Unit
-                override fun persistUseDeviceCertificates(enabled: Boolean) = Unit
-                override fun persistPreferIpv6(enabled: Boolean) = Unit
+                override fun persistEnabled(enabled: Boolean) = true
+                override fun persistAutoStart(enabled: Boolean) = true
+                override fun persistServer(serverId: String) = true
+                override fun persistCustomServer(name: String, url: String) = true
+                override fun persistUseDeviceCertificates(enabled: Boolean) = true
+                override fun persistPreferIpv6(enabled: Boolean) = true
             }
             val toast = ToastManager()
             val retrofit = Retrofit(BaseUrlInterceptor(endpoint), ToastInterceptor(toast), TokenInterceptor(),

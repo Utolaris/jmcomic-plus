@@ -92,7 +92,9 @@ fun App(
     val nsfwWarningDismissed by localSettingManager.nsfwWarningDismissed.collectAsState()
     val miscSettings by localSettingManager.misc.collectAsState()
     // Temporary Keystore/storage outages must not look like a fresh unlocked install.
-    val showOnboarding = !onboardingCompleted && !securityLoadBlocked
+    // An enabled app lock always outranks onboarding: restoring a file that reopens onboarding
+    // must not become a path around the existing credential (see applyLocalSetting).
+    val showOnboarding = !onboardingCompleted && !securityLoadBlocked && !appLock.enabled
     var isLocked by remember { mutableStateOf(appLock.enabled || securityLoadBlocked) }
     var sessionNsfwDismissed by remember { mutableStateOf(nsfwWarningDismissed) }
 
@@ -122,7 +124,7 @@ fun App(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val showAppLock = !securityLoadBlocked && appLock.enabled && isLocked && !showOnboarding
+    val showAppLock = !securityLoadBlocked && appLock.enabled && isLocked
     val showNsfwDialog = !securityLoadBlocked && !showAppLock && !showOnboarding &&
         !sessionNsfwDismissed && !nsfwWarningDismissed
 

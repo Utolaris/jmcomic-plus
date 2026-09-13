@@ -84,7 +84,7 @@ fun writeComicCacheConfig(
         coverPath = getComicCoverDownloadFile(context, comic).absolutePath,
         chapters = chapterConfigs,
     )
-    getComicConfigFile(context, comic).writeText(gson.toJson(config), Charsets.UTF_8)
+    writeTextAtomically(getComicConfigFile(context, comic), gson.toJson(config))
 }
 
 fun buildComicCacheConfig(

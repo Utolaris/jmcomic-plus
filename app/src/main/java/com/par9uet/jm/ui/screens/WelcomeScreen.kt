@@ -251,19 +251,26 @@ fun WelcomeScreen(
                         patternSet = appLockPatternSet,
                         unlockMode = appLockUnlockMode,
                         onToggle = { enabled ->
-                            val ok = if (enabled) {
-                                appSecurityEditor.setAppLockEnabled(true)
+                            // An already-enabled lock cannot be cleared from onboarding without
+                            // credential verification. App.kt also refuses to show onboarding
+                            // while a lock is enabled; this is defense in depth for that entry.
+                            if (!enabled && appLock.enabled) {
+                                toastManager.showAsync("已启用应用锁，引导中不能直接关闭，请先解锁后在设置中修改")
                             } else {
-                                appSecurityEditor.disableAndClearAppLock()
-                            }
-                            if (ok) {
-                                if (!enabled) {
-                                    appLockPasswordSet = false
-                                    appLockPatternSet = false
+                                val ok = if (enabled) {
+                                    appSecurityEditor.setAppLockEnabled(true)
+                                } else {
+                                    appSecurityEditor.disableAndClearAppLock()
                                 }
-                                appLockEnabled = enabled
-                            } else {
-                                toastManager.showAsync("应用锁设置保存失败，请重试")
+                                if (ok) {
+                                    if (!enabled) {
+                                        appLockPasswordSet = false
+                                        appLockPatternSet = false
+                                    }
+                                    appLockEnabled = enabled
+                                } else {
+                                    toastManager.showAsync("应用锁设置保存失败，请重试")
+                                }
                             }
                         },
                         onPasswordSet = { pwd ->
@@ -295,7 +302,11 @@ fun WelcomeScreen(
                     )
                     5 -> ExtractCodeStepContent(
                         clipboardAutoDetectEnabled = miscSettings.clipboardAutoDetectEnabled,
-                        onToggleClipboard = { localSettingManager.updateClipboardAutoDetectEnabled(it) }
+                        onToggleClipboard = { enabled ->
+                            if (!localSettingManager.updateClipboardAutoDetectEnabled(enabled)) {
+                                toastManager.showAsync("设置保存失败，请重试")
+                            }
+                        }
                     )
                     6 -> LoginStepContent(
                         isLogin = isLogin,

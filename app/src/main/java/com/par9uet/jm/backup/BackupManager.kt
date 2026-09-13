@@ -3,6 +3,8 @@ import android.content.Context
 import android.net.Uri
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.par9uet.jm.data.models.LocalSetting
@@ -23,9 +25,14 @@ const val BACKUP_PROTECTION_PASSWORD = "password"
 const val BACKUP_PROTECTION_PATTERN = "pattern"
 const val BACKUP_PROTECTION_BOTH = "both"
 
-// 备份文件格式版本（v1 旧格式仅 LocalSetting；v2 多内容格式；v3 新增缓存目录备份）
+// 备份文件格式版本：
+// v1 旧格式仅 LocalSetting；v2 多内容格式；v3 新增缓存目录备份；
+// v4 移除快速凭据摘要，凭据正确性只靠派生密钥解密 AES-GCM 成功与否判断。
 // 受保护备份在 data.ciphertext 中放 AES-GCM 密文；meta.encryptionSalt 为 PBKDF2 盐。
-const val BACKUP_FORMAT_VERSION = 3
+const val BACKUP_FORMAT_VERSION = 4
+
+/** Oldest format this reader accepts; unknown versions are rejected. */
+const val BACKUP_MIN_SUPPORTED_VERSION = 1
 
 private const val PBKDF2_ITERATIONS = 120_000
 private const val GCM_IV_SIZE_BYTES = 12
@@ -43,6 +50,9 @@ data class BackupContentOptions(
 
 /**
  * 备份文件元信息：包含版本、时间戳、保护方式与备份内容标记。
+ *
+ * v4 起不再写入 [passwordHash]/[patternHash]：无盐快速摘要允许离线一次 SHA-256 猜测，
+ * 绕过慢速 PBKDF2。字段保留仅为读取 v1–v3 旧文件；新文件中恒为 null。
  */
 data class BackupMeta(
     val version: Int = BACKUP_FORMAT_VERSION,
@@ -98,6 +108,16 @@ data class BackupFile(
     val data: JsonObject,
 )
 
+/**
+ * Outcome of reading one content section from an unlocked backup.
+ * Distinguishes “section not present” (option off / old format) from “section corrupted”.
+ */
+sealed class BackupSectionResult<out T> {
+    data class Success<T>(val value: T) : BackupSectionResult<T>()
+    data object Missing : BackupSectionResult<Nothing>()
+    data object Corrupted : BackupSectionResult<Nothing>()
+}
+
 class BackupManager {
     private val gson: Gson = GsonBuilder()
         .disableHtmlEscaping()
@@ -132,20 +152,9 @@ class BackupManager {
             version = BACKUP_FORMAT_VERSION,
             timestamp = System.currentTimeMillis(),
             protectionType = protectionType,
-            passwordHash = when (protectionType) {
-                BACKUP_PROTECTION_PASSWORD, BACKUP_PROTECTION_BOTH -> {
-                    requireNotNull(password) { "password must not be null for protection $protectionType" }
-                    sha256(password)
-                }
-                else -> null
-            },
-            patternHash = when (protectionType) {
-                BACKUP_PROTECTION_PATTERN, BACKUP_PROTECTION_BOTH -> {
-                    requireNotNull(pattern) { "pattern must not be null for protection $protectionType" }
-                    sha256(pattern)
-                }
-                else -> null
-            },
+            // v4+ never writes fast credential digests — they are an offline guessing oracle.
+            passwordHash = null,
+            patternHash = null,
             includeLocalSetting = options.includeLocalSetting,
             includeComicCache = options.includeComicCache && comicCache != null,
             comicCacheCount = comicCache?.groups?.size ?: 0,
@@ -165,7 +174,7 @@ class BackupManager {
         }
 
         val payload = if (protected && salt != null) {
-            val key = deriveKey(password, pattern, salt)
+            val key = deriveKey(password, pattern, salt, structured = true)
             val encrypted = aesGcmEncrypt(key, gson.toJson(data))
             val envelope = JsonObject()
             envelope.addProperty("ciphertext", encrypted)
@@ -179,13 +188,17 @@ class BackupManager {
     }
 
     /**
-     * 解析备份 JSON 字符串；当前写入 v3，并兼容 v1/v2。
+     * 解析备份 JSON 字符串。接受 [BACKUP_MIN_SUPPORTED_VERSION]–[BACKUP_FORMAT_VERSION]；
+     * 拒绝未知版本，避免把未来格式静默当成空/损坏内容。
      * 受保护备份的 data 仍是密文，必须先 [unlockBackup]。
      */
     fun parseBackup(json: String): Result<BackupFile> = runCatching {
         val obj = JsonParser.parseString(json).asJsonObject
         val meta = gson.fromJson(obj.getAsJsonObject("meta"), BackupMeta::class.java)
             ?: error("备份文件缺少 meta 字段")
+        if (meta.version < BACKUP_MIN_SUPPORTED_VERSION || meta.version > BACKUP_FORMAT_VERSION) {
+            error("不支持的备份版本：${meta.version}")
+        }
         val data = obj.getAsJsonObject("data") ?: error("备份文件缺少 data 字段")
         BackupFile(meta = meta, data = data)
     }
@@ -198,6 +211,8 @@ class BackupManager {
     /**
      * Decrypts protected content into plaintext sections. Wrong credentials or a tampered
      * blob fail; stripping protectionType does not reveal plaintext.
+     *
+     * v4 uses length-prefixed credential material; v1–v3 files keep the legacy join encoding.
      */
     fun unlockBackup(
         backup: BackupFile,
@@ -210,53 +225,64 @@ class BackupManager {
         val salt = Base64.getDecoder().decode(saltB64)
         val ciphertext = backup.data.get("ciphertext")?.asString
             ?: error("备份缺少密文")
-        val key = deriveKey(password, pattern, salt)
+        val structured = backup.meta.version >= 4
+        val key = deriveKey(password, pattern, salt, structured = structured)
         val plain = aesGcmDecrypt(key, ciphertext)
             ?: error("备份密码或图案错误")
-        val data = JsonParser.parseString(plain).asJsonObject
-        backup.copy(data = data)
+        val parsed = JsonParser.parseString(plain)
+        if (!parsed.isJsonObject) error("备份内容已损坏")
+        backup.copy(data = parsed.asJsonObject)
     }
 
     /**
-     * 从备份中提取 [LocalSetting]，兼容 v1 旧格式。
-     * 调用前必须已 [unlockBackup]；未解锁的密文备份返回 null。
+     * 从备份中提取 [LocalSetting]。调用前必须已 [unlockBackup]。
+     * 区分：未包含该段 / 旧版本无此段（Missing）、段损坏（Corrupted）、解析成功（Success）。
      */
-    fun extractLocalSetting(backup: BackupFile): LocalSetting? {
-        if (isEncrypted(backup)) return null
-        // v2 格式：data.localSetting
-        val obj = backup.data.getAsJsonObject("localSetting")
-        if (obj != null) return gson.fromJson(obj, LocalSetting::class.java)
-        // v1 旧格式：data 直接是 LocalSetting
-        if (backup.meta.version <= 1) {
-            return runCatching { gson.fromJson(backup.data, LocalSetting::class.java) }.getOrNull()
+    fun extractLocalSetting(backup: BackupFile): BackupSectionResult<LocalSetting> {
+        if (isEncrypted(backup)) return BackupSectionResult.Missing
+        // v2+ format: data.localSetting
+        val element = backup.data.get("localSetting")
+        if (element != null) {
+            if (!element.isJsonObject) return BackupSectionResult.Corrupted
+            return parseLocalSetting(element.asJsonObject)
         }
-        return null
+        // v1 legacy format: data itself is LocalSetting
+        if (backup.meta.version <= 1) {
+            return parseLocalSetting(backup.data)
+        }
+        return BackupSectionResult.Missing
     }
 
     /**
      * 从备份中提取缓存目录备份信息。
-     * v1/v2 旧备份无此段，返回空。未解锁的密文备份也返回空。
-     * 畸形段（非对象）返回空，不在 UI 回调里抛 ClassCastException。
+     * v1/v2 旧备份无此段 → Missing。未解锁的密文备份 → Missing。
+     * 畸形段（非对象、groups 为 null、元素为 null、chapters 为 null）→ Corrupted，
+     * 不在 UI 回调里抛 NPE/CCE，也不把损坏降级成“空内容恢复成功”。
      */
-    fun extractComicCache(backup: BackupFile): ComicCacheBackup {
-        if (isEncrypted(backup)) return ComicCacheBackup()
-        val element = backup.data.get("comicCache") ?: return ComicCacheBackup()
-        if (!element.isJsonObject) return ComicCacheBackup()
-        return runCatching {
-            gson.fromJson(element, ComicCacheBackup::class.java) ?: ComicCacheBackup()
-        }.getOrDefault(ComicCacheBackup())
+    fun extractComicCache(backup: BackupFile): BackupSectionResult<ComicCacheBackup> {
+        if (isEncrypted(backup)) return BackupSectionResult.Missing
+        val element = backup.data.get("comicCache") ?: return BackupSectionResult.Missing
+        if (!element.isJsonObject) return BackupSectionResult.Corrupted
+        return parseComicCache(element.asJsonObject)
     }
 
     fun needsPassword(backup: BackupFile): Boolean {
-        if (backup.meta.passwordHash != null) return true
-        // Encrypted with unknown metadata: ask for a password first (pattern-only fallback below).
-        if (isEncrypted(backup) && backup.meta.patternHash == null &&
-            backup.meta.protectionType != BACKUP_PROTECTION_PATTERN
+        // Unencrypted backups never need credentials.
+        if (!isEncrypted(backup)) {
+            return backup.meta.protectionType == BACKUP_PROTECTION_PASSWORD ||
+                backup.meta.protectionType == BACKUP_PROTECTION_BOTH
+        }
+        if (backup.meta.protectionType == BACKUP_PROTECTION_PASSWORD ||
+            backup.meta.protectionType == BACKUP_PROTECTION_BOTH
         ) {
             return true
         }
-        return backup.meta.protectionType == BACKUP_PROTECTION_PASSWORD ||
-            backup.meta.protectionType == BACKUP_PROTECTION_BOTH
+        if (backup.meta.protectionType == BACKUP_PROTECTION_PATTERN) {
+            return false
+        }
+        // protectionType stripped/unknown: legacy password hash, else assume password first.
+        if (backup.meta.passwordHash != null) return true
+        return backup.meta.patternHash == null
     }
 
     fun needsPattern(backup: BackupFile): Boolean {
@@ -270,8 +296,9 @@ class BackupManager {
     }
 
     /**
-     * 校验密码（用于恢复时的核验）。
-     * 哈希缺失但密文仍在时，接受尝试；真正门闩是 [unlockBackup]。
+     * Lightweight password gate used by the UI to decide whether to attempt unlock.
+     * v4 files carry no fast digest: any non-empty password is accepted here and the real
+     * check is [unlockBackup] (PBKDF2 + AES-GCM tag). Legacy hashes stay optional compatibility.
      */
     fun verifyPassword(backup: BackupFile, password: String): Boolean {
         val expected = backup.meta.passwordHash
@@ -353,6 +380,98 @@ class BackupManager {
         }
     }
 
+    private fun parseLocalSetting(obj: JsonObject): BackupSectionResult<LocalSetting> {
+        val setting = try {
+            gson.fromJson(obj, LocalSetting::class.java)
+        } catch (_: Exception) {
+            return BackupSectionResult.Corrupted
+        } ?: return BackupSectionResult.Corrupted
+        return if (isValidLocalSetting(setting)) {
+            BackupSectionResult.Success(setting)
+        } else {
+            BackupSectionResult.Corrupted
+        }
+    }
+
+    /**
+     * Gson can assign null to Kotlin non-null fields (`{"blockedTagList":null}`); treat any
+     * such assignment as corrupted instead of letting it escape into typed call sites.
+     */
+    @Suppress("SENSELESS_COMPARISON")
+    private fun isValidLocalSetting(setting: LocalSetting): Boolean {
+        if (setting.api == null || setting.theme == null) return false
+        if (setting.blockedTagList == null) return false
+        if (setting.blockedTagTemplateList == null) return false
+        if (setting.homeExcludedTags == null) return false
+        if (setting.appLockPassword == null || setting.appLockPattern == null) return false
+        if (setting.blockedTagTemplateList.any { it == null || it.name == null || it.tagList == null }) {
+            return false
+        }
+        if (setting.blockedTagList.any { it == null }) return false
+        if (setting.homeExcludedTags.any { it == null }) return false
+        return true
+    }
+
+    private fun parseComicCache(obj: JsonObject): BackupSectionResult<ComicCacheBackup> {
+        val groupsElement = obj.get("groups") ?: return BackupSectionResult.Corrupted
+        if (groupsElement.isJsonNull || !groupsElement.isJsonArray) {
+            return BackupSectionResult.Corrupted
+        }
+        val groups = parseGroupArray(groupsElement.asJsonArray)
+            ?: return BackupSectionResult.Corrupted
+        return BackupSectionResult.Success(ComicCacheBackup(groups = groups))
+    }
+
+    private fun parseGroupArray(array: JsonArray): List<ComicGroupBackup>? {
+        val groups = ArrayList<ComicGroupBackup>(array.size())
+        for (item in array) {
+            val group = parseGroup(item) ?: return null
+            groups += group
+        }
+        return groups
+    }
+
+    private fun parseGroup(element: JsonElement): ComicGroupBackup? {
+        if (element.isJsonNull || !element.isJsonObject) return null
+        val obj = element.asJsonObject
+        val id = obj.get("id")?.takeIf { !it.isJsonNull }?.asInt ?: return null
+        val name = obj.get("name")?.takeIf { !it.isJsonNull }?.asString ?: return null
+        val authors = parseStringList(obj.get("authors")) ?: return null
+        val tags = parseStringList(obj.get("tags")) ?: return null
+        val chaptersElement = obj.get("chapters") ?: return null
+        if (chaptersElement.isJsonNull || !chaptersElement.isJsonArray) return null
+        val chapters = ArrayList<ChapterBackup>(chaptersElement.asJsonArray.size())
+        for (item in chaptersElement.asJsonArray) {
+            chapters += parseChapter(item) ?: return null
+        }
+        return ComicGroupBackup(
+            id = id,
+            name = name,
+            authors = authors,
+            tags = tags,
+            chapters = chapters,
+        )
+    }
+
+    private fun parseChapter(element: JsonElement): ChapterBackup? {
+        if (element.isJsonNull || !element.isJsonObject) return null
+        val obj = element.asJsonObject
+        val id = obj.get("id")?.takeIf { !it.isJsonNull }?.asInt ?: return null
+        val name = obj.get("name")?.takeIf { !it.isJsonNull }?.asString ?: return null
+        val sortOrder = obj.get("sortOrder")?.takeIf { !it.isJsonNull }?.asLong ?: return null
+        return ChapterBackup(id = id, name = name, sortOrder = sortOrder)
+    }
+
+    private fun parseStringList(element: JsonElement?): List<String>? {
+        if (element == null || element.isJsonNull || !element.isJsonArray) return null
+        val result = ArrayList<String>(element.asJsonArray.size())
+        for (item in element.asJsonArray) {
+            if (item.isJsonNull) return null
+            result += item.asString
+        }
+        return result
+    }
+
     private fun sha256(input: String): String {
         val md = MessageDigest.getInstance("SHA-256")
         val bytes = md.digest(input.toByteArray(Charsets.UTF_8))
@@ -368,12 +487,40 @@ class BackupManager {
         return result == 0
     }
 
-    private fun deriveKey(password: String?, pattern: String?, salt: ByteArray): SecretKeySpec {
+    /**
+     * Structured PBKDF2 material for v4+: each credential is length-prefixed so password+pattern
+     * concatenations cannot be confused (password "a|2:bc" ≠ password "a" + pattern "bc").
+     */
+    private fun encodeCredentialMaterial(password: String?, pattern: String?): String {
+        val parts = listOfNotNull(
+            password?.takeIf { it.isNotEmpty() },
+            pattern?.takeIf { it.isNotEmpty() },
+        )
+        require(parts.isNotEmpty()) { "保护备份需要密码或图案" }
+        return parts.joinToString(separator = "|") { "${it.length}:$it" }
+    }
+
+    /** v1–v3 material: plain join. Kept only so old encrypted files still unlock. */
+    private fun encodeLegacyCredentialMaterial(password: String?, pattern: String?): String {
         val material = listOfNotNull(
             password?.takeIf { it.isNotEmpty() },
             pattern?.takeIf { it.isNotEmpty() },
         ).joinToString(separator = "|")
         require(material.isNotEmpty()) { "保护备份需要密码或图案" }
+        return material
+    }
+
+    private fun deriveKey(
+        password: String?,
+        pattern: String?,
+        salt: ByteArray,
+        structured: Boolean,
+    ): SecretKeySpec {
+        val material = if (structured) {
+            encodeCredentialMaterial(password, pattern)
+        } else {
+            encodeLegacyCredentialMaterial(password, pattern)
+        }
         val spec = PBEKeySpec(material.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
         val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
         return try {

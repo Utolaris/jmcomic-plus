@@ -113,12 +113,17 @@ class BackupRestoreViewModelTest {
         vm.selectRestoreContent(BackupContentOptions(true, true))
         vm.restoreSelected(listOf(group)); runCurrent()
         assertTrue(ops.restores.isEmpty())
+        // Wrong step first.
         assertFalse(vm.verifyPattern("0123"))
-        assertFalse(vm.verifyPassword("9999"))
-        assertEquals(RestoreStep.VerifyPassword, vm.state.value.restoreStep)
-        assertTrue(vm.verifyPassword("1234"))
+        // v4 has no fast digest: any non-empty password passes the lightweight gate and the
+        // real check is AES-GCM unlock. A wrong pair fails unlock and returns to password.
+        assertTrue(vm.verifyPassword("9999"))
         assertEquals(RestoreStep.VerifyPattern, vm.state.value.restoreStep)
         assertFalse(vm.verifyPattern("9876"))
+        assertEquals(RestoreStep.VerifyPassword, vm.state.value.restoreStep)
+        assertTrue(ops.restores.isEmpty())
+        assertTrue(vm.verifyPassword("1234"))
+        assertEquals(RestoreStep.VerifyPattern, vm.state.value.restoreStep)
         assertTrue(vm.verifyPattern("0123"))
         vm.selectRestoreContent(BackupContentOptions(false, true))
         assertEquals(listOf(group), vm.state.value.restoreGroups)
@@ -164,5 +169,38 @@ class BackupRestoreViewModelTest {
         ops.read = { ops.backup }
         vm.readDocument("content://good"); runCurrent()
         assertEquals(RestoreStep.VerifyPassword, vm.state.value.restoreStep)
+    }
+
+    @Test fun `null groups in backup does not throw and does not restore empty cache`() = runTest {
+        val malformed = codec.parseBackup(
+            """{"meta":{"version":4,"includeLocalSetting":false,"includeComicCache":true},"data":{"comicCache":{"groups":null}}}"""
+        ).getOrThrow()
+        val ops = FakeOperations().apply { backup = malformed }
+        val vm = BackupRestoreViewModel(ops, codec, ToastManager())
+        vm.beginRestore()
+        vm.readDocument("content://malformed")
+        runCurrent()
+        // Unprotected → straight to content selection; selecting cache must not NPE.
+        assertEquals(RestoreStep.SelectContent, vm.state.value.restoreStep)
+        vm.selectRestoreContent(BackupContentOptions(false, true))
+        runCurrent()
+        // Corrupted section stays on content selection; nothing was restored as empty.
+        assertTrue(ops.restores.isEmpty())
+        assertEquals(RestoreStep.SelectContent, vm.state.value.restoreStep)
+        assertFalse(vm.state.value.busy)
+    }
+
+    @Test fun `null group elements are rejected without restore`() = runTest {
+        val malformed = codec.parseBackup(
+            """{"meta":{"version":4,"includeLocalSetting":false,"includeComicCache":true},"data":{"comicCache":{"groups":[null]}}}"""
+        ).getOrThrow()
+        val ops = FakeOperations().apply { backup = malformed }
+        val vm = BackupRestoreViewModel(ops, codec, ToastManager())
+        vm.beginRestore()
+        vm.readDocument("content://malformed")
+        runCurrent()
+        vm.selectRestoreContent(BackupContentOptions(false, true))
+        runCurrent()
+        assertTrue(ops.restores.isEmpty())
     }
 }

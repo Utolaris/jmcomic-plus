@@ -123,8 +123,9 @@ fun DohSettingScreen(
                         TextButton(onClick = {
                             if (!isValidDohUrl(customUrl)) {
                                 customError = "请输入有效的 HTTPS DoH 地址"
+                            } else if (!dohManager.saveCustomServer(customName, customUrl)) {
+                                customError = "设置保存失败，请重试"
                             } else {
-                                dohManager.saveCustomServer(customName, customUrl)
                                 customError = ""
                                 showCustomDialog = false
                             }

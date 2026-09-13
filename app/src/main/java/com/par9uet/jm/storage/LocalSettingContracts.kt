@@ -119,12 +119,13 @@ interface DohPreferences {
 }
 
 interface DohPreferencesEditor {
-    fun persistEnabled(enabled: Boolean)
-    fun persistAutoStart(enabled: Boolean)
-    fun persistServer(serverId: String)
-    fun persistCustomServer(name: String, url: String)
-    fun persistUseDeviceCertificates(enabled: Boolean)
-    fun persistPreferIpv6(enabled: Boolean)
+    /** @return true only when the new preference was persisted. */
+    fun persistEnabled(enabled: Boolean): Boolean
+    fun persistAutoStart(enabled: Boolean): Boolean
+    fun persistServer(serverId: String): Boolean
+    fun persistCustomServer(name: String, url: String): Boolean
+    fun persistUseDeviceCertificates(enabled: Boolean): Boolean
+    fun persistPreferIpv6(enabled: Boolean): Boolean
 }
 
 data class ColorPaletteState(

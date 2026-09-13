@@ -184,7 +184,8 @@ class SettingsViewModel(
     fun setAutoSignInEnabled(enabled: Boolean) =
         localSettingManager.updateAutoSignInEnabled(enabled)
 
-    fun setClipboardAutoDetectEnabled(enabled: Boolean) =
+    /** @return true only when the preference write confirmed; UI can then toast on false. */
+    fun setClipboardAutoDetectEnabled(enabled: Boolean): Boolean =
         localSettingManager.updateClipboardAutoDetectEnabled(enabled)
 
     fun setMemoryOptEnabled(enabled: Boolean) = localSettingManager.setMemoryOptEnabled(enabled)

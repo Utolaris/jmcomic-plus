@@ -24,7 +24,10 @@ import com.par9uet.jm.repository.ComicRepository
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.utils.DownloadSpeedTracker
 import com.par9uet.jm.utils.log
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -121,18 +124,38 @@ class DeviceDownloadContentOperations(
     override suspend fun complete(downloadTask: DownloadComic) {
         val comicId = downloadTask.id
         val chapterPath = files.chapterPath(downloadTask)
-        // Finish every fallible file write BEFORE flipping COMPLETE in the DB, otherwise a
-        // failed config write leaves a task that retries skip as already successful.
-        val current = downloadComicDao.getById(comicId) ?: return
-        val groupId = current.groupId.takeIf { it != 0 } ?: current.id
-        val chapters = downloadComicDao.getByGroupId(groupId)
-        val finalized = current.copy(zipPath = chapterPath, status = DownloadStatus.COMPLETE)
-        val chaptersForConfig = chapters.map { if (it.id == comicId) finalized else it }
-        withContext(Dispatchers.IO) {
-            files.writeConfig(finalized, chaptersForConfig)
+        // Same-group chapters finish on separate workers. Serializing only writeConfig() is
+        // not enough: a snapshot read before the lock can still overwrite a concurrent
+        // chapter's COMPLETE. The whole read-index → write-index → commit sequence is
+        // gated per group so the published config always matches the DB after the last write.
+        val gateGroupId = downloadComicDao.getById(comicId)?.let {
+            it.groupId.takeIf { groupId -> groupId != 0 } ?: it.id
+        } ?: (downloadTask.groupId.takeIf { it != 0 } ?: downloadTask.id)
+        groupCommitGate(gateGroupId).withLock {
+            // Finish every fallible file write BEFORE flipping COMPLETE in the DB, otherwise a
+            // failed config write leaves a task that retries skip as already successful.
+            val current = downloadComicDao.getById(comicId) ?: return
+            val groupId = current.groupId.takeIf { it != 0 } ?: current.id
+            val chapters = downloadComicDao.getByGroupId(groupId)
+            val finalized = current.copy(zipPath = chapterPath, status = DownloadStatus.COMPLETE)
+            val chaptersForConfig = chapters.map { if (it.id == comicId) finalized else it }
+            withContext(Dispatchers.IO) {
+                files.writeConfig(finalized, chaptersForConfig)
+            }
+            downloadComicDao.updateZipPath(UpdateComicZipPath(comicId, chapterPath))
+            downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.COMPLETE))
         }
-        downloadComicDao.updateZipPath(UpdateComicZipPath(comicId, chapterPath))
-        downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.COMPLETE))
+    }
+
+    private companion object {
+        /**
+         * Process-wide so every worker (and test double) shares one gate per group even if
+         * more than one operations instance is constructed.
+         */
+        private val groupCommitGates = ConcurrentHashMap<Int, Mutex>()
+
+        private fun groupCommitGate(groupId: Int): Mutex =
+            groupCommitGates.computeIfAbsent(groupId) { Mutex() }
     }
 }
 

@@ -8,6 +8,9 @@ import com.google.gson.Gson
 import com.par9uet.jm.database.model.DownloadComic
 import java.io.File
 import java.io.OutputStream
+import java.nio.charset.Charset
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 
 fun openCacheOutputStream(context: Context, path: String): OutputStream =
     if (isDocumentCachePath(path)) {
@@ -224,8 +227,70 @@ fun writeDocumentComicCacheConfigAtPath(
         listComicImageEntries(context, path).map(CacheImageEntry::name)
     }
     val configPath = getOrCreateCacheFile(context, rootPath, "config.json", "application/json")
-    openCacheOutputStream(context, configPath).bufferedWriter(Charsets.UTF_8).use {
-        it.write(gson.toJson(config))
+    writeCacheConfigText(context, configPath, gson.toJson(config))
+}
+
+/**
+ * Publishes config text so an interrupted write never leaves a truncated config.json as the
+ * readable index. Regular files replace via a sibling temp + ATOMIC_MOVE. SAF paths stage a
+ * full sibling document and prefer renameDocument; when the provider refuses rename the
+ * staged bytes overwrite the target, and a failed overwrite deletes the target so the
+ * DB (still not COMPLETE for the failing chapter) can drive a retry instead of keeping a
+ * half index. The staging document is always removed.
+ */
+fun writeCacheConfigText(context: Context, configPath: String, json: String) {
+    if (!isDocumentCachePath(configPath)) {
+        writeTextAtomically(File(configPath), json)
+        return
+    }
+    val parentPath = requireNotNull(getCacheParentPath(configPath)) { "缓存配置缺少父目录" }
+    val stagingPath = getOrCreateCacheFile(context, parentPath, "config.json.tmp", "application/json")
+    val buffer = File.createTempFile("cache-config-", ".json", context.cacheDir)
+    try {
+        buffer.writeText(json, Charsets.UTF_8)
+        openCacheOutputStream(context, stagingPath).use { output ->
+            buffer.inputStream().use { it.copyTo(output) }
+        }
+        val renamed = runCatching {
+            DocumentsContract.renameDocument(
+                context.contentResolver,
+                stagingPath.toUri(),
+                "config.json",
+            ) != null
+        }.getOrDefault(false)
+        if (renamed) return
+        try {
+            openCacheOutputStream(context, configPath).use { output ->
+                buffer.inputStream().use { it.copyTo(output) }
+            }
+        } catch (error: Throwable) {
+            deleteCachePath(context, configPath)
+            throw error
+        }
+    } finally {
+        runCatching { deleteCachePath(context, stagingPath) }
+        buffer.delete()
+    }
+}
+
+/**
+ * Replaces [file] with [text] via a sibling temporary file and ATOMIC_MOVE so a crash or
+ * concurrent reader never observes a truncated index.
+ */
+fun writeTextAtomically(file: File, text: String, charset: Charset = Charsets.UTF_8) {
+    val parent = file.parentFile
+    parent?.mkdirs()
+    val temporary = File.createTempFile(".${file.name}-", ".tmp", parent)
+    try {
+        temporary.writeText(text, charset)
+        Files.move(
+            temporary.toPath(),
+            file.toPath(),
+            StandardCopyOption.ATOMIC_MOVE,
+            StandardCopyOption.REPLACE_EXISTING,
+        )
+    } finally {
+        temporary.delete()
     }
 }
 

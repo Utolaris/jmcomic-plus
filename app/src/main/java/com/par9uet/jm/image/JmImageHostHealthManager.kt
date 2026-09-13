@@ -257,11 +257,15 @@ internal class JmImageHostHealthManager(
     context: Context,
     private val scope: CoroutineScope,
     configuredHostFlow: Flow<String>,
+    // Prefer the DI-provided shared DoH / no-cookie client (see AppModule inventory).
+    // The bare default exists only for JVM tests that never touch the network.
     baseHttpClient: OkHttpClient = OkHttpClient.Builder().build(),
     private val store: JmImageHostHealthStore = JmImageHostHealthStore(),
 ) : JmImageHostHealth {
     private val appContext = context.applicationContext
     private val preferences = appContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+    // newBuilder() inherits DNS and cookie jar from the injected base client, so init
+    // and network-change probes use the same resolver as every other app-owned request.
     private val probeClient = baseHttpClient.newBuilder()
         .connectTimeout(3, TimeUnit.SECONDS)
         .readTimeout(3, TimeUnit.SECONDS)

@@ -9,6 +9,7 @@ import com.par9uet.jm.data.models.Comic
 import com.par9uet.jm.core.model.SignInData
 import com.par9uet.jm.session.CandidateSession
 import com.par9uet.jm.session.UserRepository
+import com.par9uet.jm.session.UserSessionSnapshot
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.download.coordinator.DownloadManager
 import com.par9uet.jm.storage.ContentPreferences
@@ -28,9 +29,15 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+/**
+ * History multi-select is owned by one session: ids selected under account A must never be
+ * submitted (download/delete) under account B. [session] records the owner and is cleared
+ * together with the selection whenever [UserManager.sessionState] changes.
+ */
 data class HistoryEditState(
     val editing: Boolean = false,
-    val selectedComicIds: Set<Int> = emptySet()
+    val selectedComicIds: Set<Int> = emptySet(),
+    val session: UserSessionSnapshot? = null,
 )
 
 class UserViewModel(
@@ -90,12 +97,18 @@ class UserViewModel(
         _historyRefreshVersion.update { it + 1 }
     }
 
+    /**
+     * History comics and history comments share the same account+generation paging lifecycle:
+     * [UserManager.sessionState] rebuilds the pager so account B never reuses A's cached pages.
+     * blockedTags still participates because tag filtering is applied inside the paging source.
+     */
     @OptIn(ExperimentalCoroutinesApi::class)
     val historyComicPager = combine(
+        userManager.sessionState,
         contentPreferences.blockedTags,
-        _historyRefreshVersion
-    ) { blockedTagList, _ -> blockedTagList }
-        .flatMapLatest { blockedTagList ->
+        _historyRefreshVersion,
+    ) { session, blockedTagList, _ -> session to blockedTagList }
+        .flatMapLatest { (_, blockedTagList) ->
         Pager(
             config = PagingConfig(
                 pageSize = HistoryComicPagingSource.PAGE_SIZE,
@@ -111,20 +124,57 @@ class UserViewModel(
     private val _historyEditState = MutableStateFlow(HistoryEditState())
     val historyEditState = _historyEditState.asStateFlow()
 
+    init {
+        // Session change (account switch / logout / generation bump) owns the selection:
+        // publish empty edit state immediately so A's ids cannot outlive A's session.
+        viewModelScope.launch {
+            userManager.sessionState.collect { session ->
+                if (_historyEditState.value.session != null &&
+                    _historyEditState.value.session != session
+                ) {
+                    _historyEditState.value = HistoryEditState()
+                }
+            }
+        }
+    }
+
     fun enterHistoryEdit(comicId: Int) {
-        _historyEditState.update {
-            it.copy(editing = true, selectedComicIds = it.selectedComicIds + comicId)
+        val session = userManager.currentSessionSnapshot()
+        if (session.accountId <= 0) return
+        _historyEditState.update { current ->
+            // A selection still holding another session's snapshot is already stale.
+            val base = if (current.session == null || current.session == session) {
+                current
+            } else {
+                HistoryEditState()
+            }
+            base.copy(
+                editing = true,
+                selectedComicIds = base.selectedComicIds + comicId,
+                session = session,
+            )
         }
     }
 
     fun toggleHistorySelected(comicId: Int) {
-        _historyEditState.update {
-            val selected = if (comicId in it.selectedComicIds) {
-                it.selectedComicIds - comicId
+        val session = userManager.currentSessionSnapshot()
+        if (session.accountId <= 0) return
+        _historyEditState.update { current ->
+            val base = if (current.session == null || current.session == session) {
+                current
             } else {
-                it.selectedComicIds + comicId
+                HistoryEditState()
             }
-            it.copy(editing = selected.isNotEmpty(), selectedComicIds = selected)
+            val selected = if (comicId in base.selectedComicIds) {
+                base.selectedComicIds - comicId
+            } else {
+                base.selectedComicIds + comicId
+            }
+            base.copy(
+                editing = selected.isNotEmpty(),
+                selectedComicIds = selected,
+                session = if (selected.isEmpty()) null else session,
+            )
         }
     }
 
@@ -141,6 +191,15 @@ class UserViewModel(
             val session = userManager.currentSessionSnapshot()
             if (session.accountId <= 0) {
                 toastManager.showAsync("请先登录")
+                clearHistorySelection()
+                return@launch
+            }
+            // Selections captured under another account/generation must never submit here:
+            // the dialog may still hold A's comics after the pager has already switched to B.
+            val selectionSession = _historyEditState.value.session
+            if (selectionSession == null || selectionSession != session) {
+                log("UserViewModel", "deleteHistoryComics: 选择不属于当前会话，拒绝提交")
+                toastManager.showAsync("会话已切换，未继续删除")
                 clearHistorySelection()
                 return@launch
             }
@@ -193,6 +252,13 @@ class UserViewModel(
 
     fun cacheHistoryComics(comics: List<Comic>) {
         if (comics.isEmpty()) return
+        // Same ownership rule as delete: a stale selection must not enqueue work.
+        val session = userManager.currentSessionSnapshot()
+        val selectionSession = _historyEditState.value.session
+        if (session.accountId <= 0 || selectionSession == null || selectionSession != session) {
+            clearHistorySelection()
+            return
+        }
         downloadManager.downloadComics(comics)
         clearHistorySelection()
     }

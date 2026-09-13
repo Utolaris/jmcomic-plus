@@ -98,13 +98,18 @@ class LocalSettingManager(
 
     fun updateLauncherDisguise(launcherDisguise: String) {
         val disguise = LauncherDisguise.fromId(launcherDisguise)
+        val previous = _localSettingState.value.launcherDisguise
         // Switch the alias first: the stored value has to describe the entry that is actually
         // installed, so a failed switch keeps both the current entry and the current setting.
         if (!launcherDisguiseApplier.apply(disguise)) {
             log("桌面图标入口未切换，保留当前入口：${disguise.id}")
             return
         }
-        updateSetting { it.copy(launcherDisguise = disguise.id) }
+        if (!updateSetting { it.copy(launcherDisguise = disguise.id) }) {
+            // Persist failed after the alias already switched: restore the previous entry so
+            // runtime state and the durable setting stay aligned.
+            launcherDisguiseApplier.apply(LauncherDisguise.fromId(previous))
+        }
     }
 
     fun dismissNsfwWarning() =
@@ -172,22 +177,24 @@ class LocalSettingManager(
      * not a selectable preset: entering it only happens through [applyCustomColors], so this call
      * keeps existing custom values instead of destroying them.
      */
-    override fun selectColorPreset(presetId: String) = updateSetting { current ->
-        if (presetId == COLOR_PALETTE_PRESET_CUSTOM || presetId == current.colorPalettePreset) {
-            current
-        } else {
-            current.copy(
-                colorPalettePreset = presetId,
-                customColorPrimary = null,
-                customColorSecondary = null,
-                customColorTertiary = null,
-                customColorError = null,
-            )
+    override fun selectColorPreset(presetId: String) {
+        updateSetting { current ->
+            if (presetId == COLOR_PALETTE_PRESET_CUSTOM || presetId == current.colorPalettePreset) {
+                current
+            } else {
+                current.copy(
+                    colorPalettePreset = presetId,
+                    customColorPrimary = null,
+                    customColorSecondary = null,
+                    customColorTertiary = null,
+                    customColorError = null,
+                )
+            }
         }
     }
 
     /** Confirming a custom color switches the palette to custom in the same transition. */
-    override fun applyCustomColors(primary: String?, secondary: String?, tertiary: String?, error: String?) =
+    override fun applyCustomColors(primary: String?, secondary: String?, tertiary: String?, error: String?) {
         updateSetting {
             val hasAnyCustomColor = primary != null || secondary != null ||
                 tertiary != null || error != null
@@ -200,6 +207,7 @@ class LocalSettingManager(
                 customColorError = error,
             )
         }
+    }
 
     /** One confirm on the grid dialog updates all five page columns together. */
     fun applyGridColumns(home: Int, collect: Int, download: Int, history: Int, search: Int) =
@@ -223,11 +231,16 @@ class LocalSettingManager(
     }
 
     /**
-     * Applies a backup's [LocalSetting]. Backups strip app-lock credentials/secret fields, so
-     * this device keeps its own app lock; identity-change side effects run after the write.
+     * Applies a backup's [LocalSetting]. Backups strip app-lock credentials, so this device
+     * keeps its own app lock. Launcher alias switch runs *before* the write so the stored
+     * value describes the installed entry; a failed write switches the alias back.
+     * Onboarding is preserved when this device already finished setup or has an enabled lock:
+     * a restored file that omits the field (or writes false) must not reopen the
+     * lock-resetting onboarding path.
      */
     fun applyLocalSetting(setting: LocalSetting) {
-        val previousLauncherDisguise = _localSettingState.value.launcherDisguise
+        val current = _localSettingState.value
+        val previousLauncherDisguise = current.launcherDisguise
         val requestedLauncherDisguise = LauncherDisguise.fromId(setting.launcherDisguise)
         // Never store a disguise whose alias did not switch, otherwise the next launch would
         // reassert a launcher entry this device never managed to install.
@@ -239,7 +252,13 @@ class LocalSettingManager(
             log("桌面图标入口未切换，保留当前入口：${requestedLauncherDisguise.id}")
             previousLauncherDisguise
         }
-        updateSetting { current ->
+        // A lock always implies setup is far enough along that onboarding must stay closed.
+        val onboardingCompleted = when {
+            current.appLockEnabled -> true
+            current.onboardingCompleted -> true
+            else -> setting.onboardingCompleted
+        }
+        if (!updateSetting {
             setting.copy(
                 launcherDisguise = launcherDisguise,
                 appLockEnabled = current.appLockEnabled,
@@ -247,7 +266,13 @@ class LocalSettingManager(
                 appLockPasswordLength = current.appLockPasswordLength,
                 appLockPattern = current.appLockPattern,
                 appLockUnlockMode = current.appLockUnlockMode,
+                onboardingCompleted = onboardingCompleted,
             )
+        }) {
+            // Persist failed after a successful alias switch: restore the previous entry.
+            if (launcherDisguise != previousLauncherDisguise) {
+                launcherDisguiseApplier.apply(LauncherDisguise.fromId(previousLauncherDisguise))
+            }
         }
     }
 
@@ -262,7 +287,7 @@ class LocalSettingManager(
 
     // ---- AppSecurityEditor: one transition per user action ----
 
-    override fun setPassword(password: String, length: Int) = updateSecuritySetting {
+    override fun setPassword(password: String, length: Int) = updateSetting {
         it.copy(
             appLockPassword = password,
             appLockPasswordLength = length.coerceIn(4, 8),
@@ -274,7 +299,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun removePassword() = updateSecuritySetting {
+    override fun removePassword() = updateSetting {
         it.copy(
             appLockPassword = "",
             appLockUnlockMode = if (it.appLockPattern.isNotEmpty()) {
@@ -286,7 +311,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun setPattern(pattern: String) = updateSecuritySetting {
+    override fun setPattern(pattern: String) = updateSetting {
         it.copy(
             appLockPattern = pattern,
             appLockUnlockMode = if (it.appLockPassword.isNotEmpty()) {
@@ -297,7 +322,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun removePattern() = updateSecuritySetting {
+    override fun removePattern() = updateSetting {
         it.copy(
             appLockPattern = "",
             appLockUnlockMode = if (it.appLockPassword.isNotEmpty()) {
@@ -309,7 +334,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun setAppLockEnabled(enabled: Boolean) = updateSecuritySetting {
+    override fun setAppLockEnabled(enabled: Boolean) = updateSetting {
         // Without at least one credential there is nothing to unlock with; keep the lock off.
         it.copy(
             appLockEnabled = enabled &&
@@ -317,7 +342,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun disableAndClearAppLock() = updateSecuritySetting {
+    override fun disableAndClearAppLock() = updateSetting {
         it.copy(
             appLockEnabled = false,
             appLockPassword = "",
@@ -326,7 +351,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun selectUnlockMode(mode: String) = updateSecuritySetting {
+    override fun selectUnlockMode(mode: String) = updateSetting {
         // BOTH requires both credentials; a mode without its credential falls back to the
         // one that exists, keeping unlock always possible.
         val validMode = when (mode) {
@@ -385,26 +410,19 @@ class LocalSettingManager(
         updateListeners.forEach { listener -> listener(setting) }
     }
 
-    private fun updateSetting(update: (LocalSetting) -> LocalSetting) {
-        val next = update(_localSettingState.value)
-        publish(next)
-        persistence.persist(next)
-    }
-
     /**
-     * Security transitions must not look successful when the write failed. Revert to the last
-     * persisted snapshot so the UI never shows an enabled lock that restarts disabled.
+     * Write-confirmed publish: the in-memory state only advances after persistence succeeds,
+     * so a failed disk write never looks like a saved preference (privacy toggles included).
+     * @return true only when the new value was persisted.
      */
-    private fun updateSecuritySetting(update: (LocalSetting) -> LocalSetting): Boolean {
-        val previous = _localSettingState.value
-        val next = update(previous)
-        publish(next)
+    private fun updateSetting(update: (LocalSetting) -> LocalSetting): Boolean {
+        val next = update(_localSettingState.value)
         return when (persistence.persist(next)) {
-            StorageWriteResult.Success -> true
-            StorageWriteResult.TemporaryUnavailable -> {
-                publish(previous)
-                false
+            StorageWriteResult.Success -> {
+                publish(next)
+                true
             }
+            StorageWriteResult.TemporaryUnavailable -> false
         }
     }
 
