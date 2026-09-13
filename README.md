@@ -3,7 +3,7 @@
 [JM](https://jmcomic.plus) 第三方 Android 客户端。基于 [HongShi2333/jmcomic-next](https://github.com/HongShi2333/jmcomic-next) 持续维护，数据解析依赖 [JUKOMU/JMComic-Api-Java](https://github.com/JUKOMU/JMComic-Api-Java)。
 
 - 系统要求：Android 11（API 30）及以上
-- 当前版本：`1.4.2`（versionCode `142`）
+- 当前版本：`1.4.3`（versionCode `143`）
 - Release 包名：`jmcomic.plus`（与旧包名签名不同，系统会视为新应用，数据不会自动迁移）
 
 ---

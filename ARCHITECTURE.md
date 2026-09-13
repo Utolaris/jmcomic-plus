@@ -5,11 +5,12 @@
 
 > 本文描述的是**当前代码的真实状态**，不是目标状态。文中出现的每个类名、路径和数字都应能在
 > `app/src/main/java/com/par9uet/jm` 下找到；与代码不符的措辞视为文档缺陷，应直接修正。
-> 最近一次核对：v1.4.2（`VERSION_CODE=142`），主源码 **351** 个 Kotlin 文件 / **43,037** 行
+> 最近一次核对：v1.4.3（`VERSION_CODE=143`），主源码 **353** 个 Kotlin 文件 / **43,952** 行
 > （`find app/src/main/java -name '*.kt' | wc -l` + `wc -l` 口径）。
 > 本轮迁移（store 清空 + 依赖环消除）后的全量核对：2026-09-12；
 > 工具链与 hygiene 对齐后的再次核对：2026-09-12（Java 21 / OpenJDK 21 构建，详见文末）；
-> 表现层解耦（`ui/components` 收窄 + 仓库返回领域类型 + `ui/screens` 领域直连下沉）后的核对：2026-09-13。
+> 表现层解耦（`ui/components` 收窄 + 仓库返回领域类型 + `ui/screens` 领域直连下沉）后的核对：2026-09-13；
+> 安全写确认 / 备份 v4 / 组提交串行 / DoH 客户端清单 / 历史会话绑定落地后的核对：2026-09-13（v1.4.3）。
 >
 > 模块耦合表可用 `python3 scripts/check-coupling.py` 复现（细分口径，见该脚本头部说明）；
 > 该口径与下方「耦合热点」表的粗口径不同，两者不可直接对比。
@@ -353,10 +354,10 @@ Reader 的 L3 不得依赖 UI 或 Worker，L4 不得反向依赖 L3。磁盘缓�
 
 - **跨 4 层**：`ui/viewModel/ComicDetailViewModel`（473 行）、
   `ui/screens/downloadScreen/DownloadComicDetailScreen`（465 行）
-- **跨 3 层且 >600 行**：`LocalSettingScreen`(879)、`ComicDetailScreen`(828)、
-  `BackupRestoreScreen`(780)、`ComicReadScreen`(740)、`FavoritesToolbar`(734)、
-  `FavoritesModalHost`(692)、`ComicCommentScreen`(666)、`CheckUpdateScreen`(662)、
-  `WelcomeScreen`(651)
+- **跨 3 层且 >600 行**：`LocalSettingScreen`(880)、`ComicDetailScreen`(826)、
+  `BackupRestoreScreen`(777)、`FavoritesToolbar`(737)、`ComicReadScreen`(736)、
+  `FavoritesModalHost`(692)、`WelcomeScreen`(685)、`CheckUpdateScreen`(674)、
+  `ComicCommentScreen`(666)
 - **扇出最高**：`cache/migration/DeviceCacheMigrationOperations`（22，均为 `cache` 域内文档原子）、
   `reader/molecule/ReaderSourceLoader`（22，但均为 reader 域内 internal 组件，属正常）
 
@@ -390,8 +391,8 @@ UI 使用 `download/model`（`DownloadItem` / `DownloadItemGroup` / `DownloadIte
 ## 审查判断
 
 - 更新和备份恢复的跨边界流程已移出 Screen；剩余较长的界面文件主要是展示组件，不再按行数继续机械拆分。
-  `LocalSettingScreen`（878 行）、`ComicDetailScreen`（827 行）、`BackupRestoreScreen`（779 行）、
-  `ComicReadScreen`（739 行）、`FavoritesToolbar`（733 行）属于已知的可读性问题，不是跨层耦合。
+  `LocalSettingScreen`（880 行）、`ComicDetailScreen`（826 行）、`BackupRestoreScreen`（777 行）、
+  `ComicReadScreen`（736 行）、`FavoritesToolbar`（737 行）属于已知的可读性问题，不是跨层耦合。
 - `FavoriteStore` 的事务边界保持集中，以避免账号快照替换及缓存索引写入被拆散；纯计算和映射可独立验证。
 - 下载任务入口、执行协调、内容下载及文件适配已分离；取消仍直接传播，重试次数和终态提交顺序保持不变。
 - Reader 链路的**控制流**已收敛到 `ReaderImagePipeline`，但**实现体**仍集中在包根，
@@ -471,6 +472,30 @@ L4 设施，或反向依赖上层；`data.models` 是共享契约，不算违规
 并禁止缓存迁移的实现重新进入 Worker。
 
 每次只迁移一个可独立验证的边界，并为 L2 分支、L3 组合和 L4 契约分别补测试。
+
+## 安全与状态契约（v1.4.3 起为架构不变量）
+
+这些边界不是实现细节，改动时需同步测试与本文：
+
+1. **写确认后发布**（`storage/LocalSettingManager.updateSetting`）：内存状态只在
+   `persistence.persist` 返回 `Success` 后前进；失败不得先 publish 再回滚假装成功。
+   `SecureStorage.writeEncrypted` 必须用 `Editor.commit()` 并处理 `false`，不能依赖 KTX `edit{}` 的 `apply()`。
+   `AppSecurityEditor` / `DohPreferencesEditor` 全部返回 `Boolean`；`DohManager` 仅在 persist 成功后改 runtime。
+2. **备份格式 v4**（`backup/BackupManager`）：受保护备份不写无盐 SHA-256 凭据摘要；
+   凭据正确性只靠 PBKDF2 + AES-GCM。读路径接受版本 1–4；解密后的段用
+   `BackupSectionResult`（Success / Missing / Corrupted）区分，禁止把损坏降成空集合。
+3. **下载组提交串行**（`download/molecule/DownloadContentOperations`）：
+   同组 `complete()` 的「读快照 → 写索引 → DB 提交」用进程级组 Mutex 包住；
+   只锁 `writeConfig` 不够。普通文件配置走临时文件 + `ATOMIC_MOVE`。
+4. **OkHttpClient 构造清单**（`di/AppModule`）：应用自有客户端必须入册并设置
+   `DohManager` DNS；系统 DNS 仅允许 DoH bootstrap 例外。新增构造点必须更新清单
+   并被 `AppHttpClientDoHTest` 扫到。
+5. **历史会话归属**（`ui/viewModel/UserViewModel`）：历史分页与多选绑定
+   `UserManager.sessionState`；会话变化立即清空展示与选择；删除/缓存入口校验
+   选择所属会话，陈旧选择零提交。
+6. **引导不得绕锁**（`App` / `LocalSettingManager.applyLocalSetting` / `WelcomeScreen`）：
+   已有启用锁时 onboarding 不显示；恢复备份不得把 `onboardingCompleted` 打回 false
+   以打开可 `disableAndClearAppLock` 的引导路径。
 
 ## 构建与密钥（2026-09-12 核对）
 
