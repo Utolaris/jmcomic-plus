@@ -7,7 +7,15 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.utils.logError
+import java.security.GeneralSecurityException
 import java.security.MessageDigest
+import java.security.SecureRandom
+import java.util.Base64
+import javax.crypto.Cipher
+import javax.crypto.SecretKeyFactory
+import javax.crypto.spec.GCMParameterSpec
+import javax.crypto.spec.PBEKeySpec
+import javax.crypto.spec.SecretKeySpec
 
 // 备份保护方式
 const val BACKUP_PROTECTION_NONE = "none"
@@ -16,7 +24,12 @@ const val BACKUP_PROTECTION_PATTERN = "pattern"
 const val BACKUP_PROTECTION_BOTH = "both"
 
 // 备份文件格式版本（v1 旧格式仅 LocalSetting；v2 多内容格式；v3 新增缓存目录备份）
+// 受保护备份在 data.ciphertext 中放 AES-GCM 密文；meta.encryptionSalt 为 PBKDF2 盐。
 const val BACKUP_FORMAT_VERSION = 3
+
+private const val PBKDF2_ITERATIONS = 120_000
+private const val GCM_IV_SIZE_BYTES = 12
+private const val MAX_BACKUP_BYTES = 32L * 1024L * 1024L
 
 /**
  * 用户选择要备份的内容类型。
@@ -40,6 +53,8 @@ data class BackupMeta(
     val includeLocalSetting: Boolean = true,
     val includeComicCache: Boolean = false,
     val comicCacheCount: Int = 0,
+    /** PBKDF2 salt (base64) for content encryption; null for unprotected backups. */
+    val encryptionSalt: String? = null,
 )
 
 /**
@@ -101,6 +116,18 @@ class BackupManager {
         pattern: String? = null,
     ): String {
         require(!options.isEmpty) { "至少需要选择一项备份内容" }
+        val protected = protectionType != BACKUP_PROTECTION_NONE
+        val salt: ByteArray? = if (protected) {
+            when (protectionType) {
+                BACKUP_PROTECTION_PASSWORD, BACKUP_PROTECTION_BOTH ->
+                    requireNotNull(password) { "password must not be null for protection $protectionType" }
+                BACKUP_PROTECTION_PATTERN ->
+                    requireNotNull(pattern) { "pattern must not be null for protection $protectionType" }
+            }
+            SecureRandom().generateSeed(16)
+        } else {
+            null
+        }
         val meta = BackupMeta(
             version = BACKUP_FORMAT_VERSION,
             timestamp = System.currentTimeMillis(),
@@ -122,6 +149,7 @@ class BackupManager {
             includeLocalSetting = options.includeLocalSetting,
             includeComicCache = options.includeComicCache && comicCache != null,
             comicCacheCount = comicCache?.groups?.size ?: 0,
+            encryptionSalt = salt?.let { Base64.getEncoder().encodeToString(it) },
         )
 
         val data = JsonObject()
@@ -136,12 +164,23 @@ class BackupManager {
             data.add("comicCache", gson.toJsonTree(comicCache))
         }
 
-        val backup = BackupFile(meta = meta, data = data)
+        val payload = if (protected && salt != null) {
+            val key = deriveKey(password, pattern, salt)
+            val encrypted = aesGcmEncrypt(key, gson.toJson(data))
+            val envelope = JsonObject()
+            envelope.addProperty("ciphertext", encrypted)
+            envelope
+        } else {
+            data
+        }
+
+        val backup = BackupFile(meta = meta, data = payload)
         return gson.toJson(backup)
     }
 
     /**
      * 解析备份 JSON 字符串；当前写入 v3，并兼容 v1/v2。
+     * 受保护备份的 data 仍是密文，必须先 [unlockBackup]。
      */
     fun parseBackup(json: String): Result<BackupFile> = runCatching {
         val obj = JsonParser.parseString(json).asJsonObject
@@ -151,10 +190,39 @@ class BackupManager {
         BackupFile(meta = meta, data = data)
     }
 
+    /** True when content is AES-GCM encrypted — even if meta.protectionType was stripped. */
+    fun isEncrypted(backup: BackupFile): Boolean {
+        return backup.data.has("ciphertext")
+    }
+
+    /**
+     * Decrypts protected content into plaintext sections. Wrong credentials or a tampered
+     * blob fail; stripping protectionType does not reveal plaintext.
+     */
+    fun unlockBackup(
+        backup: BackupFile,
+        password: String? = null,
+        pattern: String? = null,
+    ): Result<BackupFile> = runCatching {
+        if (!isEncrypted(backup)) return@runCatching backup
+        val saltB64 = backup.meta.encryptionSalt
+            ?: error("备份缺少加密盐")
+        val salt = Base64.getDecoder().decode(saltB64)
+        val ciphertext = backup.data.get("ciphertext")?.asString
+            ?: error("备份缺少密文")
+        val key = deriveKey(password, pattern, salt)
+        val plain = aesGcmDecrypt(key, ciphertext)
+            ?: error("备份密码或图案错误")
+        val data = JsonParser.parseString(plain).asJsonObject
+        backup.copy(data = data)
+    }
+
     /**
      * 从备份中提取 [LocalSetting]，兼容 v1 旧格式。
+     * 调用前必须已 [unlockBackup]；未解锁的密文备份返回 null。
      */
     fun extractLocalSetting(backup: BackupFile): LocalSetting? {
+        if (isEncrypted(backup)) return null
         // v2 格式：data.localSetting
         val obj = backup.data.getAsJsonObject("localSetting")
         if (obj != null) return gson.fromJson(obj, LocalSetting::class.java)
@@ -167,42 +235,74 @@ class BackupManager {
 
     /**
      * 从备份中提取缓存目录备份信息。
-     * v1/v2 旧备份无此段，返回空。
+     * v1/v2 旧备份无此段，返回空。未解锁的密文备份也返回空。
+     * 畸形段（非对象）返回空，不在 UI 回调里抛 ClassCastException。
      */
     fun extractComicCache(backup: BackupFile): ComicCacheBackup {
-        val obj = backup.data.getAsJsonObject("comicCache") ?: return ComicCacheBackup()
+        if (isEncrypted(backup)) return ComicCacheBackup()
+        val element = backup.data.get("comicCache") ?: return ComicCacheBackup()
+        if (!element.isJsonObject) return ComicCacheBackup()
         return runCatching {
-            gson.fromJson(obj, ComicCacheBackup::class.java) ?: ComicCacheBackup()
+            gson.fromJson(element, ComicCacheBackup::class.java) ?: ComicCacheBackup()
         }.getOrDefault(ComicCacheBackup())
     }
 
     fun needsPassword(backup: BackupFile): Boolean {
+        if (backup.meta.passwordHash != null) return true
+        // Encrypted with unknown metadata: ask for a password first (pattern-only fallback below).
+        if (isEncrypted(backup) && backup.meta.patternHash == null &&
+            backup.meta.protectionType != BACKUP_PROTECTION_PATTERN
+        ) {
+            return true
+        }
         return backup.meta.protectionType == BACKUP_PROTECTION_PASSWORD ||
             backup.meta.protectionType == BACKUP_PROTECTION_BOTH
     }
 
     fun needsPattern(backup: BackupFile): Boolean {
-        return backup.meta.protectionType == BACKUP_PROTECTION_PATTERN ||
+        if (backup.meta.protectionType == BACKUP_PROTECTION_PATTERN ||
             backup.meta.protectionType == BACKUP_PROTECTION_BOTH
+        ) {
+            return true
+        }
+        // protectionType stripped but only a pattern hash remains → still require the pattern.
+        return isEncrypted(backup) && backup.meta.patternHash != null
     }
 
     /**
      * 校验密码（用于恢复时的核验）。
+     * 哈希缺失但密文仍在时，接受尝试；真正门闩是 [unlockBackup]。
      */
     fun verifyPassword(backup: BackupFile, password: String): Boolean {
-        val expected = backup.meta.passwordHash ?: return false
+        val expected = backup.meta.passwordHash
+            ?: return password.isNotEmpty() && isEncrypted(backup)
         return constantEquals(expected, sha256(password))
     }
 
     fun verifyPattern(backup: BackupFile, pattern: String): Boolean {
-        val expected = backup.meta.patternHash ?: return false
+        val expected = backup.meta.patternHash
+            ?: return pattern.isNotEmpty() && isEncrypted(backup)
         return constantEquals(expected, sha256(pattern))
     }
 
     fun readFromUri(context: Context, uri: Uri): String? {
         return runCatching {
             context.contentResolver.openInputStream(uri)?.use { input ->
-                input.readBytes().toString(Charsets.UTF_8)
+                // Cap backup size while reading so a huge/abusive file cannot OOM first.
+                val out = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var total = 0L
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read == -1) break
+                    total += read
+                    if (total > MAX_BACKUP_BYTES) {
+                        logError("BackupManager", "备份文件过大：$total")
+                        return@use null
+                    }
+                    out.write(buffer, 0, read)
+                }
+                out.toByteArray().toString(Charsets.UTF_8)
             }
         }.getOrElse {
             logError("BackupManager", "读取备份文件失败: ${it.message}")
@@ -266,5 +366,43 @@ class BackupManager {
             result = result or (a[i].code xor b[i].code)
         }
         return result == 0
+    }
+
+    private fun deriveKey(password: String?, pattern: String?, salt: ByteArray): SecretKeySpec {
+        val material = listOfNotNull(
+            password?.takeIf { it.isNotEmpty() },
+            pattern?.takeIf { it.isNotEmpty() },
+        ).joinToString(separator = "|")
+        require(material.isNotEmpty()) { "保护备份需要密码或图案" }
+        val spec = PBEKeySpec(material.toCharArray(), salt, PBKDF2_ITERATIONS, 256)
+        val factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
+        return try {
+            SecretKeySpec(factory.generateSecret(spec).encoded, "AES")
+        } finally {
+            spec.clearPassword()
+        }
+    }
+
+    private fun aesGcmEncrypt(key: SecretKeySpec, plain: String): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val encrypted = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
+        return Base64.getEncoder().encodeToString(cipher.iv + encrypted)
+    }
+
+    private fun aesGcmDecrypt(key: SecretKeySpec, payload: String): String? {
+        return try {
+            val bytes = Base64.getDecoder().decode(payload)
+            if (bytes.size <= GCM_IV_SIZE_BYTES) return null
+            val iv = bytes.copyOfRange(0, GCM_IV_SIZE_BYTES)
+            val encrypted = bytes.copyOfRange(GCM_IV_SIZE_BYTES, bytes.size)
+            val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+            cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+            String(cipher.doFinal(encrypted), Charsets.UTF_8)
+        } catch (_: GeneralSecurityException) {
+            null
+        } catch (_: Exception) {
+            null
+        }
     }
 }

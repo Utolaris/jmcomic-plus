@@ -50,6 +50,8 @@ internal class BackupRestoreViewModel(
     private var restoreOptions = BackupContentOptions()
     private var operationJob: Job? = null
     private var operationId = 0L
+    private var verifiedPassword: String? = null
+    private var verifiedPattern: String? = null
 
     fun beginBackup() {
         if (_state.value.busy || _state.value.awaitingDocument) return
@@ -173,17 +175,38 @@ internal class BackupRestoreViewModel(
         val current = _state.value
         val backup = current.restoreBackup ?: return false
         if (current.restoreStep != RestoreStep.VerifyPassword || !codec.verifyPassword(backup, password)) return false
-        _state.update {
-            it.copy(restoreStep = if (codec.needsPattern(backup)) RestoreStep.VerifyPattern else RestoreStep.SelectContent)
+        verifiedPassword = password
+        if (codec.needsPattern(backup)) {
+            _state.update { it.copy(restoreStep = RestoreStep.VerifyPattern) }
+            return true
         }
-        return true
+        return unlockAndSelectContent(backup, password, verifiedPattern)
     }
 
     fun verifyPattern(pattern: String): Boolean {
         val current = _state.value
         val backup = current.restoreBackup ?: return false
         if (current.restoreStep != RestoreStep.VerifyPattern || !codec.verifyPattern(backup, pattern)) return false
-        _state.update { it.copy(restoreStep = RestoreStep.SelectContent) }
+        verifiedPattern = pattern
+        return unlockAndSelectContent(backup, verifiedPassword, pattern)
+    }
+
+    private fun unlockAndSelectContent(
+        backup: BackupFile,
+        password: String?,
+        pattern: String?,
+    ): Boolean {
+        if (!codec.isEncrypted(backup)) {
+            _state.update { it.copy(restoreStep = RestoreStep.SelectContent) }
+            return true
+        }
+        val unlocked = codec.unlockBackup(backup, password, pattern).getOrElse {
+            toastManager.showAsync("备份密码或图案错误")
+            return false
+        }
+        _state.update {
+            it.copy(restoreBackup = unlocked, restoreStep = RestoreStep.SelectContent)
+        }
         return true
     }
 
@@ -224,6 +247,8 @@ internal class BackupRestoreViewModel(
         operationJob?.cancel()
         draft = BackupDraft()
         restoreOptions = BackupContentOptions()
+        verifiedPassword = null
+        verifiedPattern = null
         _state.value = BackupRestoreUiState()
     }
 
