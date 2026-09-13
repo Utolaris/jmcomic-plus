@@ -37,7 +37,7 @@ val comicModule = module {
         )
     }
     single { RetrofitNetworkHomeDataSource(get()) } bind NetworkHomeDataSource::class
-    single { EmbeddedComicDataSource(get(), get()) } bind ComicEmbeddedDataSource::class
+    single { EmbeddedComicDataSource(get(), get(), get()) } bind ComicEmbeddedDataSource::class
     single { ComicRepositoryImpl(get(), get()) } bind ComicRepository::class
     single<com.par9uet.jm.reader.atom.LocalChapterFiles> { com.par9uet.jm.reader.atom.DeviceLocalChapterFiles(get()) }
     single { com.par9uet.jm.reader.molecule.LoadLocalChapter(get(), get()) }

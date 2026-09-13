@@ -177,8 +177,8 @@ class DohManager(
         } else {
             null
         }
-        // Retire the previous resolver AFTER the swap so in-flight lookups finish on it while
-        // new lookups use the replacement; closing eagerly would abort those calls.
+        // Switching resolvers cancels outstanding lookups on the previous resolver (close →
+        // cancelAll). Callers that need a graceful drain must finish work before a switch.
         if (previousResolver != null && previousResolver !== resolver) {
             Thread {
                 runCatching { previousResolver.close() }

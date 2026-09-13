@@ -136,13 +136,35 @@ class UserViewModel(
         if (comics.isEmpty()) return
         log("UserViewModel", "deleteHistoryComics: 开始删除 ${comics.size} 条历史记录, ids=${comics.map { it.id }}")
         viewModelScope.launch {
+            // Bind the whole batch to the session that started it. A mid-batch account switch
+            // must stop instead of applying A's remaining ids under B's credentials.
+            val session = userManager.currentSessionSnapshot()
+            if (session.accountId <= 0) {
+                toastManager.showAsync("请先登录")
+                clearHistorySelection()
+                return@launch
+            }
             var success = 0
             var fail = 0
+            var cancelled = false
             val errors = mutableListOf<String>()
-            comics.forEach { comic ->
+            for (comic in comics) {
+                if (userManager.currentSessionSnapshot() != session) {
+                    cancelled = true
+                    log("UserViewModel", "deleteHistoryComics: 会话已切换，中止剩余删除")
+                    break
+                }
                 log("UserViewModel", "deleteHistoryComics: 正在删除 comic.id=${comic.id}")
-                when (val result = userRepository.deleteHistoryComic(comic.id)) {
-                    is NetWorkResult.Error -> {
+                val result = userManager.withBoundRemoteSession(session.accountId, session.generation) {
+                    userRepository.deleteHistoryComic(comic.id)
+                }
+                when {
+                    result == null -> {
+                        cancelled = true
+                        log("UserViewModel", "deleteHistoryComics: 会话失效，中止剩余删除")
+                        break
+                    }
+                    result is NetWorkResult.Error -> {
                         logError(
                             "UserViewModel",
                             "deleteHistoryComics: 删除 comic.id=${comic.id} 失败: ${result.message}"
@@ -150,11 +172,13 @@ class UserViewModel(
                         errors += result.message
                         fail++
                     }
-                    is NetWorkResult.Success -> success++
+                    result is NetWorkResult.Success -> success++
                 }
             }
-            log("UserViewModel", "deleteHistoryComics: 完成, 成功=$success, 失败=$fail")
+            log("UserViewModel", "deleteHistoryComics: 完成, 成功=$success, 失败=$fail, cancelled=$cancelled")
             val message = when {
+                cancelled && success == 0 && fail == 0 -> "会话已切换，未继续删除"
+                cancelled -> "会话已切换，已停止剩余删除（成功 $success 条）"
                 fail == 0 -> "已删除 $success 条历史记录"
                 success == 0 -> errors.firstOrNull() ?: "删除失败"
                 else -> "成功 $success 条，失败 $fail 条：${errors.firstOrNull().orEmpty()}"
@@ -173,15 +197,20 @@ class UserViewModel(
         clearHistorySelection()
     }
 
-    val historyCommentPager = Pager(
-        config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
-        pagingSourceFactory = {
-            HistoryCommentPagingSource(
-                userRepository,
-                userManager.userState.value.data?.id ?: 0
-            )
-        }
-    ).flow.cachedIn(viewModelScope)
+    /**
+     * Recreated whenever the session identity changes so account B never reuses A's
+     * cached pages or userId. flatMapLatest + cachedIn keeps one active pager per session.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val historyCommentPager = userManager.sessionState
+        .flatMapLatest { snapshot ->
+            Pager(
+                config = PagingConfig(pageSize = 20, prefetchDistance = 6, initialLoadSize = 20),
+                pagingSourceFactory = {
+                    HistoryCommentPagingSource(userRepository, snapshot.accountId)
+                }
+            ).flow
+        }.cachedIn(viewModelScope)
 
     private val _signInDataState = MutableStateFlow(
         CommonUIState<SignInData>(

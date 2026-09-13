@@ -6,7 +6,6 @@ import com.par9uet.jm.core.model.CommonUIState
 import com.par9uet.jm.core.model.User
 import com.par9uet.jm.session.CandidateSession
 import com.par9uet.jm.session.UserRepository
-import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.core.network.NetworkErrorKind
@@ -43,7 +42,6 @@ class UserManager(
     private val userStorage: UserStorage,
     private val cookieStorage: CookieStorage,
     private val userRepository: UserRepository,
-    private val retrofit: ActiveSessionCookieStore,
     private val sessionReadinessHolder: SessionReadinessHolder,
 ) : AuthenticatedRequestExecutor {
     private val _userState = MutableStateFlow(CommonUIState<User>())
@@ -406,9 +404,8 @@ class UserManager(
                             password = password
                         )
                     )
-                    // 提交完整会话（内置 API 含 AVS；网络 API 登录响应已由活动 CookieJar
-                    // 自行持久化，此处为空操作）。generation 校验保证陈旧的登录/验证结果
-                    // 无法覆盖更新的会话。
+                    // 提交完整会话（内置 API 含 AVS）。generation 校验保证陈旧的登录/验证结果
+                    // 无法覆盖更新的会话。网络 API 的 CookieJar 为空操作，已移除。
                     userRepository.activateVerifiedSession(result.data)
                     sessionReadinessHolder.set(SessionReadiness.Authenticated)
                 }
@@ -441,7 +438,6 @@ class UserManager(
                 errorMsg = errorMsg.orEmpty(),
             )
         }
-        retrofit.clearCookie()
         userRepository.clearSession()
         userStorage.remove()
         cookieStorage.remove()

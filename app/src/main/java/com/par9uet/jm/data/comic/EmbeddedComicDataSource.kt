@@ -78,21 +78,26 @@ interface ComicEmbeddedDataSource {
 class EmbeddedComicDataSource(
     private val embeddedClientManager: EmbeddedClientManager,
     private val authenticatedEmbeddedClient: AuthenticatedEmbeddedClient,
+    private val dohManager: com.par9uet.jm.network.DohManager,
 ) : BaseRepository(), ComicEmbeddedDataSource {
     companion object {
         private const val IMAGE_CACHE_MAX = 32
+        /** Stream-time hard cap for fallback image bytes (matches reader source limit). */
+        private const val FALLBACK_IMAGE_MAX_BYTES = 40L * 1024L * 1024L
         private val imageCache: MutableMap<Int, List<JmImage>> =
             object : LinkedHashMap<Int, List<JmImage>>(IMAGE_CACHE_MAX, 0.75f, true) {
                 override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Int, List<JmImage>>): Boolean =
                     size > IMAGE_CACHE_MAX
             }
-        private val cleanHttpClient: OkHttpClient by lazy {
-            OkHttpClient.Builder()
-                .connectTimeout(15, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .followRedirects(true)
-                .build()
-        }
+    }
+
+    private val cleanHttpClient: OkHttpClient by lazy {
+        OkHttpClient.Builder()
+            .dns(dohManager)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .followRedirects(true)
+            .build()
     }
 
     override suspend fun getComicDetail(id: Int): NetWorkResult<ComicDetailResponse> =
@@ -416,7 +421,35 @@ class EmbeddedComicDataSource(
                         )
                         return@withContext null
                     }
-                    response.body?.bytes()
+                    val body = response.body ?: return@withContext null
+                    val declared = body.contentLength()
+                    if (declared > FALLBACK_IMAGE_MAX_BYTES) {
+                        logError(
+                            "EmbeddedComicDataSource",
+                            "下载图片过大 comicId=$comicId index=$imageIndex size=$declared",
+                        )
+                        return@withContext null
+                    }
+                    // Stream with a hard cap so a huge body cannot OOM before any check.
+                    val out = java.io.ByteArrayOutputStream()
+                    body.byteStream().use { input ->
+                        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                        var total = 0L
+                        while (true) {
+                            val read = input.read(buffer)
+                            if (read == -1) break
+                            total += read
+                            if (total > FALLBACK_IMAGE_MAX_BYTES) {
+                                logError(
+                                    "EmbeddedComicDataSource",
+                                    "下载图片超过上限 comicId=$comicId index=$imageIndex",
+                                )
+                                return@withContext null
+                            }
+                            out.write(buffer, 0, read)
+                        }
+                    }
+                    out.toByteArray()
                 }
             } catch (e: CancellationException) {
                 throw e

@@ -108,7 +108,7 @@ val appModule = module {
     single { RemoteSettingRepositoryImpl(get()) } bind RemoteSettingRepository::class
 
     single { SessionReadinessHolder() }
-    single { UserManager(get(), get(), get(), get(), get()) }
+    single { UserManager(get(), get(), get(), get()) }
     single { com.par9uet.jm.network.SecureRemoteConfigStore(get()) } bind com.par9uet.jm.network.RemoteConfigStore::class
     single {
         val remoteSettingRepository = get<RemoteSettingRepository>()
@@ -141,7 +141,13 @@ val appModule = module {
     single { DownloadToastAggregator(get()) }
     single { PostStartupCoordinator(get(), GlobalContext.get()) }
     single { AppUpdateDownloadManager(get(), get(), get(), get()) } bind com.par9uet.jm.update.AppUpdateDownloads::class
-    single { com.par9uet.jm.update.GithubReleaseSource() } bind com.par9uet.jm.update.ReleaseSource::class
+    single {
+        com.par9uet.jm.update.GithubReleaseSource(
+            okhttp3.OkHttpClient.Builder()
+                .dns(get<com.par9uet.jm.network.DohManager>())
+                .build(),
+        )
+    } bind com.par9uet.jm.update.ReleaseSource::class
     single { com.par9uet.jm.update.ApkInstaller(get()) } bind com.par9uet.jm.update.AppUpdateInstaller::class
     viewModel { com.par9uet.jm.ui.viewModel.AppUpdateViewModel(get(), get(), get(), get()) }
     single { com.par9uet.jm.backup.BackupManager() }

@@ -67,8 +67,10 @@ class ArchitectureBoundaryTest {
                 "com.par9uet.jm.reader.", "com.par9uet.jm.favorites.", "com.par9uet.jm.ui.viewModel.",
             )))
             addAll(forbiddenQualifiedUsages("ui/components", listOf(
-                "com.par9uet.jm.storage.", "com.par9uet.jm.repository.", "com.par9uet.jm.session.",
-                "com.par9uet.jm.cache.", "com.par9uet.jm.ui.viewModel.",
+                "com.par9uet.jm.storage.", "com.par9uet.jm.repository.", "com.par9uet.jm.database.",
+                "com.par9uet.jm.session.", "com.par9uet.jm.cache.", "com.par9uet.jm.download.",
+                "com.par9uet.jm.backup.", "com.par9uet.jm.update.", "com.par9uet.jm.network.",
+                "com.par9uet.jm.reader.", "com.par9uet.jm.favorites.", "com.par9uet.jm.ui.viewModel.",
             )))
             listOf(
                 "data", "retrofit", "network", "session", "favorites/data",

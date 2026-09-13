@@ -15,7 +15,10 @@ fun interface ReleaseSource {
     suspend fun latest(): GithubRelease
 }
 
-class GithubReleaseSource(private val client: OkHttpClient = OkHttpClient()) : ReleaseSource {
+class GithubReleaseSource(
+    // Prefer DI-provided DoH client; bare default is only for tests.
+    private val client: OkHttpClient = OkHttpClient(),
+) : ReleaseSource {
     override suspend fun latest(): GithubRelease = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url(GITHUB_RELEASE_API)

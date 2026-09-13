@@ -2,4 +2,6 @@
 <!-- Android 11 uses these rules; Android 12+ uses data_extraction_rules.xml. -->
 <full-backup-content>
     <exclude domain="sharedpref" path="jm-mobile-g-data.xml" />
+    <!-- Startup prefs hold Keystore-encrypted identity/settings; do not transfer across devices. -->
+    <exclude domain="sharedpref" path="jm-mobile-startup.xml" />
 </full-backup-content>

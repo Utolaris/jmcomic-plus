@@ -71,6 +71,7 @@ class AppUpdateDownloadManager(
 ) : AppUpdateDownloads {
     private val client = OkHttpClient.Builder().dns(dohManager).build()
     private val jobs = UpdateDownloadJobGate()
+    private val activeCall = java.util.concurrent.atomic.AtomicReference<okhttp3.Call?>(null)
 
     private val _state = MutableStateFlow(AppUpdateDownloadState())
     override val state = _state.asStateFlow()
@@ -82,6 +83,7 @@ class AppUpdateDownloadManager(
         }
         // New download intent: stop the current writer; pause issued while waiting must stick.
         jobs.paused = false
+        activeCall.getAndSet(null)?.cancel()
         jobs.start(scope) {
             download(request)
         }
@@ -116,6 +118,9 @@ class AppUpdateDownloadManager(
     }
 
     override fun cancel() {
+        // Cancel the Call first so a writer blocked in InputStream.read() unblocks immediately;
+        // job.cancel alone only runs invokeOnCompletion after the task finishes.
+        activeCall.getAndSet(null)?.cancel()
         jobs.cancel()
         _state.update { it.copy(status = AppUpdateDownloadStatus.Canceled, speedBytesPerSecond = 0L) }
         cancelProgressNotification(context, APP_UPDATE_NOTIFICATION_ID)
@@ -134,9 +139,13 @@ class AppUpdateDownloadManager(
                 .header("User-Agent", "jmcomic-plus-android")
                 .build()
         )
-        // Unblock a writer stuck in InputStream.read() so the single-writer mutex can release.
+        activeCall.set(call)
+        // Safety net if the job ends without going through cancel().
         currentCoroutineContext().job.invokeOnCompletion { cause ->
-            if (cause != null) call.cancel()
+            if (cause != null) {
+                call.cancel()
+                activeCall.compareAndSet(call, null)
+            }
         }
         try {
             call.execute().use { response ->

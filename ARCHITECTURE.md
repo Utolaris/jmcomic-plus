@@ -151,21 +151,20 @@ data/ repository/ retrofit/  历史命名保留；本轮列出的历史依赖环
   L2 直接操作下载 DAO（已确认 `DownloadComicCoordinator` 直接 import `DownloadComicDao`），
   以集中维护进度和失败分支；L3 不反向依赖 Worker 或协调器。
 - 通用异步状态放在 `core/model/CommonUIState`，状态存储层不再依赖 UI 包。
-- **仓库层只返回领域类型。** `ComicRepository` / `UserRepository` 的对外方法不再返回
-  `retrofit/model` 的 `*Response`：映射统一在 `repository/impl` 内用 `NetWorkResult.map {}`
-  调 `data/comic/mapper` 完成。此前调用方（`ui/viewModel`、`ui/pagingSource`、
+- **`ComicRepository` 已完成 domain-only。** 其对外方法不再返回 `retrofit/model` 的
+  `*Response`：映射统一在 `repository/impl` 内用 `NetWorkResult.map {}` 调
+  `data/comic/mapper` 完成。此前调用方（`ui/viewModel`、`ui/pagingSource`、
   `ui/components`、`App.kt`、`download/molecule`）各自调 `toComic()` / `toWeekData()`，
-  使 wire DTO 一路渗到表现层。  分页接口需要的分页元数据（`total`、搜索的 `redirect_aid`）
+  使 wire DTO 一路渗到表现层。分页接口需要的分页元数据（`total`、搜索的 `redirect_aid`）
   用 `data/models` 的 `ComicPage` / `CommentPage` / `ComicSearchPage` 表达；
   `ComicPage.total` 可空，因为 watch_list 不返回总数，末页要按"本页是否填满"判断。
   评论提交的 `status` 成功判定也随之下沉到数据层（`ActionResult.isSuccess`）。
-- **协议字段的畸形输入按"降级 + 留痕"处理，不崩溃也不静默。** 两个此前会抛异常的解析点
-  现在改为防御式，并在 mapper 里 `log` 出原始值，由 `ResponseMappersTest` 钉住：
-  `redirect_aid` 存在但不可解析 → `redirectComicId = null`（不重定向，继续分页）；
-  `CommentListResponse.total` 为空/非数字 → `total = 0`（分页在第一页判定末页，
-  表现为"评论只有一页"）。两者都是**有意的降级**：宁可少翻一页，也不要整页崩溃，
-  但必须能在日志里看出是服务端协议畸形而不是真的只有一页。
-  注意 `UserHistoryCommentListResponse.total` 是 `Int`，不走这条降级路径。
+  **剩余 legacy boundary（本轮不改）**：`UserRepository` 仍经 `CandidateSession` 暴露
+  `LoginResponse` / `okhttp3.Cookie`；`RemoteSettingRepository` 仍返回
+  `RemoteSettingResponse`。二者后续单独处理。
+- **分页协议字段必须严格解析。** `total` / 非空 `redirect_aid` 非数字时 mapper 直接失败
+  （`toInt()`），不降级成 `0` / `null`——那会把协议畸形伪装成"只有一页 / 不重定向"。
+  `redirect_aid` 为 null/blank 表示未命中，合法返回 `null`。由 `ResponseMappersTest` 钉住。
   另：`App` 里包 `runCatching` 时必须把 `CancellationException` 原样抛出，
   否则协程取消会被当成"详情获取失败"。
 - **`ui/components` 只接收参数、只读环境值。** 该包不依赖 `storage` / `repository` /
@@ -443,10 +442,12 @@ L4 设施，或反向依赖上层；`data.models` 是共享契约，不算违规
    组件不再反向 import `ui.screens`；远端图片主机、详情预置、详情取数改成
    `ui/models` 的环境值 + 组合根提供；`ComicPicImage` 移入 `ui/screens/readScreen`；
    `ComicLazyGrid` 的屏蔽标签改为入参。边界由 4 条断言钉住。
-2. **仓库层返回领域类型**（2026-09-13）：`ComicRepository` / `UserRepository` 的
-   `*Response` 返回值全部换成 `data/models` 契约，映射下沉 `repository/impl`；
-   `NetWorkResult.map {}` 负责"只映射成功值"。`ui/pagingSource`、
-   `ui/components`、`App.kt`、`download/molecule` 里的 mapper 调用一并删除。
+2. **`ComicRepository` 领域类型下沉**（2026-09-13）：其 `*Response` 返回值全部换成
+   `data/models` 契约，映射下沉 `repository/impl`；`NetWorkResult.map {}` 负责
+   "只映射成功值"。`ui/pagingSource`、`ui/components`、`App.kt`、`download/molecule`
+   里的 mapper 调用一并删除。`UserRepository` / `RemoteSettingRepository` 仍是
+   legacy boundary（`CandidateSession` 含 wire/okhttp 类型、`RemoteSettingResponse`），
+   后续单独处理。
 3. **`ui/screens` 领域设施下沉**（2026-09-13）：
    - `ExtractCodeScreen` → 新建 `ExtractCodeViewModel`（L2），详情拉取与 toast 收口；
      顺带修掉 `runCatching` 吞 `CancellationException`、同码二次提取 loading 卡死。

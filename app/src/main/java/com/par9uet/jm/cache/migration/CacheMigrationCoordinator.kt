@@ -30,10 +30,10 @@ interface CacheMigrationFeedback {
 
 /**
  * L2: owns the migration order and its failure branches. Every source is resolved before the
- * destination is touched, and the cache index plus the active tree are only swapped after every
- * file landed. That commit runs non-cancellable, so stopping the worker cannot cut it in half —
- * it does not make it atomic: a failure or a process death inside the commit can still leave the
- * new tree active with only part of the rows rewritten.
+ * destination is touched; cache index rows are committed in one Room transaction, then the
+ * active tree is swapped. The commit runs non-cancellable. Remaining window: the DB transaction
+ * and the preference/tree switch are not one cross-storage atomic unit — a crash between them
+ * can leave the tree switched after rows committed (or vice versa) and needs a retry path.
  */
 class CacheMigrationCoordinator(
     private val operations: CacheMigrationOperations,

@@ -12,7 +12,6 @@ import com.par9uet.jm.favorites.sync.FavoriteSyncReport
 import com.par9uet.jm.core.model.User
 import com.par9uet.jm.session.CandidateSession
 import com.par9uet.jm.session.UserRepository
-import com.par9uet.jm.retrofit.ActiveSessionCookieStore
 import com.par9uet.jm.core.network.AuthFailure
 import com.par9uet.jm.retrofit.model.LoginResponse
 import com.par9uet.jm.core.model.SignInData
@@ -62,7 +61,7 @@ class UserManagerSessionTest {
         val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
         val repository = GateUserRepository(cookies)
         val readiness = SessionReadinessHolder()
-        manager(FakeUserStorage(user(1, "accountA", password = "")), cookies, repository, FakeSessionClearer(), readiness)
+        manager(FakeUserStorage(user(1, "accountA", password = "")), cookies, repository, readiness)
         try {
             AuthenticatedSessionGate(readiness).run { error("Request must not start") }
             error("Expected login required")
@@ -81,7 +80,7 @@ class UserManagerSessionTest {
             loginResponse(2, "accountB"), listOf(avsCookie("B")),
         )) }
         val readiness = SessionReadinessHolder()
-        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, readiness)
         var calls = 0
         val request = async { AuthenticatedSessionGate(readiness).run { calls++ } }
         runCurrent()
@@ -100,7 +99,7 @@ class UserManagerSessionTest {
             loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
         )))
         val readiness = SessionReadinessHolder()
-        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, readiness)
         val snapshot = manager.currentSessionSnapshot()
         var calls = 0
         val result = AuthenticatedSessionGate(readiness).run {
@@ -123,7 +122,7 @@ class UserManagerSessionTest {
             val repository = GateUserRepository(cookies)
             repository.completeVerify(NetWorkResult.Error("offline", authFailure = failure))
             val readiness = SessionReadinessHolder()
-            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, readiness)
             var calls = 0
             val error = try {
                 AuthenticatedSessionGate(readiness).run<Unit> {
@@ -152,7 +151,7 @@ class UserManagerSessionTest {
         val repository = GateUserRepository(cookies)
         repository.completeVerify(NetWorkResult.Success(CandidateSession(loginResponse(1, "accountA"))))
         val readiness = SessionReadinessHolder()
-        manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        manager(FakeUserStorage(user(1, "accountA")), cookies, repository, readiness)
         val gate = AuthenticatedSessionGate(readiness)
         var calls = 0
         try {
@@ -179,7 +178,7 @@ class UserManagerSessionTest {
                 loginResponse(2, "accountB"), listOf(avsCookie("B")),
             )) }
             val readiness = SessionReadinessHolder()
-            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, readiness)
             var calls = 0
             val request = async {
                 AuthenticatedSessionGate(readiness).run<Unit> {
@@ -208,7 +207,7 @@ class UserManagerSessionTest {
             loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
         )))
         val readiness = SessionReadinessHolder()
-        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer(), readiness)
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, readiness)
         val snapshot = manager.currentSessionSnapshot()
         var calls = 0
         val result = withTimeout(2_000) {
@@ -239,7 +238,7 @@ class UserManagerSessionTest {
     fun expiredSessionRecoveryCannotRestoreLoggedOutAccount() = runBlocking {
         val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
         val repository = GateUserRepository(cookies)
-        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer())
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository)
         val snapshot = manager.currentSessionSnapshot()
         val recovery = async { manager.recoverExpiredSession(snapshot.accountId, snapshot.generation) }
         repository.verifyStarted.await()
@@ -264,7 +263,7 @@ class UserManagerSessionTest {
             val cookies = FakeCookieStorage(listOf(avsCookie("expired")))
             val repository = GateUserRepository(cookies)
             repository.completeVerify(result)
-            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer())
+            val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository)
             val snapshot = manager.currentSessionSnapshot()
             val recovered = manager.recoverExpiredSession(snapshot.accountId, snapshot.generation)
             assertTrue(recovered is NetWorkResult.Error)
@@ -295,7 +294,7 @@ class UserManagerSessionTest {
         repository.completeVerify(NetWorkResult.Success(CandidateSession(
             loginResponse(1, "accountA"), listOf(avsCookie("renewed")),
         )))
-        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository, FakeSessionClearer())
+        val manager = manager(FakeUserStorage(user(1, "accountA")), cookies, repository)
         val snapshot = manager.currentSessionSnapshot()
         val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.Default)
         var calls = 0
@@ -423,12 +422,6 @@ class UserManagerSessionTest {
         fun writesCount(): Int = writes.size
     }
 
-    private class FakeSessionClearer : ActiveSessionCookieStore {
-        var clearCount = 0
-        override fun clearCookie() {
-            clearCount++
-        }
-    }
 
     /**
      * 可编排的网络替身。verifyLogin 模拟真实的不可取消阻塞网络调用：
@@ -531,9 +524,8 @@ class UserManagerSessionTest {
         userStorage: UserStorage,
         cookieStorage: CookieStorage,
         repository: UserRepository,
-        clearer: ActiveSessionCookieStore,
         readiness: SessionReadinessHolder = SessionReadinessHolder(),
-    ) = UserManager(userStorage, cookieStorage, repository, clearer, readiness)
+    ) = UserManager(userStorage, cookieStorage, repository, readiness)
 
     @Test
     fun staleVerifierCannotOverwriteNewerManualLogin() = runBlocking {
@@ -548,7 +540,7 @@ class UserManagerSessionTest {
                 )
             )
         }
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
 
         val verifier = launch { manager.verifyStoredLogin() }
         repository.verifyStarted.await()
@@ -584,7 +576,7 @@ class UserManagerSessionTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
         val repository = GateUserRepository(cookieStorage)
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
 
         val verifier = launch { manager.verifyStoredLogin() }
         repository.verifyStarted.await()
@@ -616,7 +608,7 @@ class UserManagerSessionTest {
         val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
         val repository = GateUserRepository(cookieStorage)
         val readiness = SessionReadinessHolder()
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+        val manager = manager(userStorage, cookieStorage, repository, readiness)
 
         val verifier = launch { manager.verifyStoredLogin() }
         repository.verifyStarted.await()
@@ -637,9 +629,8 @@ class UserManagerSessionTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage(listOf(avsCookie("session-A")))
         val repository = GateUserRepository(cookieStorage)
-        val clearer = FakeSessionClearer()
         val readiness = SessionReadinessHolder()
-        val manager = manager(userStorage, cookieStorage, repository, clearer, readiness)
+        val manager = manager(userStorage, cookieStorage, repository, readiness)
 
         val verifier = launch { manager.verifyStoredLogin() }
         repository.verifyStarted.await()
@@ -655,7 +646,6 @@ class UserManagerSessionTest {
         assertEquals(0, manager.userState.value.data?.id)
         assertEquals(User.create(), userStorage.get())
         assertTrue(cookieStorage.get().isEmpty())
-        assertEquals(1, clearer.clearCount)
         assertEquals(SessionReadiness.Unauthenticated, readiness.state.value)
     }
 
@@ -665,7 +655,7 @@ class UserManagerSessionTest {
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
         val readiness = SessionReadinessHolder()
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+        val manager = manager(userStorage, cookieStorage, repository, readiness)
 
         val verifier = launch { manager.verifyStoredLogin() }
         repository.verifyStarted.await()
@@ -694,7 +684,7 @@ class UserManagerSessionTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
 
         val verifier = launch { manager.verifyStoredLogin() }
         repository.verifyStarted.await()
@@ -723,7 +713,7 @@ class UserManagerSessionTest {
         val readiness = SessionReadinessHolder()
 
         // 模拟进程重启：用同一持久化存储重建 UserManager。
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+        val manager = manager(userStorage, cookieStorage, repository, readiness)
 
         assertEquals(1, manager.userState.value.data?.id)
         assertEquals("accountA", manager.userState.value.data?.username)
@@ -740,7 +730,7 @@ class UserManagerSessionTest {
         val repository = GateUserRepository(cookieStorage)
         val readiness = SessionReadinessHolder()
 
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer(), readiness)
+        val manager = manager(userStorage, cookieStorage, repository, readiness)
 
         assertEquals(1, manager.userState.value.data?.id)
         assertEquals(SessionReadiness.Restoring, manager.authState.value)
@@ -752,7 +742,7 @@ class UserManagerSessionTest {
         val userStorage = FakeUserStorage()
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
 
         assertEquals(SessionReadiness.Unauthenticated, manager.authState.value)
     }
@@ -762,7 +752,7 @@ class UserManagerSessionTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage(listOf(avsCookie()))
         val repository = GateUserRepository(cookieStorage)
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
         val snapshot = manager.currentSessionSnapshot()
         var remoteCalls = 0
 
@@ -788,7 +778,7 @@ class UserManagerSessionTest {
             override suspend fun verifyLogin(username: String, password: String): NetWorkResult<CandidateSession> =
                 NetWorkResult.Error("Temporary offline")
         }
-        val manager = manager(userStorage, cookies, repository, FakeSessionClearer(), readiness)
+        val manager = manager(userStorage, cookies, repository, readiness)
         val snapshot = manager.currentSessionSnapshot()
         val authGate = AuthenticatedSessionGate(readiness)
         val mutation = backgroundScope.async {
@@ -810,7 +800,7 @@ class UserManagerSessionTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage()
         val repository = GateUserRepository(cookieStorage)
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
         val staleGeneration = manager.currentSessionSnapshot().generation - 1L
         var remoteCalls = 0
 
@@ -832,7 +822,7 @@ class UserManagerSessionTest {
         val userStorage = FakeUserStorage(user(1, "accountA"))
         val cookieStorage = FakeCookieStorage(listOf(avsCookie()))
         val repository = GateUserRepository(cookieStorage)
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
         val snapshotA = manager.currentSessionSnapshot()
         val blockStarted = CompletableDeferred<Unit>()
         val allowLocalCommit = CompletableDeferred<Unit>()
@@ -875,7 +865,7 @@ class UserManagerSessionTest {
             candidateStarted.complete(Unit)
             candidateResult.await()
         }
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
 
         val loginJob = async { manager.login("accountB", "pwdB") }
         candidateStarted.await()
@@ -916,7 +906,7 @@ class UserManagerSessionTest {
                 )
             )
         }
-        val manager = manager(userStorage, cookieStorage, repository, FakeSessionClearer())
+        val manager = manager(userStorage, cookieStorage, repository)
         val snapshotA = manager.currentSessionSnapshot()
         val remoteStarted = CountDownLatch(1)
         val releaseRemote = CountDownLatch(1)

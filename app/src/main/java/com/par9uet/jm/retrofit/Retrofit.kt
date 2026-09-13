@@ -14,8 +14,8 @@ import retrofit2.converter.scalars.ScalarsConverterFactory
 import java.util.concurrent.TimeUnit
 
 /**
- * 活动网络会话 cookie 的清除入口。由 [Retrofit] 实现，会话管理层（UserManager）只依赖
- * 该窄接口，便于单元测试替换。
+ * 活动网络会话 cookie 的清除入口。Retrofit 客户端使用 CookieJar.NO_COOKIES，
+ * 此接口已无真实能力，保留仅为兼容旧绑定，不应被会话层依赖。
  */
 interface ActiveSessionCookieStore {
     fun clearCookie()
