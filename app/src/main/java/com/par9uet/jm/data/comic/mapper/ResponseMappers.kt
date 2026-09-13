@@ -20,7 +20,6 @@ import com.par9uet.jm.retrofit.model.UserHistoryComicListResponse
 import com.par9uet.jm.retrofit.model.UserHistoryCommentListResponse
 import com.par9uet.jm.retrofit.model.WeekResponse
 import com.par9uet.jm.retrofit.model.WeekRecommendComicResponse
-import com.par9uet.jm.utils.log
 import com.par9uet.jm.utils.translateCommentTime
 
 /**
@@ -222,25 +221,22 @@ private fun String?.toIntOrZero(): Int = this?.toIntOrNull() ?: 0
 
 internal fun ComicListResponse.toComicSearchPage(): ComicSearchPage {
     val redirect = redirect_aid
-    // 协议里 redirect_aid 存在即表示"唯一匹配、应跳转"。非数字属协议畸形：
-    // 解析失败必须留痕，否则会静默退化成"继续分页"，看不出服务端返回了异常值。
-    if (!redirect.isNullOrBlank() && redirect.toIntOrNull() == null) {
-        log("ResponseMappers", "malformed redirect_aid=$redirect")
-    }
     return ComicSearchPage(
         items = toComicList(),
-        total = total.toIntOrZero(),
-        redirectComicId = redirect?.toIntOrNull(),
+        // total 是必填协议字段：非数字直接失败，不降级成 0。
+        total = total.toInt(),
+        redirectComicId = when {
+            // 协议允许未命中时不带 redirect_aid（null / blank）。
+            redirect.isNullOrBlank() -> null
+            // 非空且非数字属协议畸形，必须失败，不能伪装成"不重定向"。
+            else -> redirect.toInt()
+        },
     )
 }
 
 internal fun CommentListResponse.toCommentPage(): CommentPage {
-    // total 为空或非数字时降级为 0；0 会让分页在第一页就判定末页（表现为"评论只有一页"），
-    // 所以要留痕，便于区分"真只有一页"和"服务端没给 total"。
-    if (total.toIntOrNull() == null) {
-        log("ResponseMappers", "malformed comment total=$total")
-    }
-    return CommentPage(items = toCommentList(), total = total.toIntOrZero())
+    // total 是必填协议字段：非数字直接失败，不降级成 0（0 会被当成末页）。
+    return CommentPage(items = toCommentList(), total = total.toInt())
 }
 
 internal fun UserHistoryCommentListResponse.toCommentPage(): CommentPage {
@@ -278,4 +274,3 @@ internal fun CommentComicResponse.toActionResult(): ActionResult {
         message = msg,
     )
 }
-

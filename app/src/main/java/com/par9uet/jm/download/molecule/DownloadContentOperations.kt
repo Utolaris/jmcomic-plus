@@ -120,14 +120,19 @@ class DeviceDownloadContentOperations(
 
     override suspend fun complete(downloadTask: DownloadComic) {
         val comicId = downloadTask.id
-        downloadComicDao.updateZipPath(UpdateComicZipPath(comicId, files.chapterPath(downloadTask)))
-        downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.COMPLETE))
+        val chapterPath = files.chapterPath(downloadTask)
+        // Finish every fallible file write BEFORE flipping COMPLETE in the DB, otherwise a
+        // failed config write leaves a task that retries skip as already successful.
         val current = downloadComicDao.getById(comicId) ?: return
         val groupId = current.groupId.takeIf { it != 0 } ?: current.id
         val chapters = downloadComicDao.getByGroupId(groupId)
+        val finalized = current.copy(zipPath = chapterPath, status = DownloadStatus.COMPLETE)
+        val chaptersForConfig = chapters.map { if (it.id == comicId) finalized else it }
         withContext(Dispatchers.IO) {
-            files.writeConfig(current, chapters)
+            files.writeConfig(finalized, chaptersForConfig)
         }
+        downloadComicDao.updateZipPath(UpdateComicZipPath(comicId, chapterPath))
+        downloadComicDao.updateStatus(UpdateComicStatus(comicId, DownloadStatus.COMPLETE))
     }
 }
 
