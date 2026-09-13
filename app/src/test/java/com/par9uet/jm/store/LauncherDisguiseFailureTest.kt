@@ -4,7 +4,9 @@ import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.data.models.LauncherDisguise
 import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.launcher.LauncherIdentityApplier
+import com.par9uet.jm.storage.LocalSettingLoadResult
 import com.par9uet.jm.storage.LocalSettingPersistence
+import com.par9uet.jm.storage.StorageWriteResult
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -15,8 +17,12 @@ class LauncherDisguiseFailureTest {
     private fun manager(applier: LauncherIdentityApplier): LocalSettingManager =
         LocalSettingManager(
             object : LocalSettingPersistence {
-                override fun load(): LocalSetting? = persisted.lastOrNull()
-                override fun persist(localSetting: LocalSetting) { persisted += localSetting }
+                override fun load() = persisted.lastOrNull()?.let { LocalSettingLoadResult.Success(it) }
+                ?: LocalSettingLoadResult.Missing
+                override fun persist(localSetting: LocalSetting): StorageWriteResult {
+                persisted += localSetting
+                return StorageWriteResult.Success
+            }
             },
             applier,
         )

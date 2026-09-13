@@ -4,7 +4,9 @@ import com.par9uet.jm.data.models.LocalSetting
 import com.par9uet.jm.favorites.model.FavoriteSyncUiState
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequestKind
 import com.par9uet.jm.favorites.sync.FavoriteSyncRequester
+import com.par9uet.jm.storage.LocalSettingLoadResult
 import com.par9uet.jm.storage.LocalSettingPersistence
+import com.par9uet.jm.storage.StorageWriteResult
 import com.par9uet.jm.storage.ApiEndpointPreference
 import com.par9uet.jm.storage.AppLockState
 import com.par9uet.jm.storage.AppSecurityPreferences
@@ -58,8 +60,12 @@ class SettingsViewModelTest {
 
     private class InMemoryPersistence : LocalSettingPersistence {
         var stored: LocalSetting? = null
-        override fun load(): LocalSetting? = stored
-        override fun persist(localSetting: LocalSetting) { stored = localSetting }
+        override fun load() = stored?.let { LocalSettingLoadResult.Success(it) }
+        ?: LocalSettingLoadResult.Missing
+        override fun persist(localSetting: LocalSetting): StorageWriteResult {
+        stored = localSetting
+        return StorageWriteResult.Success
+    }
     }
 
     private class FakeSyncRequester : FavoriteSyncRequester {

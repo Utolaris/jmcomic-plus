@@ -69,6 +69,7 @@ import com.par9uet.jm.ui.glass.GlassModal
 import com.par9uet.jm.ui.screens.AppLockScreen
 import com.par9uet.jm.ui.screens.AppScreen
 import com.par9uet.jm.ui.screens.NsfwWarningDialog
+import com.par9uet.jm.ui.screens.SettingsUnavailableScreen
 import com.par9uet.jm.ui.screens.WelcomeScreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -86,11 +87,13 @@ fun App(
     remoteConfigPreferences: RemoteConfigPreferences = getKoin().get(),
 ) {
     val appLock by localSettingManager.appLock.collectAsState()
+    val securityLoadBlocked by localSettingManager.securityLoadBlocked.collectAsState()
     val onboardingCompleted by localSettingManager.onboardingCompleted.collectAsState()
     val nsfwWarningDismissed by localSettingManager.nsfwWarningDismissed.collectAsState()
     val miscSettings by localSettingManager.misc.collectAsState()
-    val showOnboarding = !onboardingCompleted
-    var isLocked by remember { mutableStateOf(appLock.enabled) }
+    // Temporary Keystore/storage outages must not look like a fresh unlocked install.
+    val showOnboarding = !onboardingCompleted && !securityLoadBlocked
+    var isLocked by remember { mutableStateOf(appLock.enabled || securityLoadBlocked) }
     var sessionNsfwDismissed by remember { mutableStateOf(nsfwWarningDismissed) }
 
     // Only the small local state needed to choose the first safe screen is loaded here. All
@@ -102,7 +105,10 @@ fun App(
     }
 
     LaunchedEffect(appLock.enabled) {
-        if (!appLock.enabled) isLocked = false
+        if (!appLock.enabled && !securityLoadBlocked) isLocked = false
+    }
+    LaunchedEffect(securityLoadBlocked) {
+        if (securityLoadBlocked) isLocked = true
     }
 
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -116,24 +122,28 @@ fun App(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val showAppLock = appLock.enabled && isLocked && !showOnboarding
-    val showNsfwDialog = !showAppLock && !showOnboarding &&
+    val showAppLock = !securityLoadBlocked && appLock.enabled && isLocked && !showOnboarding
+    val showNsfwDialog = !securityLoadBlocked && !showAppLock && !showOnboarding &&
         !sessionNsfwDismissed && !nsfwWarningDismissed
 
     // Mark the first real screen for startup traces. Permission prompts are scheduled after that
     // frame and never compete with the onboarding or app-lock screen.
     val context = LocalContext.current
-    LaunchedEffect(showOnboarding, showAppLock) {
+    LaunchedEffect(showOnboarding, showAppLock, securityLoadBlocked) {
         withFrameNanos { }
         context.findActivity()?.let { activity ->
             activity.reportFullyDrawn()
-            if (!showOnboarding && !showAppLock) {
+            if (!showOnboarding && !showAppLock && !securityLoadBlocked) {
                 activity.requestNotificationPermissionIfNeeded()
             }
         }
     }
 
     when {
+        securityLoadBlocked -> SettingsUnavailableScreen(
+            onRetry = { localSettingManager.reloadSettings() }
+        )
+
         showOnboarding -> WelcomeScreen(
             onComplete = {
                 isLocked = localSettingManager.appLock.value.enabled
@@ -173,7 +183,7 @@ fun App(
         LocalRemoteImageHost provides remoteImageHost,
         LocalComicDetailLoader provides detailLoader,
     ) {
-        RetainedMainNavigation(visible = !showOnboarding && !showAppLock) { mainNavController ->
+        RetainedMainNavigation(visible = !showOnboarding && !showAppLock && !securityLoadBlocked) { mainNavController ->
             // 在根上准备"打开详情"的编排：先用列表项预置详情状态，再导航。
             // ui/components 只读 CompositionLocal，不依赖 ViewModel。
             val comicDetailViewModel: ComicDetailViewModel = koinActivityViewModel()

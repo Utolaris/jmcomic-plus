@@ -5,7 +5,9 @@ import com.par9uet.jm.core.network.NetWorkResult
 import com.par9uet.jm.network.DohManager
 import com.par9uet.jm.repository.RemoteSettingRepository
 import com.par9uet.jm.retrofit.interceptor.BaseUrlInterceptor
+import com.par9uet.jm.storage.LocalSettingLoadResult
 import com.par9uet.jm.storage.LocalSettingPersistence
+import com.par9uet.jm.storage.StorageWriteResult
 import com.par9uet.jm.storage.ApiEndpointPreference
 import com.par9uet.jm.storage.AppExperiencePreferences
 import com.par9uet.jm.storage.AppSecurityEditor
@@ -104,8 +106,12 @@ class SettingsKoinWiringTest {
 
     private class InMemoryLocalSettingPersistence : LocalSettingPersistence {
         var stored: LocalSetting? = null
-        override fun load(): LocalSetting? = stored
-        override fun persist(localSetting: LocalSetting) { stored = localSetting }
+        override fun load() = stored?.let { LocalSettingLoadResult.Success(it) }
+        ?: LocalSettingLoadResult.Missing
+        override fun persist(localSetting: LocalSetting): StorageWriteResult {
+        stored = localSetting
+        return StorageWriteResult.Success
+    }
     }
 
     private class LauncherDisguiseApplierFake : LauncherIdentityApplier {

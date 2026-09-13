@@ -16,7 +16,9 @@ import com.par9uet.jm.backup.ChapterBackup
 import com.par9uet.jm.backup.ComicCacheBackup
 import com.par9uet.jm.backup.ComicGroupBackup
 import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.LocalSettingLoadResult
 import com.par9uet.jm.storage.LocalSettingPersistence
+import com.par9uet.jm.storage.StorageWriteResult
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -37,8 +39,12 @@ class BackupRestoreOperationsTest {
         database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).build()
         val persistence = object : LocalSettingPersistence {
             var value: LocalSetting? = null
-            override fun load(): LocalSetting? = value
-            override fun persist(localSetting: LocalSetting) { value = localSetting }
+            override fun load() = value?.let { LocalSettingLoadResult.Success(it) }
+                ?: LocalSettingLoadResult.Missing
+            override fun persist(localSetting: LocalSetting): StorageWriteResult {
+                value = localSetting
+                return StorageWriteResult.Success
+            }
         }
         val settings = LocalSettingManager(persistence, object : LauncherIdentityApplier {
             override fun apply(disguise: LauncherDisguise) = true

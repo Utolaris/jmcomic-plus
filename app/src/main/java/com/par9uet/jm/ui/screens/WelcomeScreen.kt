@@ -64,6 +64,7 @@ import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.storage.AppSecurityEditor
 import com.par9uet.jm.storage.LocalSettingManager
 import com.par9uet.jm.session.SessionReadiness
@@ -96,6 +97,7 @@ fun WelcomeScreen(
     appSecurityEditor: AppSecurityEditor = getKoin().get(),
     userManager: UserManager = getKoin().get(),
     userViewModel: UserViewModel = koinActivityViewModel(),
+    toastManager: ToastManager = getKoin().get(),
 ) {
     val appLock by localSettingManager.appLock.collectAsState()
     val miscSettings by localSettingManager.misc.collectAsState()
@@ -249,29 +251,44 @@ fun WelcomeScreen(
                         patternSet = appLockPatternSet,
                         unlockMode = appLockUnlockMode,
                         onToggle = { enabled ->
-                            if (enabled) {
+                            val ok = if (enabled) {
                                 appSecurityEditor.setAppLockEnabled(true)
                             } else {
                                 appSecurityEditor.disableAndClearAppLock()
-                                appLockPasswordSet = false
-                                appLockPatternSet = false
                             }
-                            appLockEnabled = enabled
+                            if (ok) {
+                                if (!enabled) {
+                                    appLockPasswordSet = false
+                                    appLockPatternSet = false
+                                }
+                                appLockEnabled = enabled
+                            } else {
+                                toastManager.showAsync("应用锁设置保存失败，请重试")
+                            }
                         },
                         onPasswordSet = { pwd ->
                             // 一次状态迁移：密码 + 模式（pattern 存在时为 both）
-                            appSecurityEditor.setPassword(pwd, DEFAULT_ONBOARDING_PASSWORD_LENGTH)
-                            appLockPasswordSet = true
-                            if (!appLockPatternSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PASSWORD
+                            if (appSecurityEditor.setPassword(pwd, DEFAULT_ONBOARDING_PASSWORD_LENGTH)) {
+                                appLockPasswordSet = true
+                                if (!appLockPatternSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PASSWORD
+                            } else {
+                                toastManager.showAsync("应用锁设置保存失败，请重试")
+                            }
                         },
                         onPatternSet = { pattern ->
-                            appSecurityEditor.setPattern(pattern)
-                            appLockPatternSet = true
-                            if (!appLockPasswordSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PATTERN
+                            if (appSecurityEditor.setPattern(pattern)) {
+                                appLockPatternSet = true
+                                if (!appLockPasswordSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PATTERN
+                            } else {
+                                toastManager.showAsync("应用锁设置保存失败，请重试")
+                            }
                         },
                         onUnlockModeSet = { mode ->
-                            appSecurityEditor.selectUnlockMode(mode)
-                            appLockUnlockMode = mode
+                            if (appSecurityEditor.selectUnlockMode(mode)) {
+                                appLockUnlockMode = mode
+                            } else {
+                                toastManager.showAsync("应用锁设置保存失败，请重试")
+                            }
                         },
                         onShowPasswordDialog = { showPasswordDialog = true },
                         onShowPatternDialog = { showPatternDialog = true }
@@ -299,10 +316,13 @@ fun WelcomeScreen(
             lockType = APP_LOCK_TYPE_PASSWORD,
             onConfirm = { pwd ->
                 // 一次状态迁移：密码与解锁模式同时生效
-                appSecurityEditor.setPassword(pwd, DEFAULT_ONBOARDING_PASSWORD_LENGTH)
-                appLockPasswordSet = true
-                showPasswordDialog = false
-                if (!appLockPatternSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PASSWORD
+                if (appSecurityEditor.setPassword(pwd, DEFAULT_ONBOARDING_PASSWORD_LENGTH)) {
+                    appLockPasswordSet = true
+                    showPasswordDialog = false
+                    if (!appLockPatternSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PASSWORD
+                } else {
+                    toastManager.showAsync("应用锁设置保存失败，请重试")
+                }
             },
             onDismiss = { showPasswordDialog = false }
         )
@@ -311,10 +331,13 @@ fun WelcomeScreen(
         SetAppLockPasswordDialog(
             lockType = APP_LOCK_TYPE_PATTERN,
             onConfirm = { pattern ->
-                appSecurityEditor.setPattern(pattern)
-                appLockPatternSet = true
-                showPatternDialog = false
-                if (!appLockPasswordSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PATTERN
+                if (appSecurityEditor.setPattern(pattern)) {
+                    appLockPatternSet = true
+                    showPatternDialog = false
+                    if (!appLockPasswordSet) appLockUnlockMode = APP_LOCK_UNLOCK_MODE_PATTERN
+                } else {
+                    toastManager.showAsync("应用锁设置保存失败，请重试")
+                }
             },
             onDismiss = { showPatternDialog = false }
         )

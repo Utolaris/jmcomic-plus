@@ -5,7 +5,9 @@ import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
 import com.par9uet.jm.data.models.LocalSetting
+import com.par9uet.jm.storage.LocalSettingLoadResult
 import com.par9uet.jm.storage.LocalSettingPersistence
+import com.par9uet.jm.storage.StorageWriteResult
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.junit.Assert.assertEquals
@@ -23,9 +25,10 @@ class AppLockAtomicMutationTest {
     fun setUp() {
         persisted.clear()
         val persistence = object : LocalSettingPersistence {
-            override fun load(): LocalSetting? = null
-            override fun persist(localSetting: LocalSetting) {
+            override fun load() = LocalSettingLoadResult.Missing
+            override fun persist(localSetting: LocalSetting): StorageWriteResult {
                 persisted += localSetting
+                return StorageWriteResult.Success
             }
         }
         manager = LocalSettingManager(persistence, NoOpLauncherIdentityApplier())

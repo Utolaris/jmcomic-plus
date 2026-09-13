@@ -1,5 +1,7 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.storage.LocalSettingLoadResult
 import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.StorageWriteResult
 import com.par9uet.jm.storage.AppearancePreferences
 
 import com.par9uet.jm.data.models.LauncherDisguise
@@ -12,8 +14,12 @@ class LauncherDisguiseProjectionTest {
     private fun newManager(): LocalSettingManager {
         val persistence = object : com.par9uet.jm.storage.LocalSettingPersistence {
             var stored: LocalSetting? = null
-            override fun load(): LocalSetting? = stored
-            override fun persist(localSetting: LocalSetting) { stored = localSetting }
+            override fun load() = stored?.let { LocalSettingLoadResult.Success(it) }
+        ?: LocalSettingLoadResult.Missing
+            override fun persist(localSetting: LocalSetting): StorageWriteResult {
+        stored = localSetting
+        return StorageWriteResult.Success
+    }
         }
         return LocalSettingManager(persistence, NoOpLauncherIdentityApplier())
     }

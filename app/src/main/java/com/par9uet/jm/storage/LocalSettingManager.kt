@@ -13,6 +13,7 @@ import com.par9uet.jm.utils.log
 import com.par9uet.jm.contentfilter.normalizeBlockedTagList
 import com.par9uet.jm.contentfilter.normalizeBlockedTagTemplates
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 /**
@@ -39,6 +40,8 @@ class LocalSettingManager(
     AppearanceEditor,
     ApiEndpointPreference {
     private val _localSettingState = MutableStateFlow(LocalSetting())
+    private val _securityLoadBlocked = MutableStateFlow(false)
+    val securityLoadBlocked = _securityLoadBlocked.asStateFlow()
     private val updateListeners = mutableListOf<(LocalSetting) -> Unit>()
 
     override val blockedTags = _projectingState { it.blockedTagList }
@@ -70,6 +73,11 @@ class LocalSettingManager(
     }
 
     init {
+        ensureLoaded()
+    }
+
+    /** Re-reads after a temporary Keystore/storage outage. Safe to call from UI retry. */
+    fun reloadSettings() {
         ensureLoaded()
     }
 
@@ -254,7 +262,7 @@ class LocalSettingManager(
 
     // ---- AppSecurityEditor: one transition per user action ----
 
-    override fun setPassword(password: String, length: Int) = updateSetting {
+    override fun setPassword(password: String, length: Int) = updateSecuritySetting {
         it.copy(
             appLockPassword = password,
             appLockPasswordLength = length.coerceIn(4, 8),
@@ -266,7 +274,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun removePassword() = updateSetting {
+    override fun removePassword() = updateSecuritySetting {
         it.copy(
             appLockPassword = "",
             appLockUnlockMode = if (it.appLockPattern.isNotEmpty()) {
@@ -278,7 +286,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun setPattern(pattern: String) = updateSetting {
+    override fun setPattern(pattern: String) = updateSecuritySetting {
         it.copy(
             appLockPattern = pattern,
             appLockUnlockMode = if (it.appLockPassword.isNotEmpty()) {
@@ -289,7 +297,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun removePattern() = updateSetting {
+    override fun removePattern() = updateSecuritySetting {
         it.copy(
             appLockPattern = "",
             appLockUnlockMode = if (it.appLockPassword.isNotEmpty()) {
@@ -301,7 +309,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun setAppLockEnabled(enabled: Boolean) = updateSetting {
+    override fun setAppLockEnabled(enabled: Boolean) = updateSecuritySetting {
         // Without at least one credential there is nothing to unlock with; keep the lock off.
         it.copy(
             appLockEnabled = enabled &&
@@ -309,7 +317,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun disableAndClearAppLock() = updateSetting {
+    override fun disableAndClearAppLock() = updateSecuritySetting {
         it.copy(
             appLockEnabled = false,
             appLockPassword = "",
@@ -318,7 +326,7 @@ class LocalSettingManager(
         )
     }
 
-    override fun selectUnlockMode(mode: String) = updateSetting {
+    override fun selectUnlockMode(mode: String) = updateSecuritySetting {
         // BOTH requires both credentials; a mode without its credential falls back to the
         // one that exists, keeping unlock always possible.
         val validMode = when (mode) {
@@ -372,20 +380,52 @@ class LocalSettingManager(
         updateSetting { it.copy(dohPreferIpv6 = enabled) }
 
 
+    private fun publish(setting: LocalSetting) {
+        _localSettingState.value = setting
+        updateListeners.forEach { listener -> listener(setting) }
+    }
+
     private fun updateSetting(update: (LocalSetting) -> LocalSetting) {
-        _localSettingState.update(update)
-        updateListeners.forEach { listener -> listener(_localSettingState.value) }
-        persistence.persist(_localSettingState.value)
+        val next = update(_localSettingState.value)
+        publish(next)
+        persistence.persist(next)
+    }
+
+    /**
+     * Security transitions must not look successful when the write failed. Revert to the last
+     * persisted snapshot so the UI never shows an enabled lock that restarts disabled.
+     */
+    private fun updateSecuritySetting(update: (LocalSetting) -> LocalSetting): Boolean {
+        val previous = _localSettingState.value
+        val next = update(previous)
+        publish(next)
+        return when (persistence.persist(next)) {
+            StorageWriteResult.Success -> true
+            StorageWriteResult.TemporaryUnavailable -> {
+                publish(previous)
+                false
+            }
+        }
     }
 
     private fun ensureLoaded() {
         try {
-            val restored = persistence.load()
-            if (restored != null) {
-                _localSettingState.value = restored
-                updateListeners.forEach { listener -> listener(restored) }
+            when (val restored = persistence.load()) {
+                is LocalSettingLoadResult.Success -> {
+                    _securityLoadBlocked.value = false
+                    publish(restored.value)
+                }
+                is LocalSettingLoadResult.Missing -> {
+                    _securityLoadBlocked.value = false
+                }
+                is LocalSettingLoadResult.TemporaryUnavailable -> {
+                    // Fail closed: never treat an unreadable Keystore as “no lock configured”.
+                    _securityLoadBlocked.value = true
+                    log("本地设置暂时不可读，安全状态未知")
+                }
             }
         } catch (error: Throwable) {
+            _securityLoadBlocked.value = true
             log("加载本地设置失败：${error.message}")
         }
     }

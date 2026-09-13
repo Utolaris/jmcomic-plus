@@ -94,13 +94,14 @@ interface AppSecurityPreferences {
  * multiple writes or expose an invalid intermediate credential/mode combination.
  */
 interface AppSecurityEditor {
-    fun setPassword(password: String, length: Int)
-    fun removePassword()
-    fun setPattern(pattern: String)
-    fun removePattern()
-    fun setAppLockEnabled(enabled: Boolean)
-    fun disableAndClearAppLock()
-    fun selectUnlockMode(mode: String)
+    /** @return true only when the new security state was persisted. */
+    fun setPassword(password: String, length: Int): Boolean
+    fun removePassword(): Boolean
+    fun setPattern(pattern: String): Boolean
+    fun removePattern(): Boolean
+    fun setAppLockEnabled(enabled: Boolean): Boolean
+    fun disableAndClearAppLock(): Boolean
+    fun selectUnlockMode(mode: String): Boolean
 }
 
 data class DohSettingsState(

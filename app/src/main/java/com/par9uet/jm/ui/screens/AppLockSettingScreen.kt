@@ -46,6 +46,7 @@ import com.par9uet.jm.data.models.APP_LOCK_TYPE_PATTERN
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_BOTH
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PASSWORD
 import com.par9uet.jm.data.models.APP_LOCK_UNLOCK_MODE_PATTERN
+import com.par9uet.jm.core.ToastManager
 import com.par9uet.jm.storage.AppSecurityEditor
 import com.par9uet.jm.storage.AppSecurityPreferences
 import com.par9uet.jm.ui.components.CommonScaffold
@@ -63,6 +64,7 @@ private val unlockModeTextMap = mapOf(
 fun AppLockSettingScreen(
     appSecurityPreferences: AppSecurityPreferences = getKoin().get(),
     appSecurityEditor: AppSecurityEditor = getKoin().get(),
+    toastManager: ToastManager = getKoin().get(),
 ) {
     val appLock by appSecurityPreferences.appLock.collectAsState()
 
@@ -103,8 +105,11 @@ fun AppLockSettingScreen(
                 passwordLength = pendingPasswordLength,
                 onConfirm = { pwd ->
                     // 一次完整状态迁移：密码、长度、解锁模式在同一更新内生效
-                    appSecurityEditor.setPassword(pwd, pendingPasswordLength)
-                    showSetPasswordDialog = false
+                    if (appSecurityEditor.setPassword(pwd, pendingPasswordLength)) {
+                        showSetPasswordDialog = false
+                    } else {
+                        toastManager.showAsync("应用锁设置保存失败，请重试")
+                    }
                 },
                 onDismiss = { showSetPasswordDialog = false },
             )
@@ -113,8 +118,11 @@ fun AppLockSettingScreen(
                 visible = showSetPatternDialog,
                 lockType = APP_LOCK_TYPE_PATTERN,
                 onConfirm = { pattern ->
-                    appSecurityEditor.setPattern(pattern)
-                    showSetPatternDialog = false
+                    if (appSecurityEditor.setPattern(pattern)) {
+                        showSetPatternDialog = false
+                    } else {
+                        toastManager.showAsync("应用锁设置保存失败，请重试")
+                    }
                 },
                 onDismiss = { showSetPatternDialog = false },
             )
@@ -142,7 +150,9 @@ fun AppLockSettingScreen(
                                 showPasswordLengthDialog = true
                             } else {
                                 // 移除最后一种凭据时由编辑器关闭应用锁并修正解锁模式
-                                appSecurityEditor.removePassword()
+                                if (!appSecurityEditor.removePassword()) {
+                                    toastManager.showAsync("应用锁设置保存失败，请重试")
+                                }
                             }
                         }
                     )
@@ -164,7 +174,9 @@ fun AppLockSettingScreen(
                             if (enabled) {
                                 showSetPatternDialog = true
                             } else {
-                                appSecurityEditor.removePattern()
+                                if (!appSecurityEditor.removePattern()) {
+                                    toastManager.showAsync("应用锁设置保存失败，请重试")
+                                }
                             }
                         }
                     )
@@ -181,14 +193,22 @@ fun AppLockSettingScreen(
                                     .fillMaxWidth()
                                     .selectable(
                                         selected = appLock.unlockMode == mode,
-                                        onClick = { appSecurityEditor.selectUnlockMode(mode) }
+                                        onClick = {
+                                            if (!appSecurityEditor.selectUnlockMode(mode)) {
+                                                toastManager.showAsync("应用锁设置保存失败，请重试")
+                                            }
+                                        }
                                     )
                                     .padding(horizontal = 16.dp, vertical = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 RadioButton(
                                     selected = appLock.unlockMode == mode,
-                                    onClick = { appSecurityEditor.selectUnlockMode(mode) }
+                                    onClick = {
+                                        if (!appSecurityEditor.selectUnlockMode(mode)) {
+                                            toastManager.showAsync("应用锁设置保存失败，请重试")
+                                        }
+                                    }
                                 )
                                 Text(
                                     text = label,
@@ -209,7 +229,9 @@ fun AppLockSettingScreen(
                         value = appLock.enabled,
                         onCheckedChange = { enabled ->
                             // 没有任何解锁方式时编辑器保持关闭，UI 只负责提示
-                            appSecurityEditor.setAppLockEnabled(enabled)
+                            if (!appSecurityEditor.setAppLockEnabled(enabled)) {
+                                toastManager.showAsync("应用锁设置保存失败，请重试")
+                            }
                         }
                     )
                     if (!hasAnyMethod) {

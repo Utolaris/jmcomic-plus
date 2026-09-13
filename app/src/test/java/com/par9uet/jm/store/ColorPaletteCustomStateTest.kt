@@ -1,5 +1,7 @@
 package com.par9uet.jm.store
+import com.par9uet.jm.storage.LocalSettingLoadResult
 import com.par9uet.jm.storage.LocalSettingManager
+import com.par9uet.jm.storage.StorageWriteResult
 
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_CUSTOM
 import com.par9uet.jm.data.models.COLOR_PALETTE_PRESET_DEFAULT
@@ -20,9 +22,14 @@ class ColorPaletteCustomStateTest {
     fun setUp() {
         val persistence = object : com.par9uet.jm.storage.LocalSettingPersistence {
             var stored: com.par9uet.jm.data.models.LocalSetting? = null
-            override fun load(): com.par9uet.jm.data.models.LocalSetting? = stored
-            override fun persist(localSetting: com.par9uet.jm.data.models.LocalSetting) {
+            override fun load() = stored?.let {
+                com.par9uet.jm.storage.LocalSettingLoadResult.Success(it)
+            } ?: com.par9uet.jm.storage.LocalSettingLoadResult.Missing
+            override fun persist(
+                localSetting: com.par9uet.jm.data.models.LocalSetting,
+            ): com.par9uet.jm.storage.StorageWriteResult {
                 stored = localSetting
+                return com.par9uet.jm.storage.StorageWriteResult.Success
             }
         }
         manager = LocalSettingManager(persistence, NoOpLauncherIdentityApplier())

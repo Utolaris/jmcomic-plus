@@ -32,32 +32,38 @@ class LocalSettingStorage(
 
     private var _state = MutableStateFlow<LocalSetting?>(null)
 
-    override fun load(): LocalSetting? {
-        _state.value?.let { return it }
+    override fun load(): LocalSettingLoadResult {
+        _state.value?.let { return LocalSettingLoadResult.Success(it) }
         val startup = secureStorage.getStartupString(STORAGE_KEY)
         val savedJson = when (startup) {
             is StorageReadResult.Success -> startup.value
-            is StorageReadResult.TemporaryUnavailable -> return null
-            is StorageReadResult.Missing,
-            is StorageReadResult.Corrupted,
-            -> when (val legacy = secureStorage.getString(STORAGE_KEY)) {
-                is StorageReadResult.Success -> legacy.value.also {
-                    secureStorage.setStartupString(STORAGE_KEY, it)
+            is StorageReadResult.TemporaryUnavailable -> return LocalSettingLoadResult.TemporaryUnavailable
+            is StorageReadResult.Corrupted ->
+                return LocalSettingLoadResult.TemporaryUnavailable
+            is StorageReadResult.Missing ->
+                when (val legacy = secureStorage.getString(STORAGE_KEY)) {
+                    is StorageReadResult.Success -> legacy.value.also {
+                        secureStorage.setStartupString(STORAGE_KEY, it)
+                    }
+                    is StorageReadResult.TemporaryUnavailable -> return LocalSettingLoadResult.TemporaryUnavailable
+                    is StorageReadResult.Corrupted -> return LocalSettingLoadResult.TemporaryUnavailable
+                    is StorageReadResult.Missing -> return LocalSettingLoadResult.Missing
                 }
-                is StorageReadResult.TemporaryUnavailable -> return null
-                is StorageReadResult.Missing,
-                is StorageReadResult.Corrupted,
-                -> return null
-            }
         }
-        val saved = secureStorage.decode<LocalSetting>(savedJson, GSON_TYPE) ?: return null
-        return normalizePersisted(savedJson, saved).also { restored -> _state.update { restored } }
+        val saved = secureStorage.decode<LocalSetting>(savedJson, GSON_TYPE)
+            ?: return LocalSettingLoadResult.TemporaryUnavailable
+        val restored = normalizePersisted(savedJson, saved)
+        _state.update { restored }
+        return LocalSettingLoadResult.Success(restored)
     }
 
-    override fun persist(localSetting: LocalSetting) {
-        when (secureStorage.setStartup(STORAGE_KEY, localSetting)) {
-            is StorageWriteResult.Success -> _state.update { localSetting }
-            is StorageWriteResult.TemporaryUnavailable -> Unit
+    override fun persist(localSetting: LocalSetting): StorageWriteResult {
+        return when (val result = secureStorage.setStartup(STORAGE_KEY, localSetting)) {
+            is StorageWriteResult.Success -> {
+                _state.update { localSetting }
+                StorageWriteResult.Success
+            }
+            is StorageWriteResult.TemporaryUnavailable -> StorageWriteResult.TemporaryUnavailable
         }
     }
 
