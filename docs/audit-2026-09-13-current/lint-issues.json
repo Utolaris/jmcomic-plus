@@ -1,0 +1,158 @@
+[
+  {
+    "id": "EmptySuperCall",
+    "severity": "Warning",
+    "message": "No need to call `super.onCleared`; the super method is defined to be empty",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/app/src/main/java/com/par9uet/jm/ui/viewModel/ComicReadViewModel.kt",
+        "line": "454",
+        "column": "15"
+      }
+    ]
+  },
+  {
+    "id": "GradleDependency",
+    "severity": "Warning",
+    "message": "A newer version of androidx.compose:compose-bom than 2026.01.00 is available: 2026.09.00",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "10",
+        "column": "14"
+      }
+    ]
+  },
+  {
+    "id": "GradleDependency",
+    "severity": "Warning",
+    "message": "A newer version of androidx.navigation:navigation-compose than 2.9.7 is available: 2.10.1",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "11",
+        "column": "14"
+      }
+    ]
+  },
+  {
+    "id": "GradleDependency",
+    "severity": "Warning",
+    "message": "A newer version of androidx.navigation:navigation-runtime-ktx than 2.9.7 is available: 2.10.1",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "11",
+        "column": "14"
+      }
+    ]
+  },
+  {
+    "id": "GradleDependency",
+    "severity": "Warning",
+    "message": "A newer version of androidx.paging:paging-compose than 3.4.2 is available: 3.5.1",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "22",
+        "column": "11"
+      }
+    ]
+  },
+  {
+    "id": "GradleDependency",
+    "severity": "Warning",
+    "message": "A newer version of androidx.paging:paging-runtime than 3.4.2 is available: 3.5.1",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "22",
+        "column": "11"
+      }
+    ]
+  },
+  {
+    "id": "NewerVersionAvailable",
+    "severity": "Warning",
+    "message": "A newer version of org.jetbrains.kotlin.android than 2.3.20 is available: 2.4.20",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "3",
+        "column": "10"
+      }
+    ]
+  },
+  {
+    "id": "NewerVersionAvailable",
+    "severity": "Warning",
+    "message": "A newer version of org.jetbrains.kotlin.plugin.compose than 2.3.20 is available: 2.4.20",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "3",
+        "column": "10"
+      }
+    ]
+  },
+  {
+    "id": "NewerVersionAvailable",
+    "severity": "Warning",
+    "message": "A newer version of com.squareup.okhttp3:mockwebserver than 4.12.0 is available: 5.5.0",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "12",
+        "column": "10"
+      }
+    ]
+  },
+  {
+    "id": "NewerVersionAvailable",
+    "severity": "Warning",
+    "message": "A newer version of com.squareup.okhttp3:okhttp than 4.12.0 is available: 5.5.0",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "12",
+        "column": "10"
+      }
+    ]
+  },
+  {
+    "id": "NewerVersionAvailable",
+    "severity": "Warning",
+    "message": "A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-core than 1.10.2 is available: 1.11.0",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "14",
+        "column": "14"
+      }
+    ]
+  },
+  {
+    "id": "NewerVersionAvailable",
+    "severity": "Warning",
+    "message": "A newer version of org.jetbrains.kotlinx:kotlinx-coroutines-test than 1.10.2 is available: 1.11.0",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "14",
+        "column": "14"
+      }
+    ]
+  },
+  {
+    "id": "NewerVersionAvailable",
+    "severity": "Warning",
+    "message": "A newer version of com.squareup.okhttp3:logging-interceptor than 4.12.0 is available: 5.5.0",
+    "locations": [
+      {
+        "file": "/Users/utolaris/Documents/ai/jmcomic-plus/gradle/libs.versions.toml",
+        "line": "21",
+        "column": "30"
+      }
+    ]
+  }
+]

@@ -1,0 +1,13 @@
+[
+  [
+    "reader",
+    "reader/atom",
+    "reader/coordinator",
+    "reader/molecule"
+  ],
+  [
+    "retrofit",
+    "retrofit/converter",
+    "retrofit/interceptor"
+  ]
+]

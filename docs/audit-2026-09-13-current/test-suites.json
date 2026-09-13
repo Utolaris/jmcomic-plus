@@ -1,0 +1,1052 @@
+[
+  {
+    "name": "com.par9uet.jm.backup.RestoreGroupValidationTest",
+    "tests": "6",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.548Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.store.UserManagerSessionTest",
+    "tests": "29",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.579Z",
+    "hostname": "Utolaris",
+    "time": "0.18"
+  },
+  {
+    "name": "com.par9uet.jm.core.BaseRepositoryErrorMappingTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.588Z",
+    "hostname": "Utolaris",
+    "time": "0.017"
+  },
+  {
+    "name": "com.par9uet.jm.storage.AppLockPersistenceBoundaryTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.560Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.architecture.ArchitectureBoundaryTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.057Z",
+    "hostname": "Utolaris",
+    "time": "0.154"
+  },
+  {
+    "name": "com.par9uet.jm.image.JmImageHostHealthStoreTest",
+    "tests": "11",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.840Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.cache.atom.CacheFilesTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.551Z",
+    "hostname": "Utolaris",
+    "time": "0.008"
+  },
+  {
+    "name": "com.par9uet.jm.download.molecule.DownloadCompleteOrderTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.734Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.ui.pagingSource.HistoryComicPagingSourceTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.784Z",
+    "hostname": "Utolaris",
+    "time": "0.004"
+  },
+  {
+    "name": "com.par9uet.jm.backup.BackupProtectionEncryptionTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.455Z",
+    "hostname": "Utolaris",
+    "time": "0.091"
+  },
+  {
+    "name": "com.par9uet.jm.ui.screens.readScreen.ReaderInteractionTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.803Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.download.DownloadFileIntegrityTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.703Z",
+    "hostname": "Utolaris",
+    "time": "0.004"
+  },
+  {
+    "name": "com.par9uet.jm.network.DohPacketParserTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.856Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.ui.components.CoverLoadingScrollTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.773Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.ui.navigation.MainTabTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.784Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.ui.screens.ComicSearchResultNavigationTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.791Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.contentfilter.SearchQuerySyntaxTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.586Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.presentation.FavoritesModalFlowTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.738Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.image.ImageHostFailureClassifierTest",
+    "tests": "15",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.839Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.ComicDetailViewModelTest",
+    "tests": "8",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.954Z",
+    "hostname": "Utolaris",
+    "time": "0.011"
+  },
+  {
+    "name": "com.par9uet.jm.network.EmbeddedSessionCookiesTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.858Z",
+    "hostname": "Utolaris",
+    "time": "0.004"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.sync.FavoriteSyncControllerTest",
+    "tests": "11",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.799Z",
+    "hostname": "Utolaris",
+    "time": "0.014"
+  },
+  {
+    "name": "com.par9uet.jm.ui.glass.GlassAnchoredMenuPositionTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.774Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.update.GithubReleaseSourceTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.994Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.ui.screens.readScreen.ReaderGesturePolicyTest",
+    "tests": "12",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.800Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.usecase.FavoriteUseCasesTest",
+    "tests": "8",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.814Z",
+    "hostname": "Utolaris",
+    "time": "0.007"
+  },
+  {
+    "name": "com.par9uet.jm.reader.molecule.LoadLocalChapterTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.517Z",
+    "hostname": "Utolaris",
+    "time": "0.005"
+  },
+  {
+    "name": "com.par9uet.jm.ui.screens.FavoritesToolbarModeTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.793Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.download.PdfSampleSizeTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.733Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.startup.AuthenticatedStartupSequencingTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.551Z",
+    "hostname": "Utolaris",
+    "time": "0.004"
+  },
+  {
+    "name": "com.par9uet.jm.ui.state.CommentSubmissionGateTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.803Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.storage.CryptoManagerTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.562Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.store.LauncherDisguiseFailureTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.573Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.download.DownloadContentOperationsTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.691Z",
+    "hostname": "Utolaris",
+    "time": "0.011"
+  },
+  {
+    "name": "com.par9uet.jm.ui.screens.HomeCategoryTitleTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.795Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.store.AppLockAtomicMutationTest",
+    "tests": "8",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.569Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.store.FavoriteSyncPlannerTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.573Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.reader.atom.ReaderImageDiskCacheTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.506Z",
+    "hostname": "Utolaris",
+    "time": "0.01"
+  },
+  {
+    "name": "com.par9uet.jm.reader.ReaderRemoteFetcherTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:03.633Z",
+    "hostname": "Utolaris",
+    "time": "2.839"
+  },
+  {
+    "name": "com.par9uet.jm.download.DownloadLifecycleRegressionTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.708Z",
+    "hostname": "Utolaris",
+    "time": "0.005"
+  },
+  {
+    "name": "com.par9uet.jm.reader.ReaderPipelineTest",
+    "tests": "15",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:03.224Z",
+    "hostname": "Utolaris",
+    "time": "0.405"
+  },
+  {
+    "name": "com.par9uet.jm.ui.components.CoverImageDisplayGateTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.759Z",
+    "hostname": "Utolaris",
+    "time": "0.013"
+  },
+  {
+    "name": "com.par9uet.jm.download.DownloadManagerTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.714Z",
+    "hostname": "Utolaris",
+    "time": "0.007"
+  },
+  {
+    "name": "com.par9uet.jm.download.DownloadComicCoordinatorTest",
+    "tests": "9",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.678Z",
+    "hostname": "Utolaris",
+    "time": "0.012"
+  },
+  {
+    "name": "com.par9uet.jm.store.ColorPaletteCustomStateTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.571Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.retrofit.ApiContextTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.529Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.update.AppUpdateDownloadManagerPolicyTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.993Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.presentation.FavoritesViewModelTest",
+    "tests": "16",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.742Z",
+    "hostname": "Utolaris",
+    "time": "0.055"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.DownloadExportViewModelTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.965Z",
+    "hostname": "Utolaris",
+    "time": "0.005"
+  },
+  {
+    "name": "com.par9uet.jm.di.SettingsKoinWiringTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.654Z",
+    "hostname": "Utolaris",
+    "time": "0.013"
+  },
+  {
+    "name": "com.par9uet.jm.ui.navigation.MainTabSelectionTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.782Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.coil.CoverImageHostResolverTest",
+    "tests": "12",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.575Z",
+    "hostname": "Utolaris",
+    "time": "0.01"
+  },
+  {
+    "name": "com.par9uet.jm.storage.SecureStorageRetryTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.566Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.storage.CookieTypeAdapterTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.561Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.store.AppLockLifecycleTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.571Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.cache.migration.CacheMigrationCoordinatorTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.560Z",
+    "hostname": "Utolaris",
+    "time": "0.014"
+  },
+  {
+    "name": "com.par9uet.jm.ui.pagingSource.SearchComicPagingSourceTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.789Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.SettingsViewModelTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.986Z",
+    "hostname": "Utolaris",
+    "time": "0.006"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.CacheCleanupViewModelTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.950Z",
+    "hostname": "Utolaris",
+    "time": "0.004"
+  },
+  {
+    "name": "com.par9uet.jm.resources.LauncherIconResourceTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.528Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.reader.ReaderConcurrencyPolicyTest",
+    "tests": "6",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:03.219Z",
+    "hostname": "Utolaris",
+    "time": "0.004"
+  },
+  {
+    "name": "com.par9uet.jm.store.ReaderResumeManagerTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.575Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.data.comic.EmbeddedComicImageListTest",
+    "tests": "6",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.612Z",
+    "hostname": "Utolaris",
+    "time": "0.005"
+  },
+  {
+    "name": "com.par9uet.jm.repository.impl.ComicRepositoryRoutingTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.526Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.data.comic.EmbeddedComicDataSourceContractTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.608Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.core.network.NetWorkResultMapParsingTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.606Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.storage.LocalSettingStorageCompatibilityTest",
+    "tests": "6",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.565Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.di.CatalogViewModelWiringTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.621Z",
+    "hostname": "Utolaris",
+    "time": "0.024"
+  },
+  {
+    "name": "com.par9uet.jm.worker.DownloadComicWorkerRegressionTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:07.015Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.ui.screens.DetailBottomModeStateTest",
+    "tests": "8",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.793Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.download.DownloadCacheCleanupTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.668Z",
+    "hostname": "Utolaris",
+    "time": "0.009"
+  },
+  {
+    "name": "com.par9uet.jm.store.LauncherDisguiseProjectionTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.574Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.ui.interaction.PullDownActionStateTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.779Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.reader.ReaderAccelerationTest",
+    "tests": "11",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.862Z",
+    "hostname": "Utolaris",
+    "time": "0.356"
+  },
+  {
+    "name": "com.par9uet.jm.storage.AppLockLegacyStateNormalizationTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.556Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.network.CommentUsernameMappingFailureTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.845Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.retrofit.RetrofitCookieIsolationTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.531Z",
+    "hostname": "Utolaris",
+    "time": "0.019"
+  },
+  {
+    "name": "com.par9uet.jm.ui.screens.LocalSettingDialogLayoutTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.797Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.update.UpdateDownloadJobGateTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.998Z",
+    "hostname": "Utolaris",
+    "time": "0.015"
+  },
+  {
+    "name": "com.par9uet.jm.store.SessionEndToEndTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.576Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.database.DownloadStatusTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.620Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.SearchViewModelTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.984Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.BackupRestoreViewModelTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.810Z",
+    "hostname": "Utolaris",
+    "time": "0.139"
+  },
+  {
+    "name": "com.par9uet.jm.di.EmbeddedSessionWiringTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.646Z",
+    "hostname": "Utolaris",
+    "time": "0.006"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.sync.FavoriteVisibilityPolicyTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.814Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.sync.FavoriteAutoSyncCoordinatorTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.798Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.utils.ByteFormattingTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:07.013Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.download.DownloadTaskOperationsTest",
+    "tests": "9",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.722Z",
+    "hostname": "Utolaris",
+    "time": "0.011"
+  },
+  {
+    "name": "com.par9uet.jm.worker.WorkManagerCacheMigrationSchedulerTest",
+    "tests": "9",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:07.017Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.cache.CacheMigrationPathsTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.549Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.HomeViewModelTest",
+    "tests": "12",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.975Z",
+    "hostname": "Utolaris",
+    "time": "0.009"
+  },
+  {
+    "name": "com.par9uet.jm.launcher.LauncherAliasSwitchTest",
+    "tests": "4",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.843Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.audit.CurrentAuditReproductionTest",
+    "tests": "6",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.214Z",
+    "hostname": "Utolaris",
+    "time": "0.241"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.AppUpdateViewModelTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.804Z",
+    "hostname": "Utolaris",
+    "time": "0.006"
+  },
+  {
+    "name": "com.par9uet.jm.network.DohManagerTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.846Z",
+    "hostname": "Utolaris",
+    "time": "0.009"
+  },
+  {
+    "name": "com.par9uet.jm.reader.atom.LocalChapterFilesTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.476Z",
+    "hostname": "Utolaris",
+    "time": "0.029"
+  },
+  {
+    "name": "com.par9uet.jm.store.FavoriteOrderingTest",
+    "tests": "3",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.572Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.ui.glass.GlassStyleTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.778Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.ui.viewModel.ExtractCodeViewModelTest",
+    "tests": "6",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.970Z",
+    "hostname": "Utolaris",
+    "time": "0.004"
+  },
+  {
+    "name": "com.par9uet.jm.update.AppUpdateFlowTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.993Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  },
+  {
+    "name": "com.par9uet.jm.data.comic.mapper.ResponseMappersTest",
+    "tests": "7",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.618Z",
+    "hostname": "Utolaris",
+    "time": "0.002"
+  },
+  {
+    "name": "com.par9uet.jm.repository.CancellationPropagationTest",
+    "tests": "5",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.523Z",
+    "hostname": "Utolaris",
+    "time": "0.003"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.usecase.SyncFavoritesTest",
+    "tests": "9",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.822Z",
+    "hostname": "Utolaris",
+    "time": "0.016"
+  },
+  {
+    "name": "com.par9uet.jm.favorites.FavoritesInteractionTest",
+    "tests": "2",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:02.736Z",
+    "hostname": "Utolaris",
+    "time": "0.001"
+  },
+  {
+    "name": "com.par9uet.jm.storage.LegacyLocalSettingMigrationTest",
+    "tests": "1",
+    "skipped": "0",
+    "failures": "0",
+    "errors": "0",
+    "timestamp": "2026-09-13T07:12:06.564Z",
+    "hostname": "Utolaris",
+    "time": "0.0"
+  }
+]

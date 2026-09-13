@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.par9uet.jm.audit.CurrentAuditReproductionTest" tests="6" skipped="0" failures="0" errors="0" timestamp="2026-09-13T07:08:55.838Z" hostname="Utolaris" time="0.253">
+  <properties/>
+  <testcase name="encryptedBackupExposesFastCredentialOracle" classname="com.par9uet.jm.audit.CurrentAuditReproductionTest" time="0.164"/>
+  <testcase name="nullGroupsEscapeIntoDirectUiCallback" classname="com.par9uet.jm.audit.CurrentAuditReproductionTest" time="0.047"/>
+  <testcase name="restoringSettingsCanReenableOnboardingWithExistingLock" classname="com.par9uet.jm.audit.CurrentAuditReproductionTest" time="0.007"/>
+  <testcase name="concurrentChapterCompletionLeavesStaleGroupConfig" classname="com.par9uet.jm.audit.CurrentAuditReproductionTest" time="0.026"/>
+  <testcase name="storageReportsSuccessWithoutAnyConfirmedDiskCommit" classname="com.par9uet.jm.audit.CurrentAuditReproductionTest" time="0.005"/>
+  <testcase name="ordinaryPrivacySettingWriteFailureIsIgnored" classname="com.par9uet.jm.audit.CurrentAuditReproductionTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

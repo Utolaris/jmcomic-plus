@@ -1,0 +1,87 @@
+{
+  "date": "2026-09-13",
+  "base_commit": "63e95c79a88a35527e802b428019841e6e344778",
+  "main_kotlin_files": 353,
+  "main_kotlin_lines": 43572,
+  "unit_tests": {
+    "tests": 515,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "unit_test_suites": 105,
+  "audit_reproductions": 6,
+  "lint": {
+    "Warning": 13
+  },
+  "release_r8": "passed",
+  "release_json_fields": "passed 12 models / 50 configured fields; not a full serializer round trip",
+  "device_tests": "not run: adb reported no connected devices",
+  "largest_files": [
+    [
+      880,
+      "app/src/main/java/com/par9uet/jm/ui/screens/LocalSettingScreen.kt"
+    ],
+    [
+      826,
+      "app/src/main/java/com/par9uet/jm/ui/screens/ComicDetailScreen.kt"
+    ],
+    [
+      777,
+      "app/src/main/java/com/par9uet/jm/ui/screens/BackupRestoreScreen.kt"
+    ],
+    [
+      737,
+      "app/src/main/java/com/par9uet/jm/ui/screens/tabScreen/FavoritesToolbar.kt"
+    ],
+    [
+      737,
+      "app/src/main/java/com/par9uet/jm/ui/screens/readScreen/ComicReadScreen.kt"
+    ],
+    [
+      692,
+      "app/src/main/java/com/par9uet/jm/ui/screens/FavoritesModalHost.kt"
+    ],
+    [
+      674,
+      "app/src/main/java/com/par9uet/jm/ui/screens/WelcomeScreen.kt"
+    ],
+    [
+      674,
+      "app/src/main/java/com/par9uet/jm/ui/screens/CheckUpdateScreen.kt"
+    ],
+    [
+      666,
+      "app/src/main/java/com/par9uet/jm/ui/screens/ComicCommentScreen.kt"
+    ],
+    [
+      628,
+      "app/src/main/java/com/par9uet/jm/ui/screens/AppLockScreen.kt"
+    ],
+    [
+      542,
+      "app/src/main/java/com/par9uet/jm/data/comic/EmbeddedComicDataSource.kt"
+    ],
+    [
+      539,
+      "app/src/main/java/com/par9uet/jm/image/JmImageHostHealthManager.kt"
+    ],
+    [
+      515,
+      "app/src/main/java/com/par9uet/jm/ui/screens/ColorPaletteScreen.kt"
+    ],
+    [
+      501,
+      "app/src/main/java/com/par9uet/jm/ui/screens/downloadScreen/DownloadScreen.kt"
+    ],
+    [
+      498,
+      "app/src/main/java/com/par9uet/jm/reader/ReaderRemoteFetcher.kt"
+    ]
+  ],
+  "existing_unit_tests": 509,
+  "dependency_components_checked": 229,
+  "advisory_matches": 1,
+  "release_additional_field_check": "BackupMeta.encryptionSalt retains name",
+  "jsoup_advisory_reachability": "Cleaner/Safelist in R8 usage.txt and absent in generated DEX; no direct source usage"
+}
