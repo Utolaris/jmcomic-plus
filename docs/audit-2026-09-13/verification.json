@@ -1,0 +1,26 @@
+{
+  "date": "2026-09-13",
+  "base_commit": "9a72fff",
+  "scope": "current working tree including pre-existing modifications",
+  "unit_tests": {
+    "tests": 506,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "unit_test_suites": 101,
+  "audit_reproductions": 7,
+  "existing_tests": 499,
+  "lint": {
+    "errors": 0,
+    "warnings": 13
+  },
+  "release_r8": "passed",
+  "device_tests": "not run",
+  "release_json_fields": {
+    "models": 12,
+    "fields": 50,
+    "result": "all original field names retained"
+  },
+  "runtime": "standard OpenJDK 21"
+}

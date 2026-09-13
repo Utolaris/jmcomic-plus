@@ -1,0 +1,14 @@
+OK com.par9uet.jm.core.model.User: 11/11 字段原名
+OK com.par9uet.jm.core.model.RemoteSetting: 1/1 字段原名
+OK com.par9uet.jm.core.model.SignInData: 2/2 字段原名
+OK com.par9uet.jm.core.network.ResponseWrapper: 3/3 字段原名
+OK com.par9uet.jm.backup.BackupFile: 2/2 字段原名
+OK com.par9uet.jm.backup.BackupMeta: 8/8 字段原名
+OK com.par9uet.jm.backup.ComicCacheBackup: 1/1 字段原名
+OK com.par9uet.jm.backup.ComicGroupBackup: 5/5 字段原名
+OK com.par9uet.jm.backup.ChapterBackup: 3/3 字段原名
+OK com.par9uet.jm.cache.DownloadComicCacheConfig: 7/7 字段原名
+OK com.par9uet.jm.cache.DownloadComicCacheChapter: 5/5 字段原名
+OK com.par9uet.jm.cache.CacheImageEntry: 2/2 字段原名
+
+结论: 全部实例字段保留原名，发布版 JSON 反射序列化兼容

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.par9uet.jm.audit.AuditReproductionTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-09-12T23:49:57.759Z" hostname="Utolaris" time="0.227">
+  <properties/>
+  <testcase name="malformedCacheSectionThrowsOutsideParsingResult" classname="com.par9uet.jm.audit.AuditReproductionTest" time="0.015"/>
+  <testcase name="completionHandlerCannotUnblockRunningBlockingRead" classname="com.par9uet.jm.audit.AuditReproductionTest" time="0.121"/>
+  <testcase name="protectedBackupIsPlaintextAndMetadataBypassesVerification" classname="com.par9uet.jm.audit.AuditReproductionTest" time="0.008"/>
+  <testcase name="temporaryReadFailureDisablesLockAndDoesNotRetryInManager" classname="com.par9uet.jm.audit.AuditReproductionTest" time="0.029"/>
+  <testcase name="malformedWireItemEscapesRepositoryAndPagingErrorContract" classname="com.par9uet.jm.audit.AuditReproductionTest" time="0.026"/>
+  <testcase name="configFailureLeavesCompleteAndRetrySkipsWritingConfig" classname="com.par9uet.jm.audit.AuditReproductionTest" time="0.024"/>
+  <testcase name="failedLockWriteLooksEnabledButRestartsDisabled" classname="com.par9uet.jm.audit.AuditReproductionTest" time="0.003"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

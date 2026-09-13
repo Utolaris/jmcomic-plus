@@ -1,0 +1,37 @@
+[
+  {
+    "package": "com.squareup.okhttp3:okhttp",
+    "version": "4.12.0",
+    "result": {}
+  },
+  {
+    "package": "com.google.code.gson:gson",
+    "version": "2.14.0",
+    "result": {}
+  },
+  {
+    "package": "com.squareup.retrofit2:retrofit",
+    "version": "3.0.0",
+    "result": {}
+  },
+  {
+    "package": "org.jetbrains.kotlinx:kotlinx-coroutines-core",
+    "version": "1.10.2",
+    "result": {}
+  },
+  {
+    "package": "io.coil-kt:coil",
+    "version": "2.7.0",
+    "result": {}
+  },
+  {
+    "package": "io.github.jukomu:jmcomic-core",
+    "version": "1.1.8",
+    "result": {}
+  },
+  {
+    "package": "io.github.jukomu:jmcomic-api",
+    "version": "1.1.8",
+    "result": {}
+  }
+]
